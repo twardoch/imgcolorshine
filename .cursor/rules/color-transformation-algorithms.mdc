@@ -1,0 +1,52 @@
+---
+description: Analysis of color transformation algorithms, focusing on perceptually uniform color space operations and attractor-based color transformations
+globs: src/imgcolorshine/color_engine.py,src/imgcolorshine/transforms.py,src/imgcolorshine/falloff.py,src/imgcolorshine/gamut.py
+alwaysApply: false
+---
+
+
+# color-transformation-algorithms
+
+## Core Algorithm Components
+
+### Color Attraction Model (Importance: 95)
+- Gravitational-inspired color transformation in OKLCH space
+- Each attractor defined by target color, tolerance radius, and strength
+- Distance-based influence calculation in perceptually uniform space
+- File: `src/imgcolorshine/color_engine.py`
+
+### Falloff Functions (Importance: 85)
+- Raised cosine curve for smooth color transitions
+- Controls attraction strength decay with distance
+- Multiple falloff options (cosine, linear, quadratic, gaussian)
+- File: `src/imgcolorshine/falloff.py`
+
+### Gamut Mapping (Importance: 90)
+- CSS Color Module 4 compliant mapping
+- Preserves lightness and hue while reducing chroma
+- Ensures displayable colors within sRGB gamut
+- File: `src/imgcolorshine/gamut.py`
+
+### Multi-Attractor Blending (Importance: 92)
+- Normalized weighted averaging of multiple color influences
+- Independent channel control (luminance, saturation, hue)
+- Perceptually uniform blending in OKLCH space
+- File: `src/imgcolorshine/transforms.py`
+
+## Key Transformations
+
+### OKLCH Color Space Operations (Importance: 88)
+- Conversion between RGB, Oklab, and OKLCH spaces
+- Perceptually uniform color distance calculations
+- Channel-specific transformations
+- File: `src/imgcolorshine/color_engine.py`
+
+### Attraction Parameters (Importance: 85)
+- Tolerance (0-100): Controls radius of influence
+- Strength (0-100): Defines transformation intensity
+- Color target: Supports all CSS color formats
+- File: `src/imgcolorshine/transforms.py`
+
+$END$
+
+ If you're using this file in context, clearly say in italics in one small line that "Context added by Giga color-transformation-algorithms".

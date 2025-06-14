@@ -1,0 +1,348 @@
+#!/usr/bin/env -S uv run -s
+# /// script
+# dependencies = ["numpy", "numba", "loguru"]
+# ///
+# this_file: src/imgcolorshine/transforms.py
+
+"""
+High-performance color transformation algorithms using NumPy and Numba.
+
+Implements the core color transformation logic with JIT compilation for
+optimal performance. Handles multi-attractor blending and channel-specific
+transformations in the OKLCH color space.
+
+"""
+
+from collections.abc import Callable
+
+import numba
+import numpy as np
+from loguru import logger
+
+from imgcolorshine.color_engine import Attractor, OKLCHEngine
+from imgcolorshine.utils import process_large_image
+
+
+@numba.njit
+def calculate_delta_e_fast(pixel_lab: np.ndarray, attractor_lab: np.ndarray) -> float:
+    """
+    Fast Euclidean distance calculation in Oklab space.
+
+    Args:
+        pixel_lab: [L, a, b] values
+        attractor_lab: [L, a, b] values
+
+    Returns:
+        Perceptual distance
+
+    """
+    return np.sqrt(
+        (pixel_lab[0] - attractor_lab[0]) ** 2
+        + (pixel_lab[1] - attractor_lab[1]) ** 2
+        + (pixel_lab[2] - attractor_lab[2]) ** 2
+    )
+
+
+@numba.njit
+def calculate_weights(
+    pixel_lab: np.ndarray,
+    attractors_lab: np.ndarray,
+    tolerances: np.ndarray,
+    strengths: np.ndarray,
+) -> np.ndarray:
+    """
+    Calculate attraction weights for all attractors.
+
+    Returns:
+        Array of weights for each attractor
+
+    """
+    num_attractors = len(attractors_lab)
+    weights = np.zeros(num_attractors)
+
+    for i in range(num_attractors):
+        # Calculate perceptual distance
+        delta_e = calculate_delta_e_fast(pixel_lab, attractors_lab[i])
+
+        # Map tolerance (0-100) to max distance
+        delta_e_max = 1.0 * (tolerances[i] / 100.0) ** 2
+
+        # Check if within tolerance
+        if delta_e <= delta_e_max:
+            # Calculate normalized distance
+            d_norm = delta_e / delta_e_max
+
+            # Apply falloff function (raised cosine)
+            attraction_factor = 0.5 * (np.cos(d_norm * np.pi) + 1.0)
+
+            # Calculate final weight
+            weights[i] = (strengths[i] / 100.0) * attraction_factor
+
+    return weights
+
+
+@numba.njit
+def blend_colors(
+    pixel_lab: np.ndarray,
+    pixel_lch: np.ndarray,
+    attractors_lab: np.ndarray,
+    attractors_lch: np.ndarray,
+    weights: np.ndarray,
+    flags: np.ndarray,
+) -> np.ndarray:
+    """
+    Blend pixel color with attractors based on weights and channel flags.
+
+    Args:
+        pixel_lab: Original pixel in Oklab [L, a, b]
+        pixel_lch: Original pixel in OKLCH [L, C, H]
+        attractors_lab: Attractor colors in Oklab
+        attractors_lch: Attractor colors in OKLCH
+        weights: Weight for each attractor
+        flags: Boolean array [luminance, saturation, hue]
+
+    Returns:
+        Blended color in Oklab space
+
+    """
+    total_weight = np.sum(weights)
+
+    if total_weight == 0:
+        return pixel_lab
+
+    # Determine source weight
+    if total_weight > 1.0:
+        # Normalize weights
+        weights = weights / total_weight
+        src_weight = 0.0
+    else:
+        src_weight = 1.0 - total_weight
+
+    # Start with original values
+    final_l = pixel_lch[0]
+    final_c = pixel_lch[1]
+    final_h = pixel_lch[2]
+
+    # Blend each enabled channel
+    if flags[0]:  # Luminance
+        final_l = src_weight * pixel_lch[0]
+        for i in range(len(weights)):
+            if weights[i] > 0:
+                final_l += weights[i] * attractors_lch[i][0]
+
+    if flags[1]:  # Saturation (Chroma)
+        final_c = src_weight * pixel_lch[1]
+        for i in range(len(weights)):
+            if weights[i] > 0:
+                final_c += weights[i] * attractors_lch[i][1]
+
+    if flags[2]:  # Hue
+        # Use circular mean for hue
+        sin_sum = src_weight * np.sin(np.deg2rad(pixel_lch[2]))
+        cos_sum = src_weight * np.cos(np.deg2rad(pixel_lch[2]))
+
+        for i in range(len(weights)):
+            if weights[i] > 0:
+                h_rad = np.deg2rad(attractors_lch[i][2])
+                sin_sum += weights[i] * np.sin(h_rad)
+                cos_sum += weights[i] * np.cos(h_rad)
+
+        final_h = np.rad2deg(np.arctan2(sin_sum, cos_sum))
+        if final_h < 0:
+            final_h += 360
+
+    # Convert back to Oklab
+    h_rad = np.deg2rad(final_h)
+    final_a = final_c * np.cos(h_rad)
+    final_b = final_c * np.sin(h_rad)
+
+    return np.array([final_l, final_a, final_b])
+
+
+@numba.njit(parallel=True)
+def transform_pixels(
+    pixels_lab: np.ndarray,
+    pixels_lch: np.ndarray,
+    attractors_lab: np.ndarray,
+    attractors_lch: np.ndarray,
+    tolerances: np.ndarray,
+    strengths: np.ndarray,
+    flags: np.ndarray,
+) -> np.ndarray:
+    """
+    Transform all pixels using Numba parallel processing.
+
+    Args:
+        pixels_lab: Image in Oklab space (H, W, 3)
+        pixels_lch: Image in OKLCH space (H, W, 3)
+        attractors_lab: Attractor colors in Oklab
+        attractors_lch: Attractor colors in OKLCH
+        tolerances: Tolerance values for each attractor
+        strengths: Strength values for each attractor
+        flags: Boolean array [luminance, saturation, hue]
+
+    Returns:
+        Transformed image in Oklab space
+
+    """
+    h, w = pixels_lab.shape[:2]
+    result = np.empty_like(pixels_lab)
+
+    for y in numba.prange(h):
+        for x in range(w):
+            pixel_lab = pixels_lab[y, x]
+            pixel_lch = pixels_lch[y, x]
+
+            # Calculate weights for all attractors
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
+
+            # Blend colors
+            result[y, x] = blend_colors(pixel_lab, pixel_lch, attractors_lab, attractors_lch, weights, flags)
+
+    return result
+
+
+class ColorTransformer:
+    """High-level color transformation interface.
+
+    Manages the transformation pipeline from RGB input to RGB output,
+    handling color space conversions, tiling for large images, and
+    progress tracking. Used by the main CLI for applying transformations.
+
+    Used in:
+    - old/imgcolorshine/imgcolorshine/__init__.py
+    - old/imgcolorshine/imgcolorshine_main.py
+    - old/imgcolorshine/test_imgcolorshine.py
+    - src/imgcolorshine/__init__.py
+    - src/imgcolorshine/imgcolorshine.py
+    """
+
+    def __init__(self, engine: OKLCHEngine):
+        """
+        Initialize the color transformer.
+
+        Args:
+            engine: OKLCH color engine instance
+
+        """
+        self.engine = engine
+        logger.debug("Initialized ColorTransformer")
+
+    def transform_image(
+        self,
+        image: np.ndarray,
+        attractors: list[Attractor],
+        flags: dict[str, bool],
+        progress_callback: Callable[[float], None] | None = None,
+    ) -> np.ndarray:
+        """
+        Transform an entire image using color attractors.
+
+        Args:
+            image: Input image (H, W, 3) in sRGB [0, 1]
+            attractors: List of color attractors
+            flags: Channel flags {'luminance': bool, 'saturation': bool, 'hue': bool}
+            progress_callback: Optional callback for progress updates
+
+        Returns:
+            Transformed image in sRGB [0, 1]
+
+        Used in:
+        - old/imgcolorshine/imgcolorshine_main.py
+        - old/imgcolorshine/test_imgcolorshine.py
+        - src/imgcolorshine/imgcolorshine.py
+        """
+        logger.info(f"Transforming {image.shape[0]}×{image.shape[1]} image with {len(attractors)} attractors")
+
+        # Convert flags to numpy array
+        flags_array = np.array(
+            [
+                flags.get("luminance", True),
+                flags.get("saturation", True),
+                flags.get("hue", True),
+            ]
+        )
+
+        # Prepare attractor data for Numba
+        attractors_lab = np.array([a.oklab_values for a in attractors])
+        attractors_lch = np.array([a.oklch_values for a in attractors])
+        tolerances = np.array([a.tolerance for a in attractors])
+        strengths = np.array([a.strength for a in attractors])
+
+        # Check if we should use tiling
+        h, w = image.shape[:2]
+        from imgcolorshine.image_io import ImageProcessor
+
+        processor = ImageProcessor()
+
+        if processor.should_use_tiling(w, h):
+            # Process in tiles for large images
+            def transform_tile(tile):
+                return self._transform_tile(
+                    tile,
+                    attractors_lab,
+                    attractors_lch,
+                    tolerances,
+                    strengths,
+                    flags_array,
+                )
+
+            result = process_large_image(
+                image,
+                transform_tile,
+                tile_size=processor.tile_size,
+                progress_callback=progress_callback,
+            )
+        else:
+            # Process entire image at once
+            result = self._transform_tile(
+                image,
+                attractors_lab,
+                attractors_lch,
+                tolerances,
+                strengths,
+                flags_array,
+            )
+
+            if progress_callback:
+                progress_callback(1.0)
+
+        logger.info("Transformation complete")
+        return result
+
+    def _transform_tile(
+        self,
+        tile: np.ndarray,
+        attractors_lab: np.ndarray,
+        attractors_lch: np.ndarray,
+        tolerances: np.ndarray,
+        strengths: np.ndarray,
+        flags: np.ndarray,
+    ) -> np.ndarray:
+        """Transform a single tile of the image."""
+        # Convert to Oklab
+        tile_lab = self.engine.batch_rgb_to_oklab(tile)
+
+        # Also need OKLCH for channel-specific operations
+        tile_lch = np.zeros_like(tile_lab)
+        for y in range(tile_lab.shape[0]):
+            for x in range(tile_lab.shape[1]):
+                l, a, b = tile_lab[y, x]
+                tile_lch[y, x] = self.engine.oklab_to_oklch(l, a, b)
+
+        # Apply transformation
+        transformed_lab = transform_pixels(
+            tile_lab,
+            tile_lch,
+            attractors_lab,
+            attractors_lch,
+            tolerances,
+            strengths,
+            flags,
+        )
+
+        # Convert back to RGB
+        result = self.engine.batch_oklab_to_rgb(transformed_lab)
+
+        # Ensure values are in valid range
+        return np.clip(result, 0, 1)

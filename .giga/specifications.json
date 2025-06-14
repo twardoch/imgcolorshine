@@ -1,0 +1,22 @@
+[
+  {
+    "fileName": "main-overview.mdc",
+    "description": "Complete system overview covering the image color transformation architecture, key components, and their interactions within the OKLCH color space system"
+  },
+  {
+    "fileName": "color-transformation-algorithms.mdc",
+    "description": "Detailed documentation of the core color transformation algorithms, including the attractor model, falloff functions, and gamut mapping implementations"
+  },
+  {
+    "fileName": "color-space-models.mdc",
+    "description": "Comprehensive documentation of the color space models (RGB, OKLCH, Oklab), their relationships, and conversion algorithms used throughout the system"
+  },
+  {
+    "fileName": "data-flow-processing.mdc",
+    "description": "Documentation of the image processing pipeline, memory management strategies, and data flow between components including tiled processing for large images"
+  },
+  {
+    "fileName": "attractor-model.mdc",
+    "description": "Detailed specification of the color attractor model, including distance calculations, blending mechanisms, and channel-specific transformations"
+  }
+]

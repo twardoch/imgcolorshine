@@ -33,6 +33,13 @@ classifiers = [
 ]
 
 dependencies = [
+    "fire>=0.6.0",
+    "loguru>=0.7.0",
+    "numpy>=1.24.0",
+    "numba>=0.58.0",
+    "coloraide>=3.2.0",
+    "opencv-python>=4.8.0",
+    "pillow>=10.0.0",
 ]
 
 # Author information
@@ -92,7 +99,7 @@ all = [
 # Entry points for command-line executables installed with the package.
 #------------------------------------------------------------------------------
 [project.scripts]
-# CLINAME = "imgcolorshine.__main__:main"
+imgcolorshine = "imgcolorshine.cli:main"
 
 #------------------------------------------------------------------------------
 # BUILD SYSTEM CONFIGURATION
@@ -413,8 +420,8 @@ unfixable = [
     'F401', # Don't automatically remove unused imports - may be needed later
 
 ]
-# Configure extend-exclude to ignore specific directories
-extend-exclude = [".git", ".venv", "venv", "dist", "build"]
+# Configure exclude to ignore specific directories
+exclude = [".git", ".venv", "venv", "dist", "build", "old"]
 
 # isort configuration within Ruff
 [tool.ruff.lint.isort]
