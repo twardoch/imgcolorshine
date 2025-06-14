@@ -3,7 +3,6 @@
 """Shared test fixtures and utilities for imgcolorshine tests."""
 
 from pathlib import Path
-from typing import Tuple
 
 import numpy as np
 import pytest

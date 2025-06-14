@@ -664,317 +664,6 @@ if __name__ == "__main__":
     main()
 </file>
 
-<file path="src/imgcolorshine/color_engine.py">
-#!/usr/bin/env -S uv run -s
-# /// script
-# dependencies = ["coloraide", "numpy", "loguru"]
-# ///
-# this_file: src/imgcolorshine/color_engine.py
-
-"""
-OKLCH color space operations and attractor management.
-
-Handles color parsing, OKLCH/Oklab conversions, delta E calculations,
-and gamut mapping. This module is the core of the color transformation
-system, providing perceptually uniform color operations.
-
-"""
-
-from dataclasses import dataclass, field
-
-import numpy as np
-from coloraide import Color
-from loguru import logger
-
-
-@dataclass
-class Attractor:
-    """Represents a color attractor with its parameters.
-
-    Stores color information in both OKLCH and Oklab formats for
-    efficient processing. Used by transforms.py for applying color
-    attractions to images.
-
-    Used in:
-    - old/imgcolorshine/imgcolorshine/__init__.py
-    - old/imgcolorshine/imgcolorshine/transforms.py
-    - src/imgcolorshine/__init__.py
-    - src/imgcolorshine/transforms.py
-    """
-
-    color: Color  # In OKLCH space
-    tolerance: float  # 0-100
-    strength: float  # 0-100
-    oklch_values: tuple[float, float, float] = field(init=False)  # L, C, H
-    oklab_values: tuple[float, float, float] = field(init=False)  # L, a, b
-
-    def __post_init__(self):
-        """Cache commonly used conversions for performance."""
-        self.oklch_values = (
-            self.color["lightness"],
-            self.color["chroma"],
-            self.color["hue"],
-        )
-
-        # Convert to Oklab for distance calculations
-        oklab_color = self.color.convert("oklab")
-        self.oklab_values = (
-            oklab_color["lightness"],
-            oklab_color["a"],
-            oklab_color["b"],
-        )
-
-
-class OKLCHEngine:
-    """Handles OKLCH color space operations and conversions.
-
-    Central engine for all color operations, providing OKLCH/Oklab
-    conversions, color parsing, and gamut mapping. Used throughout
-    the application for perceptually uniform color transformations.
-
-    Used in:
-    - old/imgcolorshine/imgcolorshine/__init__.py
-    - old/imgcolorshine/imgcolorshine/transforms.py
-    - old/imgcolorshine/imgcolorshine_main.py
-    - old/imgcolorshine/test_imgcolorshine.py
-    - src/imgcolorshine/__init__.py
-    - src/imgcolorshine/imgcolorshine.py
-    - src/imgcolorshine/transforms.py
-    """
-
-    def __init__(self):
-        """Initialize the color engine with caching."""
-        self.cache: dict[str, Color] = {}
-        logger.debug("Initialized OKLCH color engine")
-
-    def parse_color(self, color_str: str) -> Color:
-        """
-        Parse any CSS color format and return a Color object.
-
-        Supports: hex, rgb(), hsl(), oklch(), named colors, etc.
-        Results are cached for performance.
-
-        Used in:
-        - old/imgcolorshine/test_imgcolorshine.py
-        """
-        if color_str in self.cache:
-            return self.cache[color_str].clone()
-
-        try:
-            color = Color(color_str)
-            self.cache[color_str] = color.clone()
-            logger.debug(
-                "Parsed color '%s' → %s",
-                color_str,
-                color,
-            )
-            return color
-        except Exception as e:
-            logger.error(f"Failed to parse color '{color_str}': {e}")
-            msg = f"Invalid color specification: {color_str}"
-            raise ValueError(msg) from e
-
-    def create_attractor(self, color_str: str, tolerance: float, strength: float) -> Attractor:
-        """Create an attractor from color string and parameters.
-
-        Parses the color string and converts to OKLCH space for
-        perceptually uniform operations.
-
-        Used in:
-        - old/imgcolorshine/imgcolorshine_main.py
-        - old/imgcolorshine/test_imgcolorshine.py
-        - src/imgcolorshine/imgcolorshine.py
-        """
-        color = self.parse_color(color_str)
-        oklch_color = color.convert("oklch")
-
-        return Attractor(color=oklch_color, tolerance=tolerance, strength=strength)
-
-    def calculate_delta_e(self, color1: np.ndarray, color2: np.ndarray) -> float:
-        """
-        Calculate perceptual distance in Oklab space.
-
-        Args:
-            color1: [L, a, b] values
-            color2: [L, a, b] values
-
-        Returns:
-            Euclidean distance in Oklab space
-
-        """
-        return np.sqrt(np.sum((color1 - color2) ** 2))
-
-    def oklch_to_oklab(self, l: float, c: float, h: float) -> tuple[float, float, float]:  # noqa: E741
-        """Convert OKLCH to Oklab coordinates."""
-        h_rad = np.deg2rad(h)
-        a = c * np.cos(h_rad)
-        b = c * np.sin(h_rad)
-        return l, a, b
-
-    def oklab_to_oklch(self, l: float, a: float, b: float) -> tuple[float, float, float]:  # noqa: E741
-        """Convert Oklab to OKLCH coordinates.
-
-        Used by transforms.py for color space conversions.
-
-        Used in:
-        - old/imgcolorshine/imgcolorshine/transforms.py
-        - src/imgcolorshine/transforms.py
-        """
-        c = np.sqrt(a**2 + b**2)
-        h = np.rad2deg(np.arctan2(b, a))
-        if h < 0:
-            h += 360
-        return l, c, h
-
-    def rgb_to_oklab(self, rgb: np.ndarray) -> np.ndarray:
-        """
-        Convert sRGB to Oklab.
-
-        Args:
-            rgb: Array of shape (..., 3) with values in [0, 1]
-
-        Returns:
-            Array of shape (..., 3) with Oklab values
-
-        """
-        # First convert to linear RGB
-        self.srgb_to_linear(rgb)
-
-        # Convert to Oklab using ColorAide's matrices
-        # This is a simplified version - in production, use ColorAide's convert
-        color = Color("srgb", list(rgb))
-        oklab = color.convert("oklab")
-        return np.array([oklab["lightness"], oklab["a"], oklab["b"]])
-
-    def oklab_to_rgb(self, oklab: np.ndarray) -> np.ndarray:
-        """
-        Convert Oklab to sRGB.
-
-        Args:
-            oklab: Array of shape (..., 3) with Oklab values
-
-        Returns:
-            Array of shape (..., 3) with sRGB values in [0, 1]
-
-        """
-        # Use ColorAide for accurate conversion
-        color = Color("oklab", list(oklab))
-        srgb = color.convert("srgb")
-        return np.array([srgb["red"], srgb["green"], srgb["blue"]])
-
-    def srgb_to_linear(self, srgb: np.ndarray) -> np.ndarray:
-        """Apply inverse gamma correction."""
-        return np.where(srgb <= 0.04045, srgb / 12.92, np.power((srgb + 0.055) / 1.055, 2.4))
-
-    def linear_to_srgb(self, linear: np.ndarray) -> np.ndarray:
-        """Apply gamma correction."""
-        return np.where(
-            linear <= 0.0031308,
-            linear * 12.92,
-            1.055 * np.power(linear, 1 / 2.4) - 0.055,
-        )
-
-    def gamut_map_oklch(self, l: float, c: float, h: float) -> tuple[float, float, float]:  # noqa: E741
-        """
-        CSS Color Module 4 compliant gamut mapping.
-
-        Reduces chroma while preserving lightness and hue until the color
-        is within sRGB gamut. Uses binary search for efficiency.
-
-        """
-        color = Color("oklch", [l, c, h])
-
-        if color.in_gamut("srgb"):
-            return l, c, h
-
-        # Binary search for maximum valid chroma
-        c_min, c_max = 0.0, c
-        epsilon = 0.0001
-
-        while c_max - c_min > epsilon:
-            c_mid = (c_min + c_max) / 2
-            test_color = Color("oklch", [l, c_mid, h])
-
-            if test_color.in_gamut("srgb"):
-                c_min = c_mid
-            else:
-                c_max = c_mid
-
-        logger.debug("Gamut mapped: C=%.3f → %.3f", c, c_min)
-        return l, c_min, h
-
-    def batch_rgb_to_oklab(self, rgb_image: np.ndarray) -> np.ndarray:
-        """
-        Convert entire RGB image to Oklab.
-
-        Args:
-            rgb_image: Array of shape (H, W, 3) with values in [0, 1]
-
-        Returns:
-            Array of shape (H, W, 3) with Oklab values
-
-        Used by transforms.py for batch image processing.
-
-        Used in:
-        - old/imgcolorshine/imgcolorshine/transforms.py
-        - src/imgcolorshine/transforms.py
-        """
-        # Flatten for batch processing
-        h, w = rgb_image.shape[:2]
-        flat_rgb = rgb_image.reshape(-1, 3)
-
-        # Convert each pixel - in production, use vectorized ColorAide
-        oklab_list = []
-        for rgb in flat_rgb:
-            color = Color("srgb", list(rgb))
-            oklab = color.convert("oklab")
-            oklab_list.append([oklab["lightness"], oklab["a"], oklab["b"]])
-
-        return np.array(oklab_list).reshape(h, w, 3)
-
-    def batch_oklab_to_rgb(self, oklab_image: np.ndarray) -> np.ndarray:
-        """
-        Convert entire Oklab image to RGB.
-
-        Args:
-            oklab_image: Array of shape (H, W, 3) with Oklab values
-
-        Returns:
-            Array of shape (H, W, 3) with sRGB values in [0, 1]
-
-        Used by transforms.py for batch image processing.
-
-        Used in:
-        - old/imgcolorshine/imgcolorshine/transforms.py
-        - src/imgcolorshine/transforms.py
-        """
-        # Flatten for batch processing
-        # Ensure shape dimensions are integers (NumPy may return int64).
-        # This prevents accidental float propagation that breaks `reshape`.
-        height, width = map(int, oklab_image.shape[:2])
-        flat_oklab = oklab_image.reshape(-1, 3)
-
-        # Convert each pixel - in production, use vectorized ColorAide
-        rgb_list = []
-        for oklab in flat_oklab:
-            color = Color("oklab", list(oklab))
-
-            # Gamut map if needed
-            if not color.in_gamut("srgb"):
-                oklch = color.convert("oklch")
-                l_val, c_val, hue_val = self.gamut_map_oklch(
-                    oklch["lightness"],
-                    oklch["chroma"],
-                    oklch["hue"],
-                )
-                color = Color("oklch", [l_val, c_val, hue_val])
-
-            srgb = color.convert("srgb")
-            rgb_list.append([srgb["red"], srgb["green"], srgb["blue"]])
-
-        return np.array(rgb_list).reshape(height, width, 3)
-</file>
-
 <file path="src/imgcolorshine/falloff.py">
 #!/usr/bin/env -S uv run -s
 # /// script
@@ -1683,358 +1372,6 @@ class ImageProcessor:
         return should_tile
 </file>
 
-<file path="src/imgcolorshine/transforms.py">
-#!/usr/bin/env -S uv run -s
-# /// script
-# dependencies = ["numpy", "numba", "loguru"]
-# ///
-# this_file: src/imgcolorshine/transforms.py
-
-"""
-High-performance color transformation algorithms using NumPy and Numba.
-
-Implements the core color transformation logic with JIT compilation for
-optimal performance. Handles multi-attractor blending and channel-specific
-transformations in the OKLCH color space.
-
-"""
-
-from collections.abc import Callable
-
-import numba
-import numpy as np
-from loguru import logger
-
-from imgcolorshine.color_engine import Attractor, OKLCHEngine
-from imgcolorshine.utils import process_large_image
-
-
-@numba.njit
-def calculate_delta_e_fast(pixel_lab: np.ndarray, attractor_lab: np.ndarray) -> float:
-    """
-    Fast Euclidean distance calculation in Oklab space.
-
-    Args:
-        pixel_lab: [L, a, b] values
-        attractor_lab: [L, a, b] values
-
-    Returns:
-        Perceptual distance
-
-    """
-    return np.sqrt(
-        (pixel_lab[0] - attractor_lab[0]) ** 2
-        + (pixel_lab[1] - attractor_lab[1]) ** 2
-        + (pixel_lab[2] - attractor_lab[2]) ** 2
-    )
-
-
-@numba.njit
-def calculate_weights(
-    pixel_lab: np.ndarray,
-    attractors_lab: np.ndarray,
-    tolerances: np.ndarray,
-    strengths: np.ndarray,
-) -> np.ndarray:
-    """
-    Calculate attraction weights for all attractors.
-
-    Returns:
-        Array of weights for each attractor
-
-    """
-    num_attractors = len(attractors_lab)
-    weights = np.zeros(num_attractors)
-
-    for i in range(num_attractors):
-        # Calculate perceptual distance
-        delta_e = calculate_delta_e_fast(pixel_lab, attractors_lab[i])
-
-        # Map tolerance (0-100) to max distance
-        delta_e_max = 1.0 * (tolerances[i] / 100.0) ** 2
-
-        # Check if within tolerance
-        if delta_e <= delta_e_max:
-            # Calculate normalized distance
-            d_norm = delta_e / delta_e_max
-
-            # Apply falloff function (raised cosine)
-            attraction_factor = 0.5 * (np.cos(d_norm * np.pi) + 1.0)
-
-            # Calculate final weight
-            weights[i] = (strengths[i] / 100.0) * attraction_factor
-
-    return weights
-
-
-@numba.njit
-def blend_colors(
-    pixel_lab: np.ndarray,
-    pixel_lch: np.ndarray,
-    attractors_lab: np.ndarray,
-    attractors_lch: np.ndarray,
-    weights: np.ndarray,
-    flags: np.ndarray,
-) -> np.ndarray:
-    """
-    Blend pixel color with attractors based on weights and channel flags.
-
-    Args:
-        pixel_lab: Original pixel in Oklab [L, a, b]
-        pixel_lch: Original pixel in OKLCH [L, C, H]
-        attractors_lab: Attractor colors in Oklab
-        attractors_lch: Attractor colors in OKLCH
-        weights: Weight for each attractor
-        flags: Boolean array [luminance, saturation, hue]
-
-    Returns:
-        Blended color in Oklab space
-
-    """
-    total_weight = np.sum(weights)
-
-    if total_weight == 0:
-        return pixel_lab
-
-    # Determine source weight
-    if total_weight > 1.0:
-        # Normalize weights
-        weights = weights / total_weight
-        src_weight = 0.0
-    else:
-        src_weight = 1.0 - total_weight
-
-    # Start with original values
-    final_l = pixel_lch[0]
-    final_c = pixel_lch[1]
-    final_h = pixel_lch[2]
-
-    # Blend each enabled channel
-    if flags[0]:  # Luminance
-        final_l = src_weight * pixel_lch[0]
-        for i in range(len(weights)):
-            if weights[i] > 0:
-                final_l += weights[i] * attractors_lch[i][0]
-
-    if flags[1]:  # Saturation (Chroma)
-        final_c = src_weight * pixel_lch[1]
-        for i in range(len(weights)):
-            if weights[i] > 0:
-                final_c += weights[i] * attractors_lch[i][1]
-
-    if flags[2]:  # Hue
-        # Use circular mean for hue
-        sin_sum = src_weight * np.sin(np.deg2rad(pixel_lch[2]))
-        cos_sum = src_weight * np.cos(np.deg2rad(pixel_lch[2]))
-
-        for i in range(len(weights)):
-            if weights[i] > 0:
-                h_rad = np.deg2rad(attractors_lch[i][2])
-                sin_sum += weights[i] * np.sin(h_rad)
-                cos_sum += weights[i] * np.cos(h_rad)
-
-        final_h = np.rad2deg(np.arctan2(sin_sum, cos_sum))
-        if final_h < 0:
-            final_h += 360
-
-    # Convert back to Oklab
-    h_rad = np.deg2rad(final_h)
-    final_a = final_c * np.cos(h_rad)
-    final_b = final_c * np.sin(h_rad)
-
-    return np.array([final_l, final_a, final_b])
-
-
-@numba.njit(parallel=True)
-def transform_pixels(
-    pixels_lab: np.ndarray,
-    pixels_lch: np.ndarray,
-    attractors_lab: np.ndarray,
-    attractors_lch: np.ndarray,
-    tolerances: np.ndarray,
-    strengths: np.ndarray,
-    flags: np.ndarray,
-) -> np.ndarray:
-    """
-    Transform all pixels using Numba parallel processing.
-
-    Args:
-        pixels_lab: Image in Oklab space (H, W, 3)
-        pixels_lch: Image in OKLCH space (H, W, 3)
-        attractors_lab: Attractor colors in Oklab
-        attractors_lch: Attractor colors in OKLCH
-        tolerances: Tolerance values for each attractor
-        strengths: Strength values for each attractor
-        flags: Boolean array [luminance, saturation, hue]
-
-    Returns:
-        Transformed image in Oklab space
-
-    """
-    h, w = pixels_lab.shape[:2]
-    result = np.empty_like(pixels_lab)
-
-    for y in numba.prange(h):
-        for x in range(w):
-            pixel_lab = pixels_lab[y, x]
-            pixel_lch = pixels_lch[y, x]
-
-            # Calculate weights for all attractors
-            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
-
-            # Blend colors
-            result[y, x] = blend_colors(pixel_lab, pixel_lch, attractors_lab, attractors_lch, weights, flags)
-
-    return result
-
-
-class ColorTransformer:
-    """High-level color transformation interface.
-
-    Manages the transformation pipeline from RGB input to RGB output,
-    handling color space conversions, tiling for large images, and
-    progress tracking. Used by the main CLI for applying transformations.
-
-    Used in:
-    - old/imgcolorshine/imgcolorshine/__init__.py
-    - old/imgcolorshine/imgcolorshine_main.py
-    - old/imgcolorshine/test_imgcolorshine.py
-    - src/imgcolorshine/__init__.py
-    - src/imgcolorshine/imgcolorshine.py
-    """
-
-    def __init__(self, engine: OKLCHEngine):
-        """
-        Initialize the color transformer.
-
-        Args:
-            engine: OKLCH color engine instance
-
-        """
-        self.engine = engine
-        logger.debug("Initialized ColorTransformer")
-
-    def transform_image(
-        self,
-        image: np.ndarray,
-        attractors: list[Attractor],
-        flags: dict[str, bool],
-        progress_callback: Callable[[float], None] | None = None,
-    ) -> np.ndarray:
-        """
-        Transform an entire image using color attractors.
-
-        Args:
-            image: Input image (H, W, 3) in sRGB [0, 1]
-            attractors: List of color attractors
-            flags: Channel flags {'luminance': bool, 'saturation': bool, 'hue': bool}
-            progress_callback: Optional callback for progress updates
-
-        Returns:
-            Transformed image in sRGB [0, 1]
-
-        Used in:
-        - old/imgcolorshine/imgcolorshine_main.py
-        - old/imgcolorshine/test_imgcolorshine.py
-        - src/imgcolorshine/imgcolorshine.py
-        """
-        # Report dimensions in width×height order to match common conventions
-        h, w = image.shape[:2]
-        logger.info(f"Transforming {w}×{h} image with {len(attractors)} attractors")
-
-        # Convert flags to numpy array
-        flags_array = np.array(
-            [
-                flags.get("luminance", True),
-                flags.get("saturation", True),
-                flags.get("hue", True),
-            ]
-        )
-
-        # Prepare attractor data for Numba
-        attractors_lab = np.array([a.oklab_values for a in attractors])
-        attractors_lch = np.array([a.oklch_values for a in attractors])
-        tolerances = np.array([a.tolerance for a in attractors])
-        strengths = np.array([a.strength for a in attractors])
-
-        # Check if we should use tiling
-        from imgcolorshine.image_io import ImageProcessor
-
-        processor = ImageProcessor()
-
-        if processor.should_use_tiling(w, h):
-            # Process in tiles for large images
-            def transform_tile(tile):
-                return self._transform_tile(
-                    tile,
-                    attractors_lab,
-                    attractors_lch,
-                    tolerances,
-                    strengths,
-                    flags_array,
-                )
-
-            result = process_large_image(
-                image,
-                transform_tile,
-                tile_size=processor.tile_size,
-                progress_callback=progress_callback,
-            )
-        else:
-            # Process entire image at once
-            result = self._transform_tile(
-                image,
-                attractors_lab,
-                attractors_lch,
-                tolerances,
-                strengths,
-                flags_array,
-            )
-
-            if progress_callback:
-                progress_callback(1.0)
-
-        logger.info("Transformation complete")
-        return result
-
-    def _transform_tile(
-        self,
-        tile: np.ndarray,
-        attractors_lab: np.ndarray,
-        attractors_lch: np.ndarray,
-        tolerances: np.ndarray,
-        strengths: np.ndarray,
-        flags: np.ndarray,
-    ) -> np.ndarray:
-        """Transform a single tile of the image."""
-        # Convert to Oklab
-        tile_lab = self.engine.batch_rgb_to_oklab(tile)
-
-        # Also need OKLCH for channel-specific operations
-        tile_lch = np.zeros_like(tile_lab)
-        for y in range(tile_lab.shape[0]):
-            for x in range(tile_lab.shape[1]):
-                l, a, b = tile_lab[y, x]
-                tile_lch[y, x] = self.engine.oklab_to_oklch(l, a, b)
-
-        # Apply transformation
-        transformed_lab = transform_pixels(
-            tile_lab,
-            tile_lch,
-            attractors_lab,
-            attractors_lch,
-            tolerances,
-            strengths,
-            flags,
-        )
-
-        # Convert back to RGB
-        result = self.engine.batch_oklab_to_rgb(transformed_lab)
-
-        # Ensure values are in valid range
-        return np.clip(result, 0, 1)
-</file>
-
 <file path="src/imgcolorshine/utils.py">
 #!/usr/bin/env -S uv run -s
 # /// script
@@ -2287,182 +1624,6 @@ def batch_process_images(image_paths: list, output_dir: str, transform_func: Cal
         processor.save_image(result, output_path)
 
         logger.info(f"Saved: {output_path}")
-</file>
-
-<file path="testdata/example.sh">
-#!/usr/bin/env bash
-# this_file: example.sh
-
-# Example script demonstrating various imgcolorshine shine operations on louis.jpg
-# Run from the project root directory
-
-# Change working directory to the location of this script
-cd "$(dirname "$0")"
-
-set -e # Exit on error
-
-# Create output directory if it doesn't exist
-mkdir -p output
-
-echo "Running imgcolorshine examples on louis.jpg..."
-echo "================================================"
-
-# Example: Basic single attractor - warm red tones
-echo "Basic blue attractors"
-for a in 20 40 60 80; do for b in 20 30 60 80; do
-    echo "blue;$a;$b"
-    imgcolorshine shine louis.jpg "blue;$a;$b" \
-        --luminance=False --saturation=False \
-        --output_image=output/louis-blue-$a-$b.jpg
-done; done
-
-# Optional: Create a comparison montage using ImageMagick if available
-if command -v montage &>/dev/null; then
-    echo "Creating comparison montage..."
-    montage louis.jpg output/louis-*.jpg \
-        -tile 4x4 -geometry 200x200+5+5 \
-        -label '%f' \
-        output/montage-comparison.jpg
-    echo "Montage created: output/montage-comparison.jpg"
-fi
-</file>
-
-<file path="tests/conftest.py">
-# this_file: tests/conftest.py
-
-"""Shared test fixtures and utilities for imgcolorshine tests."""
-
-from pathlib import Path
-from typing import Tuple
-
-import numpy as np
-import pytest
-from coloraide import Color
-
-# Test data directory
-TEST_DATA_DIR = Path(__file__).parent.parent / "testdata"
-
-
-@pytest.fixture
-def test_image_path():
-    """Provide path to test image."""
-    return TEST_DATA_DIR / "louis.jpg"
-
-
-@pytest.fixture
-def sample_rgb_array():
-    """Create a small sample RGB array for testing."""
-    # 4x4 RGB image with various colors
-    return np.array(
-        [
-            [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0]],  # Red, Green, Blue, Yellow
-            [[255, 0, 255], [0, 255, 255], [128, 128, 128], [255, 255, 255]],  # Magenta, Cyan, Gray, White
-            [[0, 0, 0], [64, 64, 64], [192, 192, 192], [128, 0, 0]],  # Black, Dark gray, Light gray, Dark red
-            [
-                [0, 128, 0],
-                [0, 0, 128],
-                [128, 128, 0],
-                [128, 0, 128],
-            ],  # Dark green, Dark blue, Dark yellow, Dark magenta
-        ],
-        dtype=np.uint8,
-    )
-
-
-@pytest.fixture
-def sample_oklch_array():
-    """Create a sample OKLCH array for testing."""
-    # 2x2 OKLCH values
-    return np.array([[[0.7, 0.2, 30], [0.5, 0.1, 120]], [[0.3, 0.15, 240], [0.9, 0.05, 0]]], dtype=np.float32)
-
-
-@pytest.fixture
-def sample_colors():
-    """Provide sample Color objects for testing."""
-    return {
-        "red": Color("red"),
-        "green": Color("green"),
-        "blue": Color("blue"),
-        "white": Color("white"),
-        "black": Color("black"),
-        "gray": Color("gray"),
-        "oklch_bright": Color("oklch(80% 0.2 60)"),
-        "oklch_muted": Color("oklch(50% 0.1 180)"),
-    }
-
-
-@pytest.fixture
-def attractor_params():
-    """Sample attractor parameters for testing."""
-    return [("red", 50, 75), ("oklch(70% 0.2 120)", 30, 60), ("#0066cc", 40, 80)]
-
-
-def assert_image_shape(image: np.ndarray, expected_shape: tuple[int, ...]):
-    """Assert that an image has the expected shape."""
-    assert image.shape == expected_shape, f"Expected shape {expected_shape}, got {image.shape}"
-
-
-def assert_image_dtype(image: np.ndarray, expected_dtype: np.dtype):
-    """Assert that an image has the expected data type."""
-    assert image.dtype == expected_dtype, f"Expected dtype {expected_dtype}, got {image.dtype}"
-
-
-def assert_color_close(color1: Color, color2: Color, tolerance: float = 0.01):
-    """Assert that two colors are close in OKLCH space."""
-    c1_oklch = color1.convert("oklch")
-    c2_oklch = color2.convert("oklch")
-
-    diff_l = abs(c1_oklch["lightness"] - c2_oklch["lightness"])
-    diff_c = abs(c1_oklch["chroma"] - c2_oklch["chroma"])
-    # Handle hue wraparound
-    diff_h = abs(c1_oklch["hue"] - c2_oklch["hue"])
-    if diff_h > 180:
-        diff_h = 360 - diff_h
-
-    assert diff_l <= tolerance, f"Lightness difference {diff_l} exceeds tolerance {tolerance}"
-    assert diff_c <= tolerance, f"Chroma difference {diff_c} exceeds tolerance {tolerance}"
-    assert diff_h <= tolerance * 360, f"Hue difference {diff_h} exceeds tolerance {tolerance * 360}"
-
-
-def create_test_image(width: int = 100, height: int = 100, pattern: str = "gradient") -> np.ndarray:
-    """Create a test image with a specific pattern."""
-    if pattern == "gradient":
-        # Create a gradient from black to white
-        x = np.linspace(0, 255, width)
-        y = np.linspace(0, 255, height)
-        xx, yy = np.meshgrid(x, y)
-        gray = ((xx + yy) / 2).astype(np.uint8)
-        return np.stack([gray, gray, gray], axis=-1)
-
-    if pattern == "rainbow":
-        # Create a rainbow pattern
-        image = np.zeros((height, width, 3), dtype=np.uint8)
-        for x in range(width):
-            hue = int(360 * x / width)
-            color = Color(f"hsl({hue} 100% 50%)").convert("srgb")
-            rgb = [int(color[ch] * 255) for ch in ["red", "green", "blue"]]
-            image[:, x] = rgb
-        return image
-
-    if pattern == "checkerboard":
-        # Create a checkerboard pattern
-        block_size = 10
-        image = np.zeros((height, width, 3), dtype=np.uint8)
-        for y in range(0, height, block_size):
-            for x in range(0, width, block_size):
-                if ((x // block_size) + (y // block_size)) % 2 == 0:
-                    image[y : y + block_size, x : x + block_size] = [255, 255, 255]
-        return image
-
-    msg = f"Unknown pattern: {pattern}"
-    raise ValueError(msg)
-
-
-# Performance benchmarking utilities
-@pytest.fixture
-def benchmark_image():
-    """Create a larger image for benchmarking."""
-    return create_test_image(1920, 1080, "rainbow")
 </file>
 
 <file path=".cursorindexingignore">
@@ -2903,6 +2064,317 @@ github_actions = true   # Add GitHub Actions workflows
 }
 </file>
 
+<file path="src/imgcolorshine/color_engine.py">
+#!/usr/bin/env -S uv run -s
+# /// script
+# dependencies = ["coloraide", "numpy", "loguru"]
+# ///
+# this_file: src/imgcolorshine/color_engine.py
+
+"""
+OKLCH color space operations and attractor management.
+
+Handles color parsing, OKLCH/Oklab conversions, delta E calculations,
+and gamut mapping. This module is the core of the color transformation
+system, providing perceptually uniform color operations.
+
+"""
+
+from dataclasses import dataclass, field
+
+import numpy as np
+from coloraide import Color
+from loguru import logger
+
+
+@dataclass
+class Attractor:
+    """Represents a color attractor with its parameters.
+
+    Stores color information in both OKLCH and Oklab formats for
+    efficient processing. Used by transforms.py for applying color
+    attractions to images.
+
+    Used in:
+    - old/imgcolorshine/imgcolorshine/__init__.py
+    - old/imgcolorshine/imgcolorshine/transforms.py
+    - src/imgcolorshine/__init__.py
+    - src/imgcolorshine/transforms.py
+    """
+
+    color: Color  # In OKLCH space
+    tolerance: float  # 0-100
+    strength: float  # 0-100
+    oklch_values: tuple[float, float, float] = field(init=False)  # L, C, H
+    oklab_values: tuple[float, float, float] = field(init=False)  # L, a, b
+
+    def __post_init__(self):
+        """Cache commonly used conversions for performance."""
+        self.oklch_values = (
+            self.color["lightness"],
+            self.color["chroma"],
+            self.color["hue"],
+        )
+
+        # Convert to Oklab for distance calculations
+        oklab_color = self.color.convert("oklab")
+        self.oklab_values = (
+            oklab_color["lightness"],
+            oklab_color["a"],
+            oklab_color["b"],
+        )
+
+
+class OKLCHEngine:
+    """Handles OKLCH color space operations and conversions.
+
+    Central engine for all color operations, providing OKLCH/Oklab
+    conversions, color parsing, and gamut mapping. Used throughout
+    the application for perceptually uniform color transformations.
+
+    Used in:
+    - old/imgcolorshine/imgcolorshine/__init__.py
+    - old/imgcolorshine/imgcolorshine/transforms.py
+    - old/imgcolorshine/imgcolorshine_main.py
+    - old/imgcolorshine/test_imgcolorshine.py
+    - src/imgcolorshine/__init__.py
+    - src/imgcolorshine/imgcolorshine.py
+    - src/imgcolorshine/transforms.py
+    """
+
+    def __init__(self):
+        """Initialize the color engine with caching."""
+        self.cache: dict[str, Color] = {}
+        logger.debug("Initialized OKLCH color engine")
+
+    def parse_color(self, color_str: str) -> Color:
+        """
+        Parse any CSS color format and return a Color object.
+
+        Supports: hex, rgb(), hsl(), oklch(), named colors, etc.
+        Results are cached for performance.
+
+        Used in:
+        - old/imgcolorshine/test_imgcolorshine.py
+        """
+        if color_str in self.cache:
+            return self.cache[color_str].clone()
+
+        try:
+            color = Color(color_str)
+            self.cache[color_str] = color.clone()
+            logger.debug(
+                "Parsed color '%s' → %s",
+                color_str,
+                color,
+            )
+            return color
+        except Exception as e:
+            logger.error(f"Failed to parse color '{color_str}': {e}")
+            msg = f"Invalid color specification: {color_str}"
+            raise ValueError(msg) from e
+
+    def create_attractor(self, color_str: str, tolerance: float, strength: float) -> Attractor:
+        """Create an attractor from color string and parameters.
+
+        Parses the color string and converts to OKLCH space for
+        perceptually uniform operations.
+
+        Used in:
+        - old/imgcolorshine/imgcolorshine_main.py
+        - old/imgcolorshine/test_imgcolorshine.py
+        - src/imgcolorshine/imgcolorshine.py
+        """
+        color = self.parse_color(color_str)
+        oklch_color = color.convert("oklch")
+
+        return Attractor(color=oklch_color, tolerance=tolerance, strength=strength)
+
+    def calculate_delta_e(self, color1: np.ndarray, color2: np.ndarray) -> float:
+        """
+        Calculate perceptual distance in Oklab space.
+
+        Args:
+            color1: [L, a, b] values
+            color2: [L, a, b] values
+
+        Returns:
+            Euclidean distance in Oklab space
+
+        """
+        return np.sqrt(np.sum((color1 - color2) ** 2))
+
+    def oklch_to_oklab(self, l: float, c: float, h: float) -> tuple[float, float, float]:  # noqa: E741
+        """Convert OKLCH to Oklab coordinates."""
+        h_rad = np.deg2rad(h)
+        a = c * np.cos(h_rad)
+        b = c * np.sin(h_rad)
+        return l, a, b
+
+    def oklab_to_oklch(self, l: float, a: float, b: float) -> tuple[float, float, float]:  # noqa: E741
+        """Convert Oklab to OKLCH coordinates.
+
+        Used by transforms.py for color space conversions.
+
+        Used in:
+        - old/imgcolorshine/imgcolorshine/transforms.py
+        - src/imgcolorshine/transforms.py
+        """
+        c = np.sqrt(a**2 + b**2)
+        h = np.rad2deg(np.arctan2(b, a))
+        if h < 0:
+            h += 360
+        return l, c, h
+
+    def rgb_to_oklab(self, rgb: np.ndarray) -> np.ndarray:
+        """
+        Convert sRGB to Oklab.
+
+        Args:
+            rgb: Array of shape (..., 3) with values in [0, 1]
+
+        Returns:
+            Array of shape (..., 3) with Oklab values
+
+        """
+        # First convert to linear RGB
+        self.srgb_to_linear(rgb)
+
+        # Convert to Oklab using ColorAide's matrices
+        # This is a simplified version - in production, use ColorAide's convert
+        color = Color("srgb", list(rgb))
+        oklab = color.convert("oklab")
+        return np.array([oklab["lightness"], oklab["a"], oklab["b"]])
+
+    def oklab_to_rgb(self, oklab: np.ndarray) -> np.ndarray:
+        """
+        Convert Oklab to sRGB.
+
+        Args:
+            oklab: Array of shape (..., 3) with Oklab values
+
+        Returns:
+            Array of shape (..., 3) with sRGB values in [0, 1]
+
+        """
+        # Use ColorAide for accurate conversion
+        color = Color("oklab", list(oklab))
+        srgb = color.convert("srgb")
+        return np.array([srgb["red"], srgb["green"], srgb["blue"]])
+
+    def srgb_to_linear(self, srgb: np.ndarray) -> np.ndarray:
+        """Apply inverse gamma correction."""
+        return np.where(srgb <= 0.04045, srgb / 12.92, np.power((srgb + 0.055) / 1.055, 2.4))
+
+    def linear_to_srgb(self, linear: np.ndarray) -> np.ndarray:
+        """Apply gamma correction."""
+        return np.where(
+            linear <= 0.0031308,
+            linear * 12.92,
+            1.055 * np.power(linear, 1 / 2.4) - 0.055,
+        )
+
+    def gamut_map_oklch(self, l: float, c: float, h: float) -> tuple[float, float, float]:  # noqa: E741
+        """
+        CSS Color Module 4 compliant gamut mapping.
+
+        Reduces chroma while preserving lightness and hue until the color
+        is within sRGB gamut. Uses binary search for efficiency.
+
+        """
+        color = Color("oklch", [l, c, h])
+
+        if color.in_gamut("srgb"):
+            return l, c, h
+
+        # Binary search for maximum valid chroma
+        c_min, c_max = 0.0, c
+        epsilon = 0.0001
+
+        while c_max - c_min > epsilon:
+            c_mid = (c_min + c_max) / 2
+            test_color = Color("oklch", [l, c_mid, h])
+
+            if test_color.in_gamut("srgb"):
+                c_min = c_mid
+            else:
+                c_max = c_mid
+
+        logger.debug("Gamut mapped: C=%.3f → %.3f", c, c_min)
+        return l, c_min, h
+
+    def batch_rgb_to_oklab(self, rgb_image: np.ndarray) -> np.ndarray:
+        """
+        Convert entire RGB image to Oklab.
+
+        Args:
+            rgb_image: Array of shape (H, W, 3) with values in [0, 1]
+
+        Returns:
+            Array of shape (H, W, 3) with Oklab values
+
+        Used by transforms.py for batch image processing.
+
+        Used in:
+        - old/imgcolorshine/imgcolorshine/transforms.py
+        - src/imgcolorshine/transforms.py
+        """
+        # Flatten for batch processing
+        h, w = rgb_image.shape[:2]
+        flat_rgb = rgb_image.reshape(-1, 3)
+
+        # Convert each pixel - in production, use vectorized ColorAide
+        oklab_list = []
+        for rgb in flat_rgb:
+            color = Color("srgb", list(rgb))
+            oklab = color.convert("oklab")
+            oklab_list.append([oklab["lightness"], oklab["a"], oklab["b"]])
+
+        return np.array(oklab_list).reshape(h, w, 3)
+
+    def batch_oklab_to_rgb(self, oklab_image: np.ndarray) -> np.ndarray:
+        """
+        Convert entire Oklab image to RGB.
+
+        Args:
+            oklab_image: Array of shape (H, W, 3) with Oklab values
+
+        Returns:
+            Array of shape (H, W, 3) with sRGB values in [0, 1]
+
+        Used by transforms.py for batch image processing.
+
+        Used in:
+        - old/imgcolorshine/imgcolorshine/transforms.py
+        - src/imgcolorshine/transforms.py
+        """
+        # Flatten for batch processing
+        # Ensure shape dimensions are integers (NumPy may return int64).
+        # This prevents accidental float propagation that breaks `reshape`.
+        height, width = map(int, oklab_image.shape[:2])
+        flat_oklab = oklab_image.reshape(-1, 3)
+
+        # Convert each pixel - in production, use vectorized ColorAide
+        rgb_list = []
+        for oklab in flat_oklab:
+            color = Color("oklab", list(oklab))
+
+            # Gamut map if needed
+            if not color.in_gamut("srgb"):
+                oklch = color.convert("oklch")
+                l_val, c_val, hue_val = self.gamut_map_oklch(
+                    oklch["lightness"],
+                    oklch["chroma"],
+                    oklch["hue"],
+                )
+                color = Color("oklch", [l_val, c_val, hue_val])
+
+            srgb = color.convert("srgb")
+            rgb_list.append([srgb["red"], srgb["green"], srgb["blue"]])
+
+        return np.array(rgb_list).reshape(height, width, 3)
+</file>
+
 <file path="src/imgcolorshine/imgcolorshine.py">
 #!/usr/bin/env -S uv run -s
 # /// script
@@ -3040,6 +2512,533 @@ def process_image(
     logger.info(f"Processing complete: {input_path} → {output_path}")
 </file>
 
+<file path="src/imgcolorshine/transforms.py">
+#!/usr/bin/env -S uv run -s
+# /// script
+# dependencies = ["numpy", "numba", "loguru"]
+# ///
+# this_file: src/imgcolorshine/transforms.py
+
+"""
+High-performance color transformation algorithms using NumPy and Numba.
+
+Implements the core color transformation logic with JIT compilation for
+optimal performance. Handles multi-attractor blending and channel-specific
+transformations in the OKLCH color space.
+
+"""
+
+from collections.abc import Callable
+
+import numba
+import numpy as np
+from loguru import logger
+
+from imgcolorshine.color_engine import Attractor, OKLCHEngine
+from imgcolorshine.utils import process_large_image
+
+
+@numba.njit
+def calculate_delta_e_fast(pixel_lab: np.ndarray, attractor_lab: np.ndarray) -> float:
+    """
+    Fast Euclidean distance calculation in Oklab space.
+
+    Args:
+        pixel_lab: [L, a, b] values
+        attractor_lab: [L, a, b] values
+
+    Returns:
+        Perceptual distance
+
+    """
+    return np.sqrt(
+        (pixel_lab[0] - attractor_lab[0]) ** 2
+        + (pixel_lab[1] - attractor_lab[1]) ** 2
+        + (pixel_lab[2] - attractor_lab[2]) ** 2
+    )
+
+
+@numba.njit
+def calculate_weights(
+    pixel_lab: np.ndarray,
+    attractors_lab: np.ndarray,
+    tolerances: np.ndarray,
+    strengths: np.ndarray,
+) -> np.ndarray:
+    """
+    Calculate attraction weights for all attractors.
+
+    Returns:
+        Array of weights for each attractor
+
+    """
+    num_attractors = len(attractors_lab)
+    weights = np.zeros(num_attractors)
+
+    for i in range(num_attractors):
+        # Calculate perceptual distance
+        delta_e = calculate_delta_e_fast(pixel_lab, attractors_lab[i])
+
+        # Map tolerance (0-100) to max distance
+        delta_e_max = 1.0 * (tolerances[i] / 100.0) ** 2
+
+        # Check if within tolerance
+        if delta_e <= delta_e_max:
+            # Calculate normalized distance
+            d_norm = delta_e / delta_e_max
+
+            # Apply falloff function (raised cosine)
+            attraction_factor = 0.5 * (np.cos(d_norm * np.pi) + 1.0)
+
+            # Calculate final weight
+            weights[i] = (strengths[i] / 100.0) * attraction_factor
+
+    return weights
+
+
+@numba.njit
+def blend_colors(
+    pixel_lab: np.ndarray,
+    pixel_lch: np.ndarray,
+    attractors_lab: np.ndarray,
+    attractors_lch: np.ndarray,
+    weights: np.ndarray,
+    flags: np.ndarray,
+) -> np.ndarray:
+    """
+    Blend pixel color with attractors based on weights and channel flags.
+
+    Args:
+        pixel_lab: Original pixel in Oklab [L, a, b]
+        pixel_lch: Original pixel in OKLCH [L, C, H]
+        attractors_lab: Attractor colors in Oklab
+        attractors_lch: Attractor colors in OKLCH
+        weights: Weight for each attractor
+        flags: Boolean array [luminance, saturation, hue]
+
+    Returns:
+        Blended color in Oklab space
+
+    """
+    total_weight = np.sum(weights)
+
+    if total_weight == 0:
+        return pixel_lab
+
+    # Determine source weight
+    if total_weight > 1.0:
+        # Normalize weights
+        weights = weights / total_weight
+        src_weight = 0.0
+    else:
+        src_weight = 1.0 - total_weight
+
+    # Start with original values
+    final_l = pixel_lch[0]
+    final_c = pixel_lch[1]
+    final_h = pixel_lch[2]
+
+    # Blend each enabled channel
+    if flags[0]:  # Luminance
+        final_l = src_weight * pixel_lch[0]
+        for i in range(len(weights)):
+            if weights[i] > 0:
+                final_l += weights[i] * attractors_lch[i][0]
+
+    if flags[1]:  # Saturation (Chroma)
+        final_c = src_weight * pixel_lch[1]
+        for i in range(len(weights)):
+            if weights[i] > 0:
+                final_c += weights[i] * attractors_lch[i][1]
+
+    if flags[2]:  # Hue
+        # Use circular mean for hue
+        sin_sum = src_weight * np.sin(np.deg2rad(pixel_lch[2]))
+        cos_sum = src_weight * np.cos(np.deg2rad(pixel_lch[2]))
+
+        for i in range(len(weights)):
+            if weights[i] > 0:
+                h_rad = np.deg2rad(attractors_lch[i][2])
+                sin_sum += weights[i] * np.sin(h_rad)
+                cos_sum += weights[i] * np.cos(h_rad)
+
+        final_h = np.rad2deg(np.arctan2(sin_sum, cos_sum))
+        if final_h < 0:
+            final_h += 360
+
+    # Convert back to Oklab
+    h_rad = np.deg2rad(final_h)
+    final_a = final_c * np.cos(h_rad)
+    final_b = final_c * np.sin(h_rad)
+
+    return np.array([final_l, final_a, final_b])
+
+
+@numba.njit(parallel=True)
+def transform_pixels(
+    pixels_lab: np.ndarray,
+    pixels_lch: np.ndarray,
+    attractors_lab: np.ndarray,
+    attractors_lch: np.ndarray,
+    tolerances: np.ndarray,
+    strengths: np.ndarray,
+    flags: np.ndarray,
+) -> np.ndarray:
+    """
+    Transform all pixels using Numba parallel processing.
+
+    Args:
+        pixels_lab: Image in Oklab space (H, W, 3)
+        pixels_lch: Image in OKLCH space (H, W, 3)
+        attractors_lab: Attractor colors in Oklab
+        attractors_lch: Attractor colors in OKLCH
+        tolerances: Tolerance values for each attractor
+        strengths: Strength values for each attractor
+        flags: Boolean array [luminance, saturation, hue]
+
+    Returns:
+        Transformed image in Oklab space
+
+    """
+    h, w = pixels_lab.shape[:2]
+    result = np.empty_like(pixels_lab)
+
+    for y in numba.prange(h):
+        for x in range(w):
+            pixel_lab = pixels_lab[y, x]
+            pixel_lch = pixels_lch[y, x]
+
+            # Calculate weights for all attractors
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
+
+            # Blend colors
+            result[y, x] = blend_colors(pixel_lab, pixel_lch, attractors_lab, attractors_lch, weights, flags)
+
+    return result
+
+
+class ColorTransformer:
+    """High-level color transformation interface.
+
+    Manages the transformation pipeline from RGB input to RGB output,
+    handling color space conversions, tiling for large images, and
+    progress tracking. Used by the main CLI for applying transformations.
+
+    Used in:
+    - old/imgcolorshine/imgcolorshine/__init__.py
+    - old/imgcolorshine/imgcolorshine_main.py
+    - old/imgcolorshine/test_imgcolorshine.py
+    - src/imgcolorshine/__init__.py
+    - src/imgcolorshine/imgcolorshine.py
+    """
+
+    def __init__(self, engine: OKLCHEngine):
+        """
+        Initialize the color transformer.
+
+        Args:
+            engine: OKLCH color engine instance
+
+        """
+        self.engine = engine
+        logger.debug("Initialized ColorTransformer")
+
+    def transform_image(
+        self,
+        image: np.ndarray,
+        attractors: list[Attractor],
+        flags: dict[str, bool],
+        progress_callback: Callable[[float], None] | None = None,
+    ) -> np.ndarray:
+        """
+        Transform an entire image using color attractors.
+
+        Args:
+            image: Input image (H, W, 3) in sRGB [0, 1]
+            attractors: List of color attractors
+            flags: Channel flags {'luminance': bool, 'saturation': bool, 'hue': bool}
+            progress_callback: Optional callback for progress updates
+
+        Returns:
+            Transformed image in sRGB [0, 1]
+
+        Used in:
+        - old/imgcolorshine/imgcolorshine_main.py
+        - old/imgcolorshine/test_imgcolorshine.py
+        - src/imgcolorshine/imgcolorshine.py
+        """
+        # Report dimensions in width×height order to match common conventions
+        h, w = image.shape[:2]
+        logger.info(f"Transforming {w}×{h} image with {len(attractors)} attractors")
+
+        # Convert flags to numpy array
+        flags_array = np.array(
+            [
+                flags.get("luminance", True),
+                flags.get("saturation", True),
+                flags.get("hue", True),
+            ]
+        )
+
+        # Prepare attractor data for Numba
+        attractors_lab = np.array([a.oklab_values for a in attractors])
+        attractors_lch = np.array([a.oklch_values for a in attractors])
+        tolerances = np.array([a.tolerance for a in attractors])
+        strengths = np.array([a.strength for a in attractors])
+
+        # Check if we should use tiling
+        from imgcolorshine.image_io import ImageProcessor
+
+        processor = ImageProcessor()
+
+        if processor.should_use_tiling(w, h):
+            # Process in tiles for large images
+            def transform_tile(tile):
+                return self._transform_tile(
+                    tile,
+                    attractors_lab,
+                    attractors_lch,
+                    tolerances,
+                    strengths,
+                    flags_array,
+                )
+
+            result = process_large_image(
+                image,
+                transform_tile,
+                tile_size=processor.tile_size,
+                progress_callback=progress_callback,
+            )
+        else:
+            # Process entire image at once
+            result = self._transform_tile(
+                image,
+                attractors_lab,
+                attractors_lch,
+                tolerances,
+                strengths,
+                flags_array,
+            )
+
+            if progress_callback:
+                progress_callback(1.0)
+
+        logger.info("Transformation complete")
+        return result
+
+    def _transform_tile(
+        self,
+        tile: np.ndarray,
+        attractors_lab: np.ndarray,
+        attractors_lch: np.ndarray,
+        tolerances: np.ndarray,
+        strengths: np.ndarray,
+        flags: np.ndarray,
+    ) -> np.ndarray:
+        """Transform a single tile of the image."""
+        # Convert to Oklab
+        tile_lab = self.engine.batch_rgb_to_oklab(tile)
+
+        # Also need OKLCH for channel-specific operations
+        tile_lch = np.zeros_like(tile_lab)
+        for y in range(tile_lab.shape[0]):
+            for x in range(tile_lab.shape[1]):
+                l, a, b = tile_lab[y, x]
+                tile_lch[y, x] = self.engine.oklab_to_oklch(l, a, b)
+
+        # Apply transformation
+        transformed_lab = transform_pixels(
+            tile_lab,
+            tile_lch,
+            attractors_lab,
+            attractors_lch,
+            tolerances,
+            strengths,
+            flags,
+        )
+
+        # Convert back to RGB
+        result = self.engine.batch_oklab_to_rgb(transformed_lab)
+
+        # Ensure values are in valid range
+        return np.clip(result, 0, 1)
+</file>
+
+<file path="testdata/example.sh">
+#!/usr/bin/env bash
+# this_file: example.sh
+
+# Example script demonstrating various imgcolorshine shine operations on louis.jpg
+# Run from the project root directory
+
+# Change working directory to the location of this script
+cd "$(dirname "$0")"
+
+set -e # Exit on error
+
+# Create output directory if it doesn't exist
+mkdir -p output
+
+echo "Running imgcolorshine examples on louis.jpg..."
+echo "================================================"
+
+# Example: Basic single attractor - warm red tones
+echo "Basic blue attractors"
+for a in 20 40 60 80; do for b in 20 30 60 80; do
+    echo "blue;$a;$b"
+    imgcolorshine shine louis.jpg "blue;$a;$b" \
+        --luminance=False --saturation=False \
+        --output_image=output/louis-blue-$a-$b.jpg
+done; done
+
+# Optional: Create a comparison montage using ImageMagick if available
+if command -v montage &>/dev/null; then
+    echo "Creating comparison montage..."
+    montage louis.jpg output/louis-*.jpg \
+        -tile 4x4 -geometry 200x200+5+5 \
+        -label '%f' \
+        output/montage-comparison.jpg
+    echo "Montage created: output/montage-comparison.jpg"
+fi
+</file>
+
+<file path="tests/conftest.py">
+# this_file: tests/conftest.py
+
+"""Shared test fixtures and utilities for imgcolorshine tests."""
+
+from pathlib import Path
+
+import numpy as np
+import pytest
+from coloraide import Color
+
+# Test data directory
+TEST_DATA_DIR = Path(__file__).parent.parent / "testdata"
+
+
+@pytest.fixture
+def test_image_path():
+    """Provide path to test image."""
+    return TEST_DATA_DIR / "louis.jpg"
+
+
+@pytest.fixture
+def sample_rgb_array():
+    """Create a small sample RGB array for testing."""
+    # 4x4 RGB image with various colors
+    return np.array(
+        [
+            [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0]],  # Red, Green, Blue, Yellow
+            [[255, 0, 255], [0, 255, 255], [128, 128, 128], [255, 255, 255]],  # Magenta, Cyan, Gray, White
+            [[0, 0, 0], [64, 64, 64], [192, 192, 192], [128, 0, 0]],  # Black, Dark gray, Light gray, Dark red
+            [
+                [0, 128, 0],
+                [0, 0, 128],
+                [128, 128, 0],
+                [128, 0, 128],
+            ],  # Dark green, Dark blue, Dark yellow, Dark magenta
+        ],
+        dtype=np.uint8,
+    )
+
+
+@pytest.fixture
+def sample_oklch_array():
+    """Create a sample OKLCH array for testing."""
+    # 2x2 OKLCH values
+    return np.array([[[0.7, 0.2, 30], [0.5, 0.1, 120]], [[0.3, 0.15, 240], [0.9, 0.05, 0]]], dtype=np.float32)
+
+
+@pytest.fixture
+def sample_colors():
+    """Provide sample Color objects for testing."""
+    return {
+        "red": Color("red"),
+        "green": Color("green"),
+        "blue": Color("blue"),
+        "white": Color("white"),
+        "black": Color("black"),
+        "gray": Color("gray"),
+        "oklch_bright": Color("oklch(80% 0.2 60)"),
+        "oklch_muted": Color("oklch(50% 0.1 180)"),
+    }
+
+
+@pytest.fixture
+def attractor_params():
+    """Sample attractor parameters for testing."""
+    return [("red", 50, 75), ("oklch(70% 0.2 120)", 30, 60), ("#0066cc", 40, 80)]
+
+
+def assert_image_shape(image: np.ndarray, expected_shape: tuple[int, ...]):
+    """Assert that an image has the expected shape."""
+    assert image.shape == expected_shape, f"Expected shape {expected_shape}, got {image.shape}"
+
+
+def assert_image_dtype(image: np.ndarray, expected_dtype: np.dtype):
+    """Assert that an image has the expected data type."""
+    assert image.dtype == expected_dtype, f"Expected dtype {expected_dtype}, got {image.dtype}"
+
+
+def assert_color_close(color1: Color, color2: Color, tolerance: float = 0.01):
+    """Assert that two colors are close in OKLCH space."""
+    c1_oklch = color1.convert("oklch")
+    c2_oklch = color2.convert("oklch")
+
+    diff_l = abs(c1_oklch["lightness"] - c2_oklch["lightness"])
+    diff_c = abs(c1_oklch["chroma"] - c2_oklch["chroma"])
+    # Handle hue wraparound
+    diff_h = abs(c1_oklch["hue"] - c2_oklch["hue"])
+    if diff_h > 180:
+        diff_h = 360 - diff_h
+
+    assert diff_l <= tolerance, f"Lightness difference {diff_l} exceeds tolerance {tolerance}"
+    assert diff_c <= tolerance, f"Chroma difference {diff_c} exceeds tolerance {tolerance}"
+    assert diff_h <= tolerance * 360, f"Hue difference {diff_h} exceeds tolerance {tolerance * 360}"
+
+
+def create_test_image(width: int = 100, height: int = 100, pattern: str = "gradient") -> np.ndarray:
+    """Create a test image with a specific pattern."""
+    if pattern == "gradient":
+        # Create a gradient from black to white
+        x = np.linspace(0, 255, width)
+        y = np.linspace(0, 255, height)
+        xx, yy = np.meshgrid(x, y)
+        gray = ((xx + yy) / 2).astype(np.uint8)
+        return np.stack([gray, gray, gray], axis=-1)
+
+    if pattern == "rainbow":
+        # Create a rainbow pattern
+        image = np.zeros((height, width, 3), dtype=np.uint8)
+        for x in range(width):
+            hue = int(360 * x / width)
+            color = Color(f"hsl({hue} 100% 50%)").convert("srgb")
+            rgb = [int(color[ch] * 255) for ch in ["red", "green", "blue"]]
+            image[:, x] = rgb
+        return image
+
+    if pattern == "checkerboard":
+        # Create a checkerboard pattern
+        block_size = 10
+        image = np.zeros((height, width, 3), dtype=np.uint8)
+        for y in range(0, height, block_size):
+            for x in range(0, width, block_size):
+                if ((x // block_size) + (y // block_size)) % 2 == 0:
+                    image[y : y + block_size, x : x + block_size] = [255, 255, 255]
+        return image
+
+    msg = f"Unknown pattern: {pattern}"
+    raise ValueError(msg)
+
+
+# Performance benchmarking utilities
+@pytest.fixture
+def benchmark_image():
+    """Create a larger image for benchmarking."""
+    return create_test_image(1920, 1080, "rainbow")
+</file>
+
 <file path="tests/test_package.py">
 """Test suite for imgcolorshine."""
 
@@ -3064,6 +3063,144 @@ fd -e py -x ruff check --output-format=github --fix --unsafe-fixes {}
 fd -e py -x ruff format --respect-gitignore --target-version py311 {}
 repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules -o llms.txt .
 python -m pytest
+</file>
+
+<file path="README.md">
+# imgcolorshine
+
+Transform image colors using OKLCH color attractors - a physics-inspired tool that operates in perceptually uniform color space.
+
+## Overview
+
+`imgcolorshine` applies a gravitational-inspired color transformation where specified "attractor" colors pull the image's colors toward them. The tool works in the OKLCH color space, ensuring perceptually uniform and natural-looking results.
+
+## Features
+
+- **Perceptually Uniform**: Operations in OKLCH color space for intuitive results
+- **Flexible Color Input**: Supports all CSS color formats (hex, rgb, hsl, oklch, named colors)
+- **Selective Channel Control**: Transform lightness, saturation, and/or hue independently
+- **Multiple Attractors**: Blend influences from multiple color targets
+- **High Performance**: Optimized with NumPy and Numba for fast processing
+- **Memory Efficient**: Automatic tiling for large images
+- **Professional Quality**: CSS Color Module 4 compliant gamut mapping
+
+## Installation
+
+```bash
+# Install from PyPI
+pip install imgcolorshine
+
+# Or install from source
+git clone https://github.com/twardoch/imgcolorshine.git
+cd imgcolorshine
+pip install -e .
+```
+
+## Usage
+
+### Basic Example
+
+Transform an image to be more red:
+
+```bash
+imgcolorshine shine photo.jpg "red;50;75"
+```
+
+### Command Syntax
+
+```bash
+imgcolorshine shine INPUT_IMAGE ATTRACTOR1 [ATTRACTOR2 ...] [OPTIONS]
+```
+
+Each attractor has the format: `"color;tolerance;strength"`
+
+- **color**: Any CSS color (e.g., "red", "#ff0000", "oklch(70% 0.2 120)")
+- **tolerance**: 0-100 (radius of influence - how far the color reaches)
+- **strength**: 0-100 (transformation intensity - how much colors are pulled)
+
+### Options
+
+- `--output_image PATH`: Output image file (auto-generated if not specified)
+- `--luminance BOOL`: Enable/disable lightness transformation (default: True)
+- `--saturation BOOL`: Enable/disable chroma transformation (default: True)
+- `--hue BOOL`: Enable/disable hue transformation (default: True)
+- `--verbose BOOL`: Enable verbose logging (default: False)
+- `--tile_size INT`: Tile size for large images (default: 1024)
+
+### Examples
+
+**Warm sunset effect:**
+```bash
+imgcolorshine shine landscape.png \
+  "oklch(80% 0.2 60);40;60" \
+  "#ff6b35;30;80" \
+  --output_image=sunset.png
+```
+
+**Shift only hues toward green:**
+```bash
+imgcolorshine shine portrait.jpg "green;60;90" \
+  --luminance=False --saturation=False
+```
+
+**Multiple color influences:**
+```bash
+imgcolorshine shine photo.jpg \
+  "oklch(70% 0.15 120);50;70" \
+  "hsl(220 100% 50%);25;50" \
+  "#ff00ff;30;40"
+```
+
+
+## How It Works
+
+1. **Color Space**: All operations happen in OKLCH space for perceptual uniformity
+2. **Attraction Model**: Each attractor color exerts influence based on:
+   - **Distance**: How similar a pixel's color is to the attractor
+   - **Tolerance**: Maximum distance at which influence occurs
+   - **Strength**: Maximum transformation amount
+3. **Falloff**: Smooth raised-cosine curve for natural transitions
+4. **Blending**: Multiple attractors blend using normalized weighted averaging
+5. **Gamut Mapping**: Out-of-bounds colors are mapped back to displayable range
+
+## Understanding Parameters
+
+### Tolerance (0-100)
+- **Low values (0-20)**: Only very similar colors are affected
+- **Medium values (30-60)**: Moderate range of colors transformed
+- **High values (70-100)**: Wide range of colors influenced
+
+### Strength (0-100)
+- **Low values (0-30)**: Subtle color shifts
+- **Medium values (40-70)**: Noticeable but natural transformations
+- **High values (80-100)**: Strong color replacement
+
+## Performance
+
+- Processes a 1920×1080 image in ~2-5 seconds
+- Automatic tiling for images larger than 2GB memory usage
+- GPU acceleration available with CuPy (10-100x speedup)
+
+## Technical Details
+
+- **Color Engine**: ColorAide for accurate OKLCH operations
+- **Image I/O**: OpenCV (4x faster than PIL for PNG)
+- **Computation**: NumPy + Numba JIT compilation
+- **Gamut Mapping**: CSS Color Module 4 algorithm
+- **Falloff Function**: Raised cosine for smooth transitions
+
+## Development
+
+This project follows a structured approach focusing on code quality, documentation, and maintainable development practices.
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## Credits
+
+- Created by Adam Twardoch
+- Developed with Antropic software
 </file>
 
 <file path="pyproject.toml">
@@ -3437,144 +3574,6 @@ ban-relative-imports = 'all'
     'S101',
     'TID252',
 ]
-</file>
-
-<file path="README.md">
-# imgcolorshine
-
-Transform image colors using OKLCH color attractors - a physics-inspired tool that operates in perceptually uniform color space.
-
-## Overview
-
-`imgcolorshine` applies a gravitational-inspired color transformation where specified "attractor" colors pull the image's colors toward them. The tool works in the OKLCH color space, ensuring perceptually uniform and natural-looking results.
-
-## Features
-
-- **Perceptually Uniform**: Operations in OKLCH color space for intuitive results
-- **Flexible Color Input**: Supports all CSS color formats (hex, rgb, hsl, oklch, named colors)
-- **Selective Channel Control**: Transform lightness, saturation, and/or hue independently
-- **Multiple Attractors**: Blend influences from multiple color targets
-- **High Performance**: Optimized with NumPy and Numba for fast processing
-- **Memory Efficient**: Automatic tiling for large images
-- **Professional Quality**: CSS Color Module 4 compliant gamut mapping
-
-## Installation
-
-```bash
-# Install from PyPI
-pip install imgcolorshine
-
-# Or install from source
-git clone https://github.com/twardoch/imgcolorshine.git
-cd imgcolorshine
-pip install -e .
-```
-
-## Usage
-
-### Basic Example
-
-Transform an image to be more red:
-
-```bash
-imgcolorshine shine photo.jpg "red;50;75"
-```
-
-### Command Syntax
-
-```bash
-imgcolorshine shine INPUT_IMAGE ATTRACTOR1 [ATTRACTOR2 ...] [OPTIONS]
-```
-
-Each attractor has the format: `"color;tolerance;strength"`
-
-- **color**: Any CSS color (e.g., "red", "#ff0000", "oklch(70% 0.2 120)")
-- **tolerance**: 0-100 (radius of influence - how far the color reaches)
-- **strength**: 0-100 (transformation intensity - how much colors are pulled)
-
-### Options
-
-- `--output_image PATH`: Output image file (auto-generated if not specified)
-- `--luminance BOOL`: Enable/disable lightness transformation (default: True)
-- `--saturation BOOL`: Enable/disable chroma transformation (default: True)
-- `--hue BOOL`: Enable/disable hue transformation (default: True)
-- `--verbose BOOL`: Enable verbose logging (default: False)
-- `--tile_size INT`: Tile size for large images (default: 1024)
-
-### Examples
-
-**Warm sunset effect:**
-```bash
-imgcolorshine shine landscape.png \
-  "oklch(80% 0.2 60);40;60" \
-  "#ff6b35;30;80" \
-  --output_image=sunset.png
-```
-
-**Shift only hues toward green:**
-```bash
-imgcolorshine shine portrait.jpg "green;60;90" \
-  --luminance=False --saturation=False
-```
-
-**Multiple color influences:**
-```bash
-imgcolorshine shine photo.jpg \
-  "oklch(70% 0.15 120);50;70" \
-  "hsl(220 100% 50%);25;50" \
-  "#ff00ff;30;40"
-```
-
-
-## How It Works
-
-1. **Color Space**: All operations happen in OKLCH space for perceptual uniformity
-2. **Attraction Model**: Each attractor color exerts influence based on:
-   - **Distance**: How similar a pixel's color is to the attractor
-   - **Tolerance**: Maximum distance at which influence occurs
-   - **Strength**: Maximum transformation amount
-3. **Falloff**: Smooth raised-cosine curve for natural transitions
-4. **Blending**: Multiple attractors blend using normalized weighted averaging
-5. **Gamut Mapping**: Out-of-bounds colors are mapped back to displayable range
-
-## Understanding Parameters
-
-### Tolerance (0-100)
-- **Low values (0-20)**: Only very similar colors are affected
-- **Medium values (30-60)**: Moderate range of colors transformed
-- **High values (70-100)**: Wide range of colors influenced
-
-### Strength (0-100)
-- **Low values (0-30)**: Subtle color shifts
-- **Medium values (40-70)**: Noticeable but natural transformations
-- **High values (80-100)**: Strong color replacement
-
-## Performance
-
-- Processes a 1920×1080 image in ~2-5 seconds
-- Automatic tiling for images larger than 2GB memory usage
-- GPU acceleration available with CuPy (10-100x speedup)
-
-## Technical Details
-
-- **Color Engine**: ColorAide for accurate OKLCH operations
-- **Image I/O**: OpenCV (4x faster than PIL for PNG)
-- **Computation**: NumPy + Numba JIT compilation
-- **Gamut Mapping**: CSS Color Module 4 algorithm
-- **Falloff Function**: Raised cosine for smooth transitions
-
-## Development
-
-This project follows a structured approach focusing on code quality, documentation, and maintainable development practices.
-
-## License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
-## Credits
-
-- Created by Adam Twardoch
-- Developed with Antropic software
 </file>
 
 <file path="TODO.md">
