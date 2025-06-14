@@ -1,25 +1,43 @@
 # TODO
 
-## Completed
+## Phase 1
 
-- [x] Create TODO.md and PLAN.md files for project organization
-- [x] Review existing old implementation files to understand complete feature set
-- [x] Port color_engine.py from old implementation to new structure
-- [x] Port image_io.py, transforms.py, and other core modules
-- [x] Implement CLI interface using Click
-- [x] Update README.md with proper documentation
-- [x] Create CHANGELOG.md to track changes
+```
+./testdata/example.sh
 
-## Pending
+Running imgcolorshine examples on louis.jpg...
+================================================
+1. Basic red attractor (moderate tolerance and strength)
+2025-06-15 00:10:42.487 | DEBUG    | imgcolorshine.image_io:<module>:26 - Using OpenCV for image I/O
+Traceback (most recent call last):
+  File "/Users/adam/Developer/vcs/github.twardoch/pub/imgcolorshine/.venv/bin/imgcolorshine", line 10, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/Users/adam/Developer/vcs/github.twardoch/pub/imgcolorshine/src/imgcolorshine/cli.py", line 71, in main
+    fire.Fire(ImgColorShineCLI)
+  File "/Users/adam/Developer/vcs/github.twardoch/pub/imgcolorshine/.venv/lib/python3.12/site-packages/fire/core.py", line 135, in Fire
+    component_trace = _Fire(component, args, parsed_flag_args, context, name)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/adam/Developer/vcs/github.twardoch/pub/imgcolorshine/.venv/lib/python3.12/site-packages/fire/core.py", line 468, in _Fire
+    component, remaining_args = _CallAndUpdateTrace(
+                                ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/adam/Developer/vcs/github.twardoch/pub/imgcolorshine/.venv/lib/python3.12/site-packages/fire/core.py", line 684, in _CallAndUpdateTrace
+    component = fn(*varargs, **kwargs)
+                ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/adam/Developer/vcs/github.twardoch/pub/imgcolorshine/src/imgcolorshine/cli.py", line 53, in shine
+    process_image(
+  File "/Users/adam/Developer/vcs/github.twardoch/pub/imgcolorshine/src/imgcolorshine/imgcolorshine.py", line 118, in process_image
+    attractor = engine.create_attractor(color_str, tolerance, strength)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/adam/Developer/vcs/github.twardoch/pub/imgcolorshine/src/imgcolorshine/color_engine.py", line 120, in create_attractor
+    return Attractor(color=oklch_color, tolerance=tolerance, strength=strength)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: Attractor.__init__() missing 2 required positional arguments: 'oklch_values' and 'oklab_values'
+```
+
+## Phase 2
 
 - [ ] Add comprehensive tests for all modules
-- [ ] Run Python formatting and linting tools
-- [ ] Test the CLI with sample images
-- [ ] Add GPU acceleration support (optional)
+- [ ] Plan GPU acceleration support
 
-## Implementation Notes
-
-- The old implementation in `old/imgcolorshine/` contains a complete working version
-- Core modules to port: color_engine.py, image_io.py, transforms.py, gamut.py, falloff.py, utils.py
-- Use modern Python packaging structure with src/ layout
 - Maintain compatibility with the existing pyproject.toml configuration
