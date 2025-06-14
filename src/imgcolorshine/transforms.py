@@ -43,6 +43,11 @@ def calculate_delta_e_fast(pixel_lab: np.ndarray, attractor_lab: np.ndarray) -> 
     )
 
 
+# Maximum perceptual distance for tolerance=100
+# This represents a large but reasonable distance in Oklab space
+MAX_DELTA_E = 2.5
+
+
 @numba.njit
 def calculate_weights(
     pixel_lab: np.ndarray,
@@ -52,6 +57,17 @@ def calculate_weights(
 ) -> np.ndarray:
     """
     Calculate attraction weights for all attractors.
+
+    This function calculates how much each attractor influences a pixel based on:
+    - The perceptual distance between the pixel and attractor colors
+    - The tolerance setting (radius of influence)
+    - The strength setting (maximum transformation amount)
+
+    The tolerance is linearly mapped to perceptual distance, fixing the previous
+    quadratic mapping that made the tool unintuitive. With linear mapping:
+    - tolerance=100 affects colors up to MAX_DELTA_E distance
+    - tolerance=50 affects colors up to MAX_DELTA_E/2 distance
+    - etc.
 
     Returns:
         Array of weights for each attractor
@@ -64,8 +80,9 @@ def calculate_weights(
         # Calculate perceptual distance
         delta_e = calculate_delta_e_fast(pixel_lab, attractors_lab[i])
 
-        # Map tolerance (0-100) to max distance
-        delta_e_max = 1.0 * (tolerances[i] / 100.0) ** 2
+        # Map tolerance (0-100) to max distance with LINEAR mapping
+        # This is the critical fix - was previously: delta_e_max = 1.0 * (tolerances[i] / 100.0) ** 2
+        delta_e_max = MAX_DELTA_E * (tolerances[i] / 100.0)
 
         # Check if within tolerance
         if delta_e <= delta_e_max:
