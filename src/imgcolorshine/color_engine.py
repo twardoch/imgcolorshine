@@ -13,7 +13,7 @@ system, providing perceptually uniform color operations.
 
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 from coloraide import Color
@@ -38,8 +38,8 @@ class Attractor:
     color: Color  # In OKLCH space
     tolerance: float  # 0-100
     strength: float  # 0-100
-    oklch_values: tuple[float, float, float]  # L, C, H
-    oklab_values: tuple[float, float, float]  # L, a, b
+    oklch_values: tuple[float, float, float] = field(init=False)  # L, C, H
+    oklab_values: tuple[float, float, float] = field(init=False)  # L, a, b
 
     def __post_init__(self):
         """Cache commonly used conversions for performance."""
@@ -96,7 +96,11 @@ class OKLCHEngine:
         try:
             color = Color(color_str)
             self.cache[color_str] = color.clone()
-            logger.debug(f"Parsed color '{color_str}' → {color}")
+            logger.debug(
+                "Parsed color '%s' → %s",
+                color_str,
+                color,
+            )
             return color
         except Exception as e:
             logger.error(f"Failed to parse color '{color_str}': {e}")
@@ -133,14 +137,14 @@ class OKLCHEngine:
         """
         return np.sqrt(np.sum((color1 - color2) ** 2))
 
-    def oklch_to_oklab(self, l: float, c: float, h: float) -> tuple[float, float, float]:
+    def oklch_to_oklab(self, l: float, c: float, h: float) -> tuple[float, float, float]:  # noqa: E741
         """Convert OKLCH to Oklab coordinates."""
         h_rad = np.deg2rad(h)
         a = c * np.cos(h_rad)
         b = c * np.sin(h_rad)
         return l, a, b
 
-    def oklab_to_oklch(self, l: float, a: float, b: float) -> tuple[float, float, float]:
+    def oklab_to_oklch(self, l: float, a: float, b: float) -> tuple[float, float, float]:  # noqa: E741
         """Convert Oklab to OKLCH coordinates.
 
         Used by transforms.py for color space conversions.
@@ -203,7 +207,7 @@ class OKLCHEngine:
             1.055 * np.power(linear, 1 / 2.4) - 0.055,
         )
 
-    def gamut_map_oklch(self, l: float, c: float, h: float) -> tuple[float, float, float]:
+    def gamut_map_oklch(self, l: float, c: float, h: float) -> tuple[float, float, float]:  # noqa: E741
         """
         CSS Color Module 4 compliant gamut mapping.
 
@@ -229,7 +233,7 @@ class OKLCHEngine:
             else:
                 c_max = c_mid
 
-        logger.debug(f"Gamut mapped: C={c:.3f} → {c_min:.3f}")
+        logger.debug("Gamut mapped: C=%.3f → %.3f", c, c_min)
         return l, c_min, h
 
     def batch_rgb_to_oklab(self, rgb_image: np.ndarray) -> np.ndarray:
@@ -278,7 +282,9 @@ class OKLCHEngine:
         - src/imgcolorshine/transforms.py
         """
         # Flatten for batch processing
-        h, w = oklab_image.shape[:2]
+        # Ensure shape dimensions are integers (NumPy may return int64).
+        # This prevents accidental float propagation that breaks `reshape`.
+        height, width = map(int, oklab_image.shape[:2])
         flat_oklab = oklab_image.reshape(-1, 3)
 
         # Convert each pixel - in production, use vectorized ColorAide
@@ -289,10 +295,14 @@ class OKLCHEngine:
             # Gamut map if needed
             if not color.in_gamut("srgb"):
                 oklch = color.convert("oklch")
-                l, c, h = self.gamut_map_oklch(oklch["lightness"], oklch["chroma"], oklch["hue"])
-                color = Color("oklch", [l, c, h])
+                l_val, c_val, hue_val = self.gamut_map_oklch(
+                    oklch["lightness"],
+                    oklch["chroma"],
+                    oklch["hue"],
+                )
+                color = Color("oklch", [l_val, c_val, hue_val])
 
             srgb = color.convert("srgb")
             rgb_list.append([srgb["red"], srgb["green"], srgb["blue"]])
 
-        return np.array(rgb_list).reshape(h, w, 3)
+        return np.array(rgb_list).reshape(height, width, 3)

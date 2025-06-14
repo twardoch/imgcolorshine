@@ -252,7 +252,9 @@ class ColorTransformer:
         - old/imgcolorshine/test_imgcolorshine.py
         - src/imgcolorshine/imgcolorshine.py
         """
-        logger.info(f"Transforming {image.shape[0]}×{image.shape[1]} image with {len(attractors)} attractors")
+        # Report dimensions in width×height order to match common conventions
+        h, w = image.shape[:2]
+        logger.info(f"Transforming {w}×{h} image with {len(attractors)} attractors")
 
         # Convert flags to numpy array
         flags_array = np.array(
@@ -270,7 +272,6 @@ class ColorTransformer:
         strengths = np.array([a.strength for a in attractors])
 
         # Check if we should use tiling
-        h, w = image.shape[:2]
         from imgcolorshine.image_io import ImageProcessor
 
         processor = ImageProcessor()
