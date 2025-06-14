@@ -138,7 +138,8 @@ class ImageProcessor:
         img = img.astype(np.float32) / 255.0
 
         h, w = img.shape[:2]
-        logger.debug(f"Loaded {w}×{h} image with OpenCV")
+        size_mb = (h * w * 3 * 4) / (1024 * 1024)  # Float32 size in MB
+        logger.debug(f"Loaded {w}×{h} image with OpenCV ({size_mb:.1f} MB in memory)")
 
         return img
 
@@ -154,7 +155,8 @@ class ImageProcessor:
             arr = np.array(img, dtype=np.float32) / 255.0
 
             h, w = arr.shape[:2]
-            logger.debug(f"Loaded {w}×{h} image with PIL")
+            size_mb = (h * w * 3 * 4) / (1024 * 1024)  # Float32 size in MB
+            logger.debug(f"Loaded {w}×{h} image with PIL ({size_mb:.1f} MB in memory)")
 
             return arr
 

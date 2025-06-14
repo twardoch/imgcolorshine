@@ -86,26 +86,47 @@ imgcolorshine shine photo.jpg \
 
 ## How It Works
 
+### The Attraction Model: "Pull" vs "Replace"
+
+`imgcolorshine` uses a **"pull" model**, not a "replace" model. This means:
+
+- Colors are **gradually pulled** toward attractors, not replaced entirely
+- A `strength` of 100 provides maximum pull, but only pixels exactly matching the attractor color will be fully transformed
+- The effect diminishes with distance from the attractor color
+- This creates natural, smooth transitions rather than harsh color replacements
+
+### The Transformation Process
+
 1. **Color Space**: All operations happen in OKLCH space for perceptual uniformity
 2. **Attraction Model**: Each attractor color exerts influence based on:
-   - **Distance**: How similar a pixel's color is to the attractor
-   - **Tolerance**: Maximum distance at which influence occurs
-   - **Strength**: Maximum transformation amount
-3. **Falloff**: Smooth raised-cosine curve for natural transitions
+   - **Distance**: Perceptual distance between pixel and attractor colors (ΔE in Oklab)
+   - **Tolerance**: Maximum distance at which influence occurs (0-100 maps linearly to 0-2.5 ΔE)
+   - **Strength**: Maximum transformation amount at zero distance
+3. **Falloff**: Smooth raised-cosine curve ensures natural transitions
 4. **Blending**: Multiple attractors blend using normalized weighted averaging
 5. **Gamut Mapping**: Out-of-bounds colors are mapped back to displayable range
 
 ## Understanding Parameters
 
 ### Tolerance (0-100)
+Controls the **radius of influence** - how far from the attractor color a pixel can be and still be affected:
 - **Low values (0-20)**: Only very similar colors are affected
-- **Medium values (30-60)**: Moderate range of colors transformed
+- **Medium values (30-60)**: Moderate range of colors transformed  
 - **High values (70-100)**: Wide range of colors influenced
+- **100**: Maximum range, affects colors up to ΔE = 2.5 (very broad influence)
 
 ### Strength (0-100)
-- **Low values (0-30)**: Subtle color shifts
+Controls the **intensity of the pull** - how strongly colors are pulled toward the attractor:
+- **Low values (0-30)**: Subtle color shifts, original color dominates
 - **Medium values (40-70)**: Noticeable but natural transformations
-- **High values (80-100)**: Strong color replacement
+- **High values (80-100)**: Strong pull toward attractor (not full replacement)
+- **100**: Maximum pull, but still respects distance-based falloff
+
+### Important Note on Hue-Only Transformations
+When using `--luminance=False --saturation=False`, only the hue channel is modified. This means:
+- Grayscale pixels (low saturation) show little to no change
+- The effect is most visible on already-saturated colors
+- To see stronger effects on all pixels, enable all channels
 
 ## Performance
 

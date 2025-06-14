@@ -117,6 +117,7 @@ def process_image(
     for color_str, tolerance, strength in parsed_attractors:
         attractor = engine.create_attractor(color_str, tolerance, strength)
         attractor_objects.append(attractor)
+        logger.info(f"Created attractor: {color_str} (tolerance={tolerance}, strength={strength})")
 
     # Load image
     logger.info(f"Loading image: {input_path}")

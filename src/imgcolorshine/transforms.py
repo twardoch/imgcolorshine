@@ -272,6 +272,14 @@ class ColorTransformer:
         # Report dimensions in width×height order to match common conventions
         h, w = image.shape[:2]
         logger.info(f"Transforming {w}×{h} image with {len(attractors)} attractors")
+        
+        # Log attractor details
+        for i, attractor in enumerate(attractors):
+            logger.debug(
+                f"  Attractor {i+1}: color=OKLCH({attractor.oklch_values[0]:.2f}, "
+                f"{attractor.oklch_values[1]:.3f}, {attractor.oklch_values[2]:.1f}°), "
+                f"tolerance={attractor.tolerance}, strength={attractor.strength}"
+            )
 
         # Convert flags to numpy array
         flags_array = np.array(
@@ -281,6 +289,16 @@ class ColorTransformer:
                 flags.get("hue", True),
             ]
         )
+        
+        # Log enabled channels
+        enabled_channels = []
+        if flags.get("luminance", True):
+            enabled_channels.append("luminance")
+        if flags.get("saturation", True):
+            enabled_channels.append("saturation")
+        if flags.get("hue", True):
+            enabled_channels.append("hue")
+        logger.debug(f"Enabled channels: {', '.join(enabled_channels)}")
 
         # Prepare attractor data for Numba
         attractors_lab = np.array([a.oklab_values for a in attractors])

@@ -17,12 +17,12 @@ echo "================================================"
 
 # Example: Basic single attractor - warm red tones
 echo "Basic blue attractors"
-for a in 20 40 60 80; do for b in 20 30 60 80; do
-    echo "blue;$a;$b"
-    imgcolorshine shine louis.jpg "blue;$a;$b" \
+for a in 10 90; do for b in 10 90; do for c in blue yellow; do
+    echo "$c;$a;$b"
+    imgcolorshine shine louis.jpg "$c;$a;$b" \
         --luminance=False --saturation=False \
-        --output_image=output/louis-blue-$a-$b.jpg
-done; done
+        --output_image=output/louis-$c-$a-$b.jpg
+done; done; done
 
 # Optional: Create a comparison montage using ImageMagick if available
 if command -v montage &>/dev/null; then
