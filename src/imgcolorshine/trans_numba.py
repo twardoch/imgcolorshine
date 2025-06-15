@@ -104,6 +104,7 @@ def _linear_to_srgb_component(c: float) -> float:
 # SRGB <-> LINEAR RGB CONVERSIONS
 # ===========================================================================
 
+
 @numba.njit(cache=True)
 def srgb_to_linear(srgb: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
     """Vectorised inverse gamma for 3-component array."""
@@ -189,6 +190,7 @@ def batch_oklab_to_srgb(oklab_image: np.ndarray[Any, Any]) -> np.ndarray[Any, An
 # ===========================================================================
 # OKLAB <-> OKLCH CONVERSIONS
 # ===========================================================================
+
 
 @numba.njit(cache=True)
 def oklab_to_oklch_single(oklab: np.ndarray) -> np.ndarray:

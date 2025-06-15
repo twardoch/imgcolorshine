@@ -37,7 +37,7 @@ echo "python -m uv run mypy --config-file pyproject.toml src/imgcolorshine tests
 python -m uv run mypy --config-file pyproject.toml src/imgcolorshine tests
 if command -v npx >/dev/null 2>&1; then
     echo "npx repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules,docs -o llms.txt ."
-    npx repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules,docs -o llms.txt .
+    npx repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules,docs,.log -o llms.txt .
 else
     echo "npx not found, skipping repomix"
 fi

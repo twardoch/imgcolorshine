@@ -1,252 +1,288 @@
-# PLAN: Engineering Roadmap (v2025-06-16)
-# this_file: PLAN.md
+The `cleanup.log` log is revealing. It shows that the codebase is in a partially broken state after what appears to have been a significant but incomplete refactoring. There are missing modules (`transform`, `hierar`, `spatial`), broken tests, and a multitude of type errors and linter warnings.
 
-Implement the tasks described below. 
+This plan will first stabilize the code, then clean it up, and finally implement a series of aggressive optimizations to achieve your performance goals.
 
-Work tirelessly, without asking me any questions, until the job is completely. 
+### **High-Level Strategy**
 
-## 1. Purpose
-
-This document provides a **deeply technical execution roadmap** for evolving `imgcolorshine` from a functional prototype into a production-grade, high-performance library. It is targeted at a senior developer familiar with Python's performance ecosystem (Numba, mypyc, packaging).
-
-The plan is broken into atomic, idempotent work packages. Each can be actioned and merged independently to minimize integration risk.
+1.  **Phase 0: Triage and Repair** - Fix critical errors to get the tests running.
+2.  **Phase 1: Code Cleanup and Refactoring** - Address all linter warnings and type errors for a maintainable and readable codebase.
+3.  **Phase 2: Core Logic Consolidation** - Unify the transformation logic and remove defunct code paths.
+4.  **Phase 3: Aggressive Performance Optimization** - Implement a multi-pronged strategy using fused kernels, GPU acceleration, and Look-Up Tables (LUTs).
+5.  **Phase 4: Build System and Packaging** - Enable MyPyc compilation to generate high-performance binary wheels.
+6.  **Phase 5: Final Validation and Documentation** - Ensure all changes are tested and documented.
 
 ---
 
-## 2. Performance Optimization Strategy
+### **Phase 0: Triage and Repair - Stabilize the Codebase**
 
-The core performance drag is per-pixel processing in Python. Our strategy is two-pronged:
-1.  **Numba (`@njit`)**: For all **array-oriented, numerical hot-loops**. This is our primary weapon.
-2.  **Mypyc (AOT Compilation)**: For **algorithmically complex Python code** with lots of function calls, branching, and object manipulation that Numba cannot handle efficiently (or at all).
+The immediate goal is to fix the `pytest` collection errors and get a clean test run.
 
-### 2.1. Numba Vectorization & Kernel Fusion
+**1. Resolve Missing `imgcolorshine.transform` Module:**
+The file `tests/test_tolerance.py` imports from a non-existent `imgcolorshine.transform`. The logic it intends to test (`calculate_weights`) seems to have been replaced by the percentile-based model in `engine.py`.
 
-#### 2.1.1. **Objective**: Eliminate per-pixel Python-level loops inside JIT-compiled functions.
-
-#### 2.1.2. **Target 1: Vectorize `_transform_pixels_percentile` in `engine.py`**
-
-- [x] **2.1.2.1. Analyze current implementation**
-- [x] **2.1.2.2. Vectorize weight calculation**
-- [x] **2.1.2.3. Vectorize blending operation**
-- [x] **2.1.2.4. Remove per-pixel loops**
-- [x] **2.1.2.5. Verify performance improvement (>5x speedup)**
-
--   **Current State**: The function iterates over `H x W` pixels, calling helper functions for each one. This is suboptimal as it prevents SIMD vectorization across the image.
-
-    ```python
-    # src/imgcolorshine/engine.py:160 (Current)
-    # @numba.njit(parallel=True)
-    def _transform_pixels_percentile(...):
-        h, w = pixels_lab.shape[:2]
-        result = np.empty_like(pixels_lab)
-        for y in numba.prange(h): # Still a Python-style loop
-            for x in range(w):
-                # Sub-optimal: calculates weights for one pixel at a time
-                weights = _calculate_weights_percentile(pixels_lab[y, x], ...) 
-                result[y, x] = blend_pixel_colors(...)
-        return result
+*   **Action:** Delete the obsolete test file. We will write a new, correct test for the current engine logic later.
+    ```bash
+    rm tests/test_tolerance.py
     ```
 
--   **Proposed Implementation**:
-    1.  **Vectorize Weight Calculation**: Rewrite `_calculate_weights_percentile` to operate on the entire `pixels_lab` image `(H, W, 3)` instead of a single pixel `(3,)`. Use NumPy broadcasting to compute all distances and weights in a single, vectorized operation.
+**2. Resolve Missing `is_in_gamut_srgb` Import:**
+The test `tests/test_gamut.py` fails because `imgcolorshine.gamut` cannot import `is_in_gamut_srgb` from `trans_numba.py`. Looking at `trans_numba.py`, the function exists but is named `_in_gamut` and is not intended for external use. The gamut checking logic is intertwined with the conversions.
 
-        ```python
-        # Proposed new function in engine.py
-        @numba.njit(parallel=True, fastmath=True)
-        def _calculate_all_weights(pixels_lab, attractors_lab, delta_e_maxs, strengths):
-            # pixels_lab: (H, W, 3), attractors_lab: (A, 3)
-            # Reshape for broadcasting
-            pixels_flat = pixels_lab.reshape(-1, 3) # (N, 3) where N=H*W
-            
-            # Compute distances for all pixels against all attractors at once
-            # (N, 1, 3) - (1, A, 3) -> (N, A, 3)
-            delta_vectors = pixels_flat[:, np.newaxis, :] - attractors_lab[np.newaxis, :, :]
-            delta_e_sq = np.sum(delta_vectors**2, axis=2) # (N, A)
-            delta_e = np.sqrt(delta_e_sq)
+*   **Action:** Refactor `trans_numba.py` to expose a proper gamut checking function. Rename `_in_gamut` to `is_in_gamut_srgb` and remove the leading underscore to make it public.
 
-            # Mask pixels outside tolerance
-            # delta_e_maxs is (A,), broadcasting to (N, A)
-            mask = delta_e < delta_e_maxs 
-            
-            # ... rest of falloff and strength logic applied to the (N, A) weight matrix ...
-            
-            # Final weights array will have shape (N, A)
-            return weights.reshape(pixels_lab.shape[0], pixels_lab.shape[1], -1)
-        ```
+    ```diff
+    # In: src/imgcolorshine/trans_numba.py
+    
+    @numba.njit(cache=True)
+    -def _in_gamut(r_lin: float, g_lin: float, b_lin: float) -> bool:
+    -    return bool((0 <= r_lin <= 1) and (0 <= g_lin <= 1) and (0 <= b_lin <= 1))
+    +def is_in_gamut_srgb(rgb: np.ndarray) -> bool:
+    +    """Checks if a single sRGB color is within the [0, 1] gamut."""
+    +    return bool((0.0 <= rgb[0] <= 1.0) and (0.0 <= rgb[1] <= 1.0) and (0.0 <= rgb[2] <= 1.0))
+    
+    
+    @numba.njit(cache=True)
+    def gamut_map_oklch_single(oklch: np.ndarray, eps: float = 1e-4) -> np.ndarray:
+        L, C, H = oklch
+        oklab = oklch_to_oklab_single(oklch)
+        rgb = oklab_to_srgb_single(oklab)
+    -    if _in_gamut(rgb[0], rgb[1], rgb[2]):
+    +    if is_in_gamut_srgb(rgb):
+            return oklch
+        c_lo, c_hi = 0.0, C
+        while c_hi - c_lo > eps:
+            c_mid = 0.5 * (c_lo + c_hi)
+            test_oklch = np.array([L, c_mid, H], dtype=np.float32)
+            test_rgb = oklab_to_srgb_single(oklch_to_oklab_single(test_oklch))
+    -        if _in_gamut(test_rgb[0], test_rgb[1], test_rgb[2]):
+    +        if is_in_gamut_srgb(test_rgb):
+                c_lo = c_mid
+            else:
+                c_hi = c_mid
+        return np.array([L, c_lo, H], dtype=np.float32)
+    ```
 
-    2.  **Vectorize Blending**: The `blend_pixel_colors` function also needs to be vectorized to accept the `(H, W, A)` weights matrix and the full `pixels_lch` image, performing the blend with NumPy array operations instead of a loop. The hue blend requires careful handling of the trigonometric functions on arrays.
+After these changes, your test suite should collect successfully, though many tests will likely still fail.
 
--   **Acceptance Criteria**:
-    -   The `for y in numba.prange(h):` loop inside `_transform_pixels_percentile` is completely removed.
-    -   The function body consists of a handful of vectorized NumPy calls.
-    -   `scalene` profiling shows time spent is now deep inside NumPy's C code, not the function itself.
-    -   Benchmark shows > 5x speedup on a 4K image.
+### **Phase 1: Code Cleanup and Refactoring**
 
----
+Address the issues raised by `ruff`, `mypy`, and `ty` to improve code quality.
 
-## 3. Build System & AOT with Mypyc
+**1. Fix Boolean Positional Arguments:**
+The `FBT001` and `FBT002` warnings indicate that boolean flags should be keyword-only to avoid ambiguity.
 
-### 3.1. **Objective**: Compile non-Numba-friendly Python modules into C extensions for a ~1.5-2x speedup and reduced interpreter overhead.
+*   **Action:** Add a `*` in the function signature before the boolean arguments.
+    ```diff
+    # In: src/imgcolorshine/cli.py
+    class ImgColorShineCLI:
+        def shine(
+            self,
+            input_image: str,
+            *attractors: str,
+            output_image: str | None = None,
+    -        luminance: bool = True,
+    -        saturation: bool = True,
+    -        hue: bool = True,
+    -        verbose: bool = False,
+    +        *,
+    +        luminance: bool = True,
+    +        saturation: bool = True,
+    +        hue: bool = True,
+    +        verbose: bool = False,
+        ) -> None:
+            ...
+    ```    Apply this to all functions flagged by `ruff`.
 
-### 3.2. **Target 1: Migrate Build System from `setup.py` to `pyproject.toml` + Hatch**
+**2. Remove Magic Numbers:**
+The `PLR2004` warnings show hardcoded numbers that should be constants for clarity.
 
-- [x] **3.2.1. Delete `setup.py` and `build_ext.py`**
-- [x] **3.2.2. Move mypy config from `mypy.ini` to `pyproject.toml`**
-- [x] **3.2.3. Configure mypyc modules in `pyproject.toml`**
-- [x] **3.2.4. Configure Hatchling build hook**
-- [x] **3.2.5. Verify `uv run hatch build` creates wheels with `.so`/`.pyd` files**
+*   **Action:** Define constants at the module level.
+    ```python
+    # In: src/imgcolorshine/colorshine.py
+    
+    # Add at the top of the file
+    ATTRACTOR_PARTS = 3
+    TOLERANCE_MIN, TOLERANCE_MAX = 0.0, 100.0
+    STRENGTH_MIN, STRENGTH_MAX = 0.0, 200.0
+    
+    def parse_attractor(attractor_str: str) -> tuple[str, float, float]:
+        parts = attractor_str.split(";")
+        if len(parts) != ATTRACTOR_PARTS:
+            # ...
+        
+        if not TOLERANCE_MIN <= tolerance <= TOLERANCE_MAX:
+            # ...
+        
+        if not STRENGTH_MIN <= strength <= STRENGTH_MAX:
+            # ...
+    ```
 
--   **Current State**: A legacy `setup.py` exists, which complicates modern packaging workflows and mypyc integration. `build_ext.py` is an unused artifact. `mypy.ini` is separate.
--   **Proposed Implementation**:
-    1.  **Delete `setup.py` and `build_ext.py`**. They are obsolete.
-    2.  **Consolidate Mypy Config**: Move all settings from `mypy.ini` into `pyproject.toml` under the `[tool.mypy]` section. Enable stricter checks required by mypyc.
+**3. Rename Ambiguous Variables:**
+The `E741` warning for the variable `l` is critical. In color science, `L` is for Lightness. Using a lowercase `l` is confusing and error-prone.
 
-        ```toml
-        # pyproject.toml
-        [tool.mypy]
-        python_version = "3.10"
-        warn_return_any = true
-        disallow_untyped_defs = true # Crucial for mypyc
-        # ... etc
-        ```
-    3.  **Configure Mypyc in `pyproject.toml`**: Define the modules to be compiled. `gamut.py` and `utils.py` are prime candidates because their logic (string handling, dictionary lookups, complex branching) is not suitable for Numba.
+*   **Action:** Rename all instances of `l` (when it means lightness) to `lightness` or `L`. Since your Numba code already uses `L`, standardize on that for consistency in those functions.
 
-        ```toml
-        # pyproject.toml
-        [tool.mypyc]
-        modules = [
-            "imgcolorshine.gamut",
-            "imgcolorshine.utils",
-            # Add more modules here as identified
-        ]
-        opt_level = "3" # Aggressive optimization
-        strip_asserts = true
-        ```
-    4.  **Configure Hatchling Build Hook**: Use Hatch's native capabilities to run mypyc during the build process. This is the modern replacement for `setup.py`'s `ext_modules`.
+**4. Fix Type Errors:**
+Work through the `mypy` and `ty` logs to fix all type-related issues.
+*   **`numba.prange`:** Type checkers don't understand that `numba.prange` is iterable. You can silence this with `# type: ignore [attr-defined]` where necessary, after confirming the logic is correct.
+*   **Missing Stubs:** For libraries like `fire` and `cupy`, you may need to add ` # type: ignore` to the import statement if stubs are unavailable or install them if they are (`pip install types-cupy`).
+*   **Add missing `-> None`** to functions that don't return anything.
 
-        ```toml
-        # pyproject.toml
-        [tool.hatch.build.hooks.mypyc]
-        dependencies = ["hatch-mypyc"]
-        ```
+### **Phase 2: Core Logic Consolidation**
 
--   **Acceptance Criteria**:
-    -   `uv run hatch build` successfully creates a wheel containing `.so`/`.pyd` extension modules for the specified files.
-    -   The project can be installed from the built wheel and runs correctly.
-    -   `setup.py`, `build_ext.py`, and `mypy.ini` are deleted.
+The current logic is fragmented. The `process_with_optimizations` function in `colorshine.py` is dead code since `hierar` and `spatial` modules are missing. The core vectorized transform is in `engine.py`. Let's clean this up.
 
-### 3.3. **Target 2: Guarded Imports for Development Mode**
+**1. Remove Dead Code:**
+*   **Action:** Delete the entire `process_with_optimizations` function from `src/imgcolorshine/colorshine.py`. It's non-functional and adds clutter.
+*   **Action:** Update the `shine` command in `src/imgcolorshine/cli.py` to remove the defunct optimization flags (`fast_hierar`, `fast_spatial`) from the docstring.
 
-- [x] **3.3.1. Implement try/except ImportError blocks** (N/A - mypyc disabled)
-- [x] **3.3.2. Refactor modules to separate pure Python fallbacks** (N/A - mypyc disabled)
-- [x] **3.3.3. Test editable install functionality** (Works without mypyc)
-- [x] **3.3.4. Test wheel install uses compiled extensions** (N/A - mypyc disabled)
+**2. Consolidate Transformation Logic:**
+The `ColorTransformer` class in `engine.py` is the correct place for the main algorithm. `colorshine.py` should only be responsible for orchestration.
 
--   **Current State**: In a development (editable) install, the compiled modules won't exist. Direct imports would fail.
--   **Proposed Implementation**: Use a `try...except ImportError` block to create a fallback mechanism. The compiled module is preferred, but the pure-python version is used if it's not found.
+*   **Action:** Ensure `colorshine.process_image` does the following and nothing more:
+    1.  Sets up logging.
+    2.  Parses and validates inputs (attractor strings, paths).
+    3.  Initializes `ImageProcessor` and `OKLCHEngine`.
+    4.  Calls `engine.create_attractor` to create attractor objects.
+    5.  Loads the image using `processor.load_image`.
+    6.  Calls `transformer.transform_image` with the image, attractors, and channel flags.
+    7.  Saves the result using `processor.save_image`.
+
+This ensures a clean separation of concerns.
+
+### **Phase 3: Aggressive Performance Optimization**
+
+This is where we'll achieve the significant speedup. The current vectorized implementation is good, but we can do much better by reducing memory allocation and using more powerful parallelization techniques.
+
+**1. Create a Fused Numba Kernel:**
+The current `_transform_pixels_percentile_vec` in `engine.py` creates several large, intermediate `(N, A)` arrays (`deltas`, `delta_e`, `weights`). A fused kernel processes one pixel at a time through the entire pipeline, keeping intermediate values in CPU registers and improving cache performance.
+
+*   **Action:** Create a new kernel function in `engine.py` and use it in `transform_image`.
 
     ```python
-    # Example in src/imgcolorshine/gamut.py
-    try:
-        # mypyc places compiled code in a parallel _compiled module
-        from imgcolorshine._compiled.gamut import compiled_helper
-    except ImportError:
-        # This is the path taken in editable mode
-        from ._pure_python_gamut import compiled_helper as python_helper
-        compiled_helper = python_helper # Assign to the same name
+    # In: src/imgcolorshine/engine.py
+    
+    @numba.njit(parallel=True, cache=True)
+    def _fused_transform_kernel(
+        image_lab: np.ndarray,
+        attractors_lab: np.ndarray,
+        attractors_lch: np.ndarray,
+        delta_e_maxs: np.ndarray,
+        strengths: np.ndarray,
+        flags: np.ndarray,
+    ) -> np.ndarray:
+        h, w, _ = image_lab.shape
+        transformed_lab = np.empty_like(image_lab)
+    
+        for i in numba.prange(h * w):
+            y = i // w
+            x = i % w
+            pixel_lab = image_lab[y, x]
+    
+            # --- Inside this loop, all operations are on a single pixel ---
+    
+            # 1. Calculate distances and weights (no large intermediate arrays)
+            weights = np.zeros(len(attractors_lab), dtype=np.float32)
+            for j in range(len(attractors_lab)):
+                delta_e = np.sqrt(np.sum((pixel_lab - attractors_lab[j]) ** 2))
+                delta_e_max = delta_e_maxs[j]
+                if delta_e < delta_e_max and delta_e_max > 0:
+                    d_norm = delta_e / delta_e_max
+                    falloff = 0.5 * (np.cos(d_norm * np.pi) + 1.0)
+                    # ... strength logic ...
+                    weights[j] = calculated_weight
+            
+            # 2. Blend colors
+            pixel_lch = trans_numba.oklab_to_oklch_single(pixel_lab)
+            # ... blending logic for L, C, H using weights ...
+            # This is your existing blend_pixel_colors logic, adapted for Numba
+    
+            # 3. Convert back to Lab
+            final_h_rad = np.deg2rad(final_h)
+            final_lab = np.array([
+                final_l,
+                final_c * np.cos(final_h_rad),
+                final_c * np.sin(final_h_rad)
+            ], dtype=pixel_lab.dtype)
+            
+            transformed_lab[y, x] = final_lab
+            
+        return transformed_lab
+
+    # In ColorTransformer.transform_image, replace the call to
+    # _transform_pixels_percentile_vec with this new kernel.
     ```
-    This requires refactoring the core logic of `gamut.py` into `_pure_python_gamut.py` so the main file can contain this import logic without circular dependencies.
 
--   **Acceptance Criteria**:
-    -   `uv pip install -e .` works without errors.
-    -   The application runs correctly in editable mode, using the pure-python code paths.
-    -   When installed from a wheel, the application uses the faster, compiled C extensions.
+**2. GPU Acceleration (Integrate `gpu.py`):**
+The `gpu.py` module is present but unused. We can use it for a CuPy-based implementation.
 
----
+*   **Action:**
+    1.  Add a `use_gpu: bool = True` flag to the `shine` CLI command and pass it down.
+    2.  In `ColorTransformer.transform_image`, check this flag and GPU availability.
+    3.  If GPU is used, the logic will be very similar to the NumPy vectorized version (`_transform_pixels_percentile_vec`), but using `cupy` as the array module (`xp`). All arrays (image, attractors) must first be moved to the GPU with `xp.asarray()`.
 
-## 4. Codebase Beautification & Refinement
+**3. Implement Look-Up Table (LUT) Acceleration:**
+For a given set of attractors, the transformation is deterministic. We can pre-compute it on a 3D grid of colors and then use fast interpolation. This is extremely fast for subsequent runs with the same settings.
 
-### 4.1. **Objective**: Improve code structure, readability, and maintainability.
+*   **Action:** Create a new `lut.py` module.
+    1.  **`LUTManager` class:**
+        *   `__init__(cache_dir)`: Sets up a directory to store cached LUTs.
+        *   `get_lut(attractors, flags)`: Generates a cache key (e.g., SHA256 hash of attractor params). Checks if a cached LUT exists. If not, calls `_build_lut`.
+        *   `_build_lut(...)`:
+            *   Creates a 3D grid of RGB colors (e.g., 65x65x65).
+            *   Runs the *entire* `transform_image` logic on this small grid image.
+            *   Saves the resulting transformed grid to the cache.
+        *   `apply_lut(image, lut)`:
+            *   Uses `scipy.interpolate.interpn` to perform fast trilinear interpolation for every pixel in the input image against the LUT. This is the fastest path.
 
-### 4.2. **Target 1: Refactor `trans_numba.py`**
+### **Phase 4: Build System and Packaging**
 
-- [x] **4.2.1. Add comment blocks to delineate sections**
-- [x] **4.2.2. Rename internal helpers with underscore prefix**
-- [x] **4.2.3. Group related functions logically**
+Your `pyproject.toml` is already set up for `hatchling` and has a disabled `mypyc` hook. Let's enable it and configure it properly.
 
--   **Problem**: This file is a long, flat list of functions. It's functional but lacks structure.
--   **Proposal**: Group related functions into logical, private `numba.experimental.jitclass` instances or simply better-named internal functions. For instance, group all sRGB↔Linear functions, then XYZ↔LMS, etc. While we can't use standard Python classes with `@njit` methods in the same way, we can organize the file better. The current single-file approach is correct, but internal organization can be improved with comments and private helper functions.
--   **Action**: Add comment blocks to delineate sections: `sRGB <> Linear RGB`, `XYZ <> LMS`, `Oklab <> LMS`, `OKLCH <> Oklab`, `Gamut Mapping`. Review `matrix_multiply_3x3` and rename to `_matmul_3x3` to signal it's an internal, unrolled helper.
+**1. Enable and Configure MyPyc:**
+MyPyc compiles typed Python modules into C extensions, removing interpreter overhead for significant speed gains on Python-level logic.
 
-### 4.3. **Target 2: Eliminate Legacy Aliases**
+*   **Action:** Modify `pyproject.toml`.
 
-- [x] **4.3.1. Search for legacy alias usage** (No aliases found)
-- [x] **4.3.2. Replace with canonical names** (N/A - already done)
-- [x] **4.3.3. Delete alias assignments** (N/A - already done)
-- [x] **4.3.4. Run full test suite**
+    ```toml
+    [build-system]
+    requires = [
+        'hatchling>=1.27.0',
+        'hatch-vcs>=0.4.0',
+        'hatch-mypyc>=0.16.0', # Enable this line
+    ]
+    build-backend = 'hatchling.build'
+    
+    [tool.hatch.build.hooks.mypyc]
+    dependencies = ["hatch-mypyc"]
+    # Only include modules with pure Python/NumPy/ColorAide logic.
+    # Numba-heavy files should be excluded as MyPyc can't compile them.
+    files = [
+        "src/imgcolorshine/colorshine.py",
+        "src/imgcolorshine/engine.py", # MyPyc can compile the Python parts
+        "src/imgcolorshine/gamut.py",
+        "src/imgcolorshine/io.py",
+        "src/imgcolorshine/utils.py",
+        "src/imgcolorshine/falloff.py",
+    ]
+    
+    # Add mypyc options if needed
+    [tool.mypyc]
+    opt_level = "3"
+    strip_asserts = true
+    ```
+    This will produce faster binary wheels (`.whl` files) that contain compiled `.so` or `.pyd` extensions, which will be used automatically when your package is installed.
 
--   **Problem**: `trans_numba.py` contains `srgb_to_oklab_batch = batch_srgb_to_oklab`. This is technical debt from earlier refactoring.
--   **Action**:
-    1.  Globally search for `srgb_to_oklab_batch` and `oklab_to_srgb_batch`.
-    2.  Replace all usages with the canonical names (`batch_srgb_to_oklab`, `batch_oklab_to_srgb`).
-    3.  Delete the alias assignments from the bottom of `trans_numba.py`.
-    4.  Run the full test suite (`pytest tests/`) to ensure no breakages.
+### **Phase 5: Final Validation and Documentation**
 
----
+**1. Write Correctness Tests:**
+*   **Action:** Add a new test file, `tests/test_engine.py`, to replace the deleted `test_tolerance.py`. It should specifically test the `transform_image` method with the percentile-based model.
+    *   Create a simple gradient image where you can predict which pixels will be affected.
+    *   Test `tolerance=30` on a 10-pixel image and assert that exactly 3 pixels have changed.
+    *   Test `strength=50` and assert that the most affected pixel is a 50/50 blend of its original color and the attractor color. The existing `test_engine.py` is a great starting point for this.
 
-## 5. Timeline & Definition of Done (Revised)
+**2. Update Documentation:**
+*   **Action:** Update `README.md` and the CLI help text to reflect the new performance features and any new flags (`--use-gpu`, `--use-lut`). Remove references to old, defunct flags.
+*   **Action:** Update the `CHANGELOG.md` to document this massive refactoring and optimization effort.
 
-| Week | Deliverable                                           | Key Result                                          |
-| :--- | :---------------------------------------------------- | :-------------------------------------------------- |
-| **1**  | Numba Vectorization                                   | `_transform_pixels_percentile` is loop-free.        |
-| **2**  | Build System Migration & Mypy Strict Pass             | `hatch build` works; `mypy --strict` passes.        |
-| **3**  | Mypyc Compilation & Guarded Imports                   | Wheels contain `.so` files; editable install works. |
-| **4**  | Codebase Beautification & Alias Removal               | `trans_numba.py` is cleaner; aliases are gone.      |
-| **5**  | Final Benchmarking & Documentation Update             | `CHANGELOG.md` and `README.md` reflect all changes. |
-
-### 5.1. Definition of Done:
--   [ ] **Performance**: Numba-vectorized functions show >5x speedup. Mypyc-compiled modules show >1.5x speedup.
--   [ ] **Build**: `hatch build` is the sole mechanism for creating distributable packages.
--   [ ] **Code Quality**: `mypy --strict` passes. No legacy aliases remain.
--   [ ] **Documentation**: `README.md` and `CHANGELOG.md` are fully updated. `PLAN.md` is marked as complete.
-
----
-
-## 6. Lean-Down Cleanup Candidates  🚯
-
-_A pragmatic, performance-first audit of the repository._
-
-The items below **provide no production value** after the refactor (Numba + mypy-strict, no legacy fallbacks) and can be **deleted outright** or **stripped from runtime paths**.  They are kept only for historical context or super-narrow debugging scenarios that are now obsolete.
-
-### 6.1. Obsolete Build / Packaging Artifacts
-- [ ] **6.1.1. Verify `build_ext.py` is removed**
-- [ ] **6.1.2. Ensure `setup.py` doesn't exist**
-
-### 6.2. Developer-Only Helper Scripts
-- [ ] **6.2.1. Remove `testdata/example.sh`, `testdata/quicktest.sh`**
-- [ ] **6.2.2. Remove `cleanup.sh`**
-- [ ] **6.2.3. Remove debug scripts in `tests/debug_*`**
-
-### 6.3. Legacy / Compatibility Code Paths
-- [ ] **6.3.1. Drop JAX support from `gpu.py`**
-- [ ] **6.3.2. Remove `ArrayModule.backend=='cpu'` indirection**
-- [ ] **6.3.3. Remove old per-pixel kernel and commented code**
-- [ ] **6.3.4. Remove mentions of `old/imgcolorshine/`**
-
-### 6.4. Low-Value Tests
-- [ ] **6.4.1. Remove JAX/cpu fallback tests**
-- [ ] **6.4.2. Remove duplicate CLI tests**
-- [ ] **6.4.3. Remove redundant debug tests**
-
-### 6.5. Generated / Packed Files
-- [ ] **6.5.1. Add `llms.txt` to `.gitignore`**
-- [ ] **6.5.2. Remove `.giga/`, `.cursor/` from repo**
-- [ ] **6.5.3. Keep coverage artifacts in `.gitignore` only**
-
-### 6.6. Documentation Stubs
-- [ ] **6.6.1. Remove empty docs pages**
-- [ ] **6.6.2. Remove placeholder markdown files**
-
-> **Action**: create a one-time pruning commit that deletes the above paths and strips code branches in a single shot.  Follow with a `ruff --fix` & `mypy` pass to ensure no dangling imports.
-
----
+By following this plan, you will transform `imgcolorshine` into a stable, maintainable, and exceptionally high-performance tool that fulfills the ambitious goals laid out in its documentation.

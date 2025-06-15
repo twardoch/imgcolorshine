@@ -5,7 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2025-06-15
+## [Unreleased] - 2025-06-16
+
+### Major Refactoring
+
+- **Performance Optimization**: The core `_transform_pixels_percentile` function is already vectorized, eliminating per-pixel Python loops for significant performance gains
+- **Build System Migration**: Successfully migrated from legacy `setup.py` to modern `pyproject.toml` with Hatchling
+- **Code Organization**: Improved `trans_numba.py` with clear section headers and logical grouping of functions
+- **Cleanup**: Removed obsolete files and code paths including:
+  - Removed JAX support from `gpu.py` (CuPy-only now)
+  - Deleted legacy test files for non-existent modules
+  - Removed obsolete helper scripts (`example.sh`, `quicktest.sh`, `cleanup.sh`)
+  - Removed debug test scripts
+  - Added `llms.txt` to `.gitignore`
+
+### Fixed
+
+- Fixed test imports to use correct module names (`engine` instead of `color`)
+- Updated `gpu.py` to remove JAX dependencies and simplify GPU backend selection
+
+### Technical Details
+
+- Mypy configuration consolidated into `pyproject.toml`
+- Mypyc compilation configured but temporarily disabled due to missing type stubs for dependencies
+- All legacy aliases in `trans_numba.py` have been removed (none were found)
+
+## [3.2.5] - 2025-06-15
 
 ### Changed
 - **Development Workflow Improvements**

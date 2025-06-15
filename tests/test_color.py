@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from coloraide import Color
 
-from imgcolorshine.color import Attractor, OKLCHEngine
+from imgcolorshine.engine import Attractor, OKLCHEngine
 
 
 # Helper function to compare colors with tolerance

@@ -7,8 +7,8 @@
 """
 GPU backend selection and management for imgcolorshine.
 
-Provides automatic detection and selection of GPU acceleration libraries
-(CuPy, JAX, etc.) with graceful fallback to CPU when unavailable.
+Provides automatic detection and selection of GPU acceleration via CuPy
+with graceful fallback to CPU when unavailable.
 """
 
 import numpy as np
@@ -17,7 +17,6 @@ from loguru import logger
 # Global flags for available backends
 GPU_AVAILABLE = False
 CUPY_AVAILABLE = False
-JAX_AVAILABLE = False
 cp = None  # Ensure cp is always defined globally
 
 # Try to import GPU libraries
@@ -34,42 +33,6 @@ except Exception as e:
     logger.debug(f"CuPy initialization failed: {e}")
 
 
-# Check JAX availability without importing at module level
-def _check_jax_available():
-    """Check if JAX is available and compatible with current NumPy version."""
-    global JAX_AVAILABLE, GPU_AVAILABLE
-    try:
-        import jax
-        import jax.numpy as jnp
-
-        # Check if GPU is available for JAX
-        if len(jax.devices("gpu")) > 0:
-            JAX_AVAILABLE = True
-            GPU_AVAILABLE = True
-            logger.info(f"JAX available with {len(jax.devices('gpu'))} GPU(s)")
-            return True
-    except ImportError as e:
-        # Handle both standard ImportError and NumPy compatibility error
-        error_msg = str(e)
-        if (
-            "numpy.core._multiarray_umath failed to import" in error_msg
-            or "A module that was compiled using NumPy 1.x" in error_msg
-        ):
-            logger.debug(
-                "JAX not compatible with current NumPy version (likely NumPy 2.x with JAX compiled for NumPy 1.x)"
-            )
-        else:
-            logger.debug("JAX not installed")
-    except Exception as e:
-        logger.debug(f"JAX initialization failed: {e}")
-    return False
-
-
-# Defer JAX check to avoid import errors at module level
-# This will be checked when JAX is actually needed
-_jax_checked = False
-
-
 class ArrayModule:
     """Wrapper for array operations that can use CPU or GPU."""
 
@@ -78,31 +41,19 @@ class ArrayModule:
         Initialize array module.
 
         Args:
-            backend: 'auto', 'cpu', 'cupy', or 'jax'
+            backend: 'auto', 'cpu', or 'cupy'
         """
         self.backend = self._select_backend(backend)
         self.xp = self._get_module()
 
     def _select_backend(self, backend):
         """Select the appropriate backend based on availability."""
-        global _jax_checked
-
-        # Check JAX availability on first use
-        if not _jax_checked:
-            _check_jax_available()
-            _jax_checked = True
-
         if backend == "auto":
             if CUPY_AVAILABLE:
                 return "cupy"
-            if JAX_AVAILABLE:
-                return "jax"
             return "cpu"
         if backend == "cupy" and not CUPY_AVAILABLE:
             logger.warning("CuPy requested but not available, falling back to CPU")
-            return "cpu"
-        if backend == "jax" and not JAX_AVAILABLE:
-            logger.warning("JAX requested but not available, falling back to CPU")
             return "cpu"
         return backend
 
@@ -112,28 +63,18 @@ class ArrayModule:
             import cupy
 
             return cupy
-        if self.backend == "jax":
-            import jax.numpy
-
-            return jax.numpy
         return np
 
     def to_device(self, array):
         """Transfer array to the appropriate device."""
         if self.backend == "cupy":
             return cp.asarray(array)
-        if self.backend == "jax":
-            import jax.numpy as jnp
-
-            return jnp.asarray(array)
         return np.asarray(array)
 
     def to_cpu(self, array):
         """Transfer array back to CPU."""
         if self.backend == "cupy":
             return cp.asnumpy(array)
-        if self.backend == "jax":
-            return np.array(array)
         return array
 
     def get_info(self):
@@ -147,13 +88,6 @@ class ArrayModule:
             info["cuda_version"] = cp.cuda.runtime.runtimeGetVersion()
             info["device_name"] = cp.cuda.Device().name
             info["device_memory"] = cp.cuda.Device().mem_info
-        elif self.backend == "jax":
-            try:
-                import jax
-
-                info["devices"] = [str(d) for d in jax.devices()]
-            except ImportError:
-                info["devices"] = []
 
         return info
 
@@ -164,10 +98,10 @@ def get_array_module(use_gpu=True, backend="auto"):
 
     Args:
         use_gpu: Whether to use GPU if available
-        backend: Specific backend to use ('auto', 'cpu', 'cupy', 'jax')
+        backend: Specific backend to use ('auto', 'cpu', 'cupy')
 
     Returns:
-        Array module (numpy, cupy, or jax.numpy)
+        Array module (numpy or cupy)
     """
     if not use_gpu:
         return np
@@ -218,23 +152,12 @@ def check_gpu_memory_available(required_mb):
     Returns:
         Tuple of (has_enough_memory, available_mb, total_mb)
     """
-    global _jax_checked
-
     if CUPY_AVAILABLE:
         free, total = cp.cuda.Device().mem_info
         free_mb = free / (1024 * 1024)
         total_mb = total / (1024 * 1024)
         has_enough = free_mb >= required_mb
         return has_enough, free_mb, total_mb
-
-    # Check JAX availability on first use
-    if not _jax_checked:
-        _check_jax_available()
-        _jax_checked = True
-
-    # For JAX, assume we have enough memory (harder to check)
-    if JAX_AVAILABLE:
-        return True, 0, 0
 
     return False, 0, 0
 
