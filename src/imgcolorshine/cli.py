@@ -24,7 +24,7 @@ class ImgColorShineCLI:
         *attractors: str,
         output_image: str | None = None,
         luminance: bool = True,
-        chroma: bool = True,
+        saturation: bool = True,
         hue: bool = True,
         tile_size: int = 1024,
         LUT_size: int = 0,
@@ -41,7 +41,7 @@ class ImgColorShineCLI:
             *attractors: Color attractors in format "color;tolerance;strength"
             output_image: Output path (auto-generated if not provided)
             luminance: Transform lightness channel (L in OKLCH)
-            chroma: Transform chroma channel (C in OKLCH)
+            saturation: Transform saturation channel (C in OKLCH)
             hue: Transform hue channel (H in OKLCH)
             verbose: Enable verbose logging
             tile_size: Tile size for processing large images
@@ -53,18 +53,18 @@ class ImgColorShineCLI:
         Examples:
             imgcolorshine shine photo.jpg "red;50;75"
             imgcolorshine shine landscape.png "oklch(80% 0.2 60);40;60" "#ff6b35;30;80" --output_image=sunset.png
-            imgcolorshine shine portrait.jpg "green;60;90" --luminance=False --chroma=False
+            imgcolorshine shine portrait.jpg "green;60;90" --luminance=False --saturation=False
             imgcolorshine shine large.jpg "blue;30;50" --fast_hierar --fast_spatial
 
         """
-        # Delegate to main processing logic
+        # Delegate to main processing logic with correct parameter mapping
         process_image(
             input_image=input_image,
             attractors=attractors,
             output_image=output_image,
             luminance=luminance,
-            saturation=chroma,  # Map chroma to saturation parameter for backward compatibility
-            chroma=hue,  # Map hue to chroma parameter for backward compatibility
+            saturation=saturation,
+            chroma=hue,  # Map hue parameter to internal chroma parameter (which actually controls hue)
             verbose=verbose,
             tile_size=tile_size,
             gpu=gpu,
