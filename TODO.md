@@ -16,15 +16,6 @@ The strength of 200% means there is no falloff: the influence is always full wit
 
 ## Task
 
-Analyze which parts of the code can be sped up with numba. 
+Implement the tasks described in PLAN.md. 
 
-Analyze which parts of the code can be sped up with mypyc. 
-
-Integrate numba and mypyc into the codebase intelligently and elegantly. Research the resources. 
-
-Make sure that the build process includes the right steps to build the mypyc-compiled binaries. 
-
-Migrate `mypy.ini` to `pyproject.toml`, and adjust `pyproject.toml` to include the right steps to build the mypyc-compiled binaries. 
-
-What is build_ext.py and why is it there? 
-
+Work tirelessly, without asking me any questions, until the job is completely. 

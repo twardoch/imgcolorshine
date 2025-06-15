@@ -1,6 +1,10 @@
 # PLAN: Engineering Roadmap (v2025-06-16)
 # this_file: PLAN.md
 
+Implement the tasks described below. 
+
+Work tirelessly, without asking me any questions, until the job is completely. 
+
 ## 1. Purpose
 
 This document provides a **deeply technical execution roadmap** for evolving `imgcolorshine` from a functional prototype into a production-grade, high-performance library. It is targeted at a senior developer familiar with Python's performance ecosystem (Numba, mypyc, packaging).
@@ -17,9 +21,9 @@ The core performance drag is per-pixel processing in Python. Our strategy is two
 
 ### 2.1. Numba Vectorization & Kernel Fusion
 
-#### **Objective**: Eliminate per-pixel Python-level loops inside JIT-compiled functions.
+#### 2.1.1. **Objective**: Eliminate per-pixel Python-level loops inside JIT-compiled functions.
 
-#### **Target 1: Vectorize `_transform_pixels_percentile` in `engine.py`**
+#### 2.1.2. **Target 1: Vectorize `_transform_pixels_percentile` in `engine.py`**
 
 -   **Current State**: The function iterates over `H x W` pixels, calling helper functions for each one. This is suboptimal as it prevents SIMD vectorization across the image.
 
@@ -76,9 +80,9 @@ The core performance drag is per-pixel processing in Python. Our strategy is two
 
 ## 3. Build System & AOT with Mypyc
 
-#### **Objective**: Compile non-Numba-friendly Python modules into C extensions for a ~1.5-2x speedup and reduced interpreter overhead.
+#### 3.0.1. **Objective**: Compile non-Numba-friendly Python modules into C extensions for a ~1.5-2x speedup and reduced interpreter overhead.
 
-#### **Target 1: Migrate Build System from `setup.py` to `pyproject.toml` + Hatch**
+#### 3.0.2. **Target 1: Migrate Build System from `setup.py` to `pyproject.toml` + Hatch**
 
 -   **Current State**: A legacy `setup.py` exists, which complicates modern packaging workflows and mypyc integration. `build_ext.py` is an unused artifact. `mypy.ini` is separate.
 -   **Proposed Implementation**:
@@ -119,7 +123,7 @@ The core performance drag is per-pixel processing in Python. Our strategy is two
     -   The project can be installed from the built wheel and runs correctly.
     -   `setup.py`, `build_ext.py`, and `mypy.ini` are deleted.
 
-#### **Target 2: Guarded Imports for Development Mode**
+#### 3.0.3. **Target 2: Guarded Imports for Development Mode**
 
 -   **Current State**: In a development (editable) install, the compiled modules won't exist. Direct imports would fail.
 -   **Proposed Implementation**: Use a `try...except ImportError` block to create a fallback mechanism. The compiled module is preferred, but the pure-python version is used if it's not found.
@@ -145,7 +149,7 @@ The core performance drag is per-pixel processing in Python. Our strategy is two
 
 ## 4. Codebase Beautification & Refinement
 
-#### **Objective**: Improve code structure, readability, and maintainability.
+#### 4.0.1. **Objective**: Improve code structure, readability, and maintainability.
 
 -   **Target 1: Refactor `trans_numba.py`**
     -   **Problem**: This file is a long, flat list of functions. It's functional but lacks structure.
@@ -171,7 +175,7 @@ The core performance drag is per-pixel processing in Python. Our strategy is two
 | **4**  | Codebase Beautification & Alias Removal               | `trans_numba.py` is cleaner; aliases are gone.      |
 | **5**  | Final Benchmarking & Documentation Update             | `CHANGELOG.md` and `README.md` reflect all changes. |
 
-### Definition of Done:
+### 5.1. Definition of Done:
 -   [ ] **Performance**: Numba-vectorized functions show >5x speedup. Mypyc-compiled modules show >1.5x speedup.
 -   [ ] **Build**: `hatch build` is the sole mechanism for creating distributable packages.
 -   [ ] **Code Quality**: `mypy --strict` passes. No legacy aliases remain.

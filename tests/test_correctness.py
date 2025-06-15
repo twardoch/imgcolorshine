@@ -79,8 +79,8 @@ def test_batch_conversion():
     image = np.random.rand(height, width, 3).astype(np.float32)
 
     # Convert using Numba
-    oklab = trans_numba.srgb_to_oklab_batch(image)
-    rgb_back = trans_numba.oklab_to_srgb_batch(oklab)
+    oklab = trans_numba.batch_srgb_to_oklab(image)
+    rgb_back = trans_numba.batch_oklab_to_srgb(oklab)
 
     # Check RGB values are in valid range
     valid_range = np.logical_and(rgb_back >= 0, rgb_back <= 1).all()

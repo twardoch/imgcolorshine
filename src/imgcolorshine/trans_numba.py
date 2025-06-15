@@ -253,11 +253,3 @@ def batch_gamut_map_oklch(oklch_image: np.ndarray[Any, Any]) -> np.ndarray[Any, 
         for x in range(w):
             out[y, x] = gamut_map_oklch_single(oklch_image[y, x])
     return out
-
-
-# ---------------------------------------------------------------------------
-# Legacy aliases expected by older tests
-# ---------------------------------------------------------------------------
-
-srgb_to_oklab_batch = batch_srgb_to_oklab
-oklab_to_srgb_batch = batch_oklab_to_srgb
