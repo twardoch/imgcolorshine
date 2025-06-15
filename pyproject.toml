@@ -117,10 +117,10 @@ allow-direct-references = true
 [tool.mypyc]
 # Modules to compile with mypyc
 modules = [
-    "imgcolorshine.color",
-    "imgcolorshine.transform",
     "imgcolorshine.io",
     "imgcolorshine.falloff",
+    "imgcolorshine.gamut",
+    "imgcolorshine.utils",
 ]
 # Mypyc compilation options
 strict_optional = true

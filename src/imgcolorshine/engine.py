@@ -176,7 +176,7 @@ def _transform_pixels_percentile_vec(
     """
     h, w = pixels_lab.shape[:2]
     n_pixels = h * w
-    n_attr = attractors_lab.shape[0]
+    attractors_lab.shape[0]
 
     # Flatten pixel arrays to (N, 3)
     pix_lab_flat = pixels_lab.reshape(n_pixels, 3).astype(np.float32)
@@ -219,15 +219,15 @@ def _transform_pixels_percentile_vec(
     attr_cos = np.cos(attr_h_rad)
 
     # Luminance ---------------------------------------------------------
-    final_L = (
-        src_w[:, 0] * pix_lch_flat[:, 0] + (weights * attractors_lch[:, 0][None, :]).sum(axis=1)  # noqa: E501
+    final_l = (
+        src_w[:, 0] * pix_lch_flat[:, 0] + (weights * attractors_lch[:, 0][None, :]).sum(axis=1)
         if flags[0]
         else pix_lch_flat[:, 0]
     )
 
     # Chroma ------------------------------------------------------------
-    final_C = (
-        src_w[:, 0] * pix_lch_flat[:, 1] + (weights * attractors_lch[:, 1][None, :]).sum(axis=1)  # noqa: E501
+    final_c = (
+        src_w[:, 0] * pix_lch_flat[:, 1] + (weights * attractors_lch[:, 1][None, :]).sum(axis=1)
         if flags[1]
         else pix_lch_flat[:, 1]
     )
@@ -235,20 +235,20 @@ def _transform_pixels_percentile_vec(
     # Hue ---------------------------------------------------------------
     if flags[2]:
         pix_h_rad = np.deg2rad(pix_lch_flat[:, 2])
-        sin_sum = src_w[:, 0] * np.sin(pix_h_rad) + (weights * attr_sin[None, :]).sum(axis=1)  # noqa: E501
-        cos_sum = src_w[:, 0] * np.cos(pix_h_rad) + (weights * attr_cos[None, :]).sum(axis=1)  # noqa: E501
-        final_H = np.rad2deg(np.arctan2(sin_sum, cos_sum))
+        sin_sum = src_w[:, 0] * np.sin(pix_h_rad) + (weights * attr_sin[None, :]).sum(axis=1)
+        cos_sum = src_w[:, 0] * np.cos(pix_h_rad) + (weights * attr_cos[None, :]).sum(axis=1)
+        final_h = np.rad2deg(np.arctan2(sin_sum, cos_sum))
     else:
-        final_H = pix_lch_flat[:, 2]
+        final_h = pix_lch_flat[:, 2]
 
-    final_H = np.where(final_H < 0.0, final_H + 360.0, final_H)
-    h_rad = np.deg2rad(final_H)
+    final_h = np.where(final_h < 0.0, final_h + 360.0, final_h)
+    h_rad = np.deg2rad(final_h)
 
     # Convert LCH → Lab --------------------------------------------------
     out_lab_flat = np.empty_like(pix_lab_flat)
-    out_lab_flat[:, 0] = final_L
-    out_lab_flat[:, 1] = final_C * np.cos(h_rad)
-    out_lab_flat[:, 2] = final_C * np.sin(h_rad)
+    out_lab_flat[:, 0] = final_l
+    out_lab_flat[:, 1] = final_c * np.cos(h_rad)
+    out_lab_flat[:, 2] = final_c * np.sin(h_rad)
 
     return out_lab_flat.reshape(h, w, 3)
 
@@ -297,7 +297,7 @@ class ColorTransformer:
         logger.debug(f"Calculated distance thresholds (ΔE max): {delta_e_maxs}")
 
         logger.info("Applying color transformation...")
-        image_lch = trans_numba.batch_oklab_to_oklch(image_lab.astype(np.float32))  # noqa: E501
+        image_lch = trans_numba.batch_oklab_to_oklch(image_lab.astype(np.float32))
         transformed_lab = _transform_pixels_percentile_vec(
             image_lab, image_lch, attractors_lab, attractors_lch, delta_e_maxs, strengths, flags_array
         )

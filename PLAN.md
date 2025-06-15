@@ -25,6 +25,8 @@ The core performance drag is per-pixel processing in Python. Our strategy is two
 
 #### 2.1.2. **Target 1: Vectorize `_transform_pixels_percentile` in `engine.py`**
 
+- [ ] **2.1.2.1. Analyze current implementation**
+
 -   **Current State**: The function iterates over `H x W` pixels, calling helper functions for each one. This is suboptimal as it prevents SIMD vectorization across the image.
 
     ```python
@@ -180,3 +182,47 @@ The core performance drag is per-pixel processing in Python. Our strategy is two
 -   [ ] **Build**: `hatch build` is the sole mechanism for creating distributable packages.
 -   [ ] **Code Quality**: `mypy --strict` passes. No legacy aliases remain.
 -   [ ] **Documentation**: `README.md` and `CHANGELOG.md` are fully updated. `PLAN.md` is marked as complete.
+
+---
+
+## 6. Lean-Down Cleanup Candidates  🚯
+
+_A pragmatic, performance-first audit of the repository._
+
+The items below **provide no production value** after the refactor (Numba + mypy-strict, no legacy fallbacks) and can be **deleted outright** or **stripped from runtime paths**.  They are kept only for historical context or super-narrow debugging scenarios that are now obsolete.
+
+### 6.1. Obsolete Build / Packaging Artifacts
+- `build_ext.py` — removed already; legacy setup-py bridge for mypyc.
+- `setup.py` — does not exist anymore; ensure it never re-appears.
+
+### 6.2. Developer-Only Helper Scripts
+- `testdata/example.sh`, `testdata/quicktest.sh` — ad-hoc demo scripts.
+- `cleanup.sh` — CI/lint shortcut superseded by `hatch fix` and GitHub Actions.
+- Everything in `tests/debug_*` (`debug_color_distances.py`, `debug_transformation.py`, etc.).
+- One-shot notebooks or scratch pads that creep in the future.
+
+### 6.3. Legacy / Compatibility Code Paths
+- **GPU Fallback Layers** in `src/imgcolorshine/gpu.py`:
+  - Drop JAX support (`_check_jax_available`, JAX branches) ⇒ CuPy-only path.
+  - Remove `ArrayModule.backend=='cpu'` indirection — we always call NumPy directly when GPU disabled.
+- **Old per-pixel kernel** `_calculate_weights_percentile()` and the commented `@numba.njit` decorator lines in `engine.py`.
+- Any mention of `old/imgcolorshine/` in docstrings (pure documentation rot).
+- Commented-out alias blocks (`srgb_to_oklab_batch = …`) — already excised.
+
+### 6.4. Low-Value Tests
+Unit tests that solely exercised _removed_ compatibility shims can be trimmed to speed CI:
+- Tests gating JAX/cpu fallbacks in `tests/test_gpu.py` (`test_array_module_jax_*`, etc.).
+- `tests/test_cli_simple.py` duplicates coverage of `tests/test_cli.py`.
+- Redundant "debug" tests (`tests/simple_debug.py`, `tests/debug_*`).
+
+### 6.5. Generated / Packed Files
+- `llms.txt`  — massive concatenation for LLM ingestion; not needed in wheel/source dist.
+- `.giga/`, `.cursor/` auxiliary metadata.
+- Coverage artefacts (`htmlcov/`, `coverage.xml`) — keep in `.gitignore` only.
+
+### 6.6. Documentation Stubs
+- Any empty `docs/` pages or placeholder markdown (e.g. `COVERAGE_REPORT.md` once pipeline reports are automated).
+
+> **Action**: create a one-time pruning commit that deletes the above paths and strips code branches in a single shot.  Follow with a `ruff --fix` & `mypy` pass to ensure no dangling imports.
+
+---

@@ -1,56 +1,62 @@
 ---
-description: Specification for the color attractor model that handles color transformations using physics-inspired attraction in OKLCH space
-globs: src/imgcolorshine/trans_*.py,src/imgcolorshine/color.py,src/imgcolorshine/colorshine.py
+description: Specification for the physics-inspired color attractor model that transforms images using perceptually uniform color space
+globs: src/imgcolorshine/color.py,src/imgcolorshine/transform.py,src/imgcolorshine/falloff.py
 alwaysApply: false
 ---
 
 
 # attractor-model
 
-The attractor model implements a physics-inspired color transformation system operating in OKLCH perceptual color space.
+## Core Attractor Model Components (Importance: 95)
 
-## Core Components
+The attractor model implements a physics-inspired color transformation system using:
 
-### Color Attraction System
-Importance Score: 95
-- Each attractor color acts as a gravitational center in OKLCH space
-- Influence determined by perceptual color distance (ΔE in Oklab)
-- Tolerance radius maps 0-100 to 0-2.5 ΔE for influence range
-- Strength parameter (0-100) controls maximum pull intensity
-- Raised cosine falloff ensures smooth color transitions
+1. Perceptual Distance Calculation
+- Calculates color similarity in OKLCH space between pixels and attractors
+- Uses percentile-based tolerance to determine influence radius
+- Implements raised cosine falloff for smooth transitions
 
-### Multi-Attractor Blending 
-Importance Score: 90
-- Multiple attractors blend influences through normalized weighted averaging
-- Weights determined by:
-  - Perceptual distance to target color
-  - Attractor strength
-  - Tolerance radius
-- Channel-specific transformations for luminance, saturation, and hue
-- Special handling for circular hue blending using trigonometric means
+2. Multi-Attractor Blending
+- Combines influence from multiple attractors using weighted averaging
+- Weights determined by perceptual distance and attractor strength
+- Handles overlapping areas of influence gracefully
 
-### Channel Control
-Importance Score: 85
-- Independent control over luminance, saturation, and hue channels
-- Selective channel transformation with others preserved
-- Grayscale preservation for hue-only transformations
-- Weight normalization system maintains color integrity
+3. Channel-Specific Transformations
+- Independent control over lightness, chroma and hue channels
+- Channel-specific attraction strength modulation
+- Preserves unmodified channels during transformation
 
-### Distance Calculations
-Importance Score: 80
-- Uses perceptual color difference (ΔE) in Oklab space
-- Maximum influence threshold at 2.5 ΔE
-- Linear mapping of tolerance values to perceptual distance
-- Smooth falloff based on normalized distance
+## Attractor Parameters (Importance: 90)
 
-### Gamut Mapping
-Importance Score: 75
-- CSS Color Module 4 compliant gamut mapping
-- Binary search on chroma to find displayable colors
-- Preserves perceptual attributes during gamut correction
-- Maintains color relationships while ensuring display validity
+1. Tolerance (0-100)
+- Percentile-based radius of influence 
+- 0% = no pixels affected
+- 50% = affects half the pixels most similar to attractor
+- 100% = affects all pixels
+- Adapts to each image's unique color distribution
 
-The model implements a "pull" rather than "replace" approach, creating natural color transitions based on perceptual similarity and specified parameters. This ensures smooth, intuitive color transformations while maintaining visual coherence.
+2. Strength (0-200)
+- Controls transformation intensity
+- 0-100: Progressive falloff based on distance
+- 100-200: Overrides falloff curve
+- Full strength (100) makes nearest pixels match attractor exactly
+
+## Key Implementation Details (Importance: 85)
+
+1. Distance-Based Influence
+- Stronger influence on pixels more similar to attractor
+- Continuous falloff based on perceptual distance
+- Normalized weighting across multiple attractors
+
+2. Perceptual Uniformity
+- All operations performed in OKLCH space
+- Ensures natural-looking transformations
+- Maintains visual coherence of results
+
+Relevant Files:
+- src/imgcolorshine/color.py: Core attractor model implementation
+- src/imgcolorshine/transform.py: Color transformation logic
+- src/imgcolorshine/falloff.py: Distance-based influence functions
 
 $END$
 

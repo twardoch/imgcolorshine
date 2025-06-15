@@ -16,6 +16,8 @@ The strength of 200% means there is no falloff: the influence is always full wit
 
 ## Task
 
-Implement the tasks described in PLAN.md. 
+1. Rewrite `PLAN.md` so that its various subeadings and steps are numbered and include checkable `[ ]` boxes. 
 
-Work tirelessly, without asking me any questions, until the job is completely. 
+2. Start implementing the tasks described in PLAN.md. As you work, check off the `[x]` boxes in the `PLAN.md` file. 
+
+3. Work tirelessly, without asking me any questions, until the job is complete. 

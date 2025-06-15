@@ -1,71 +1,59 @@
 ---
-description: Data processing and memory management for image color transformations using tiled processing and acceleration strategies
-globs: src/imgcolorshine/*.py
+description: Analyzes data flow and image processing pipeline organization for color transformation systems that operate on large images
+globs: src/imgcolorshine/io.py,src/imgcolorshine/transform.py,src/imgcolorshine/engine.py,src/imgcolorshine/spatial.py
 alwaysApply: false
 ---
 
 
 # data-flow-processing
 
-## Core Processing Pipeline
+### Image Processing Pipeline Architecture
 
-The image processing pipeline implements a multi-stage color transformation system:
+The data flow pipeline consists of several key stages that handle large image processing efficiently:
 
-1. Image Tiling System
-- Automatic tile size determination (default 1024x1024)
-- Overlap handling for seamless tile boundaries
-- Memory-aware tiling for images >2GB
+#### 1. Memory-Aware Tiling System
+- Analyzes image dimensions and available memory to determine optimal tile sizes
+- Implements automatic tiling with overlap regions to prevent edge artifacts
+- Located in: `src/imgcolorshine/io.py`
 
-2. Color Processing Stages 
-- Color space conversion: sRGB → Oklab → OKLCH
-- Attraction calculation per pixel/tile
-- Gamut mapping and back-conversion
-- Result assembly from processed tiles
+#### 2. Color Space Transformation Flow
+- Converts input tiles to OKLCH color space 
+- Processes transformations in perceptually uniform space
+- Maps results back to output color space
+- Located in: `src/imgcolorshine/transform.py`
 
-3. Acceleration Methods
-- GPU acceleration with CuPy for parallel tile processing
-- 3D Color LUT with caching for repeated transformations
-- Hierarchical multi-resolution for large images
-- Spatial acceleration for local coherence
+#### 3. Spatial Acceleration Structure
+Implements a hierarchical grid system for optimizing color transformations:
+- Subdivides image into regions based on color similarity
+- Groups similar regions to reduce redundant calculations
+- Located in: `src/imgcolorshine/spatial.py`
 
-## Memory Management
+#### 4. Multi-Resolution Processing
+- Processes image at multiple scales, starting with lowest resolution
+- Propagates results to higher resolutions
+- Preserves fine details while accelerating processing
+- Located in: `src/imgcolorshine/engine.py`
 
-1. Tile Management
-- Automatic tile sizing based on available memory
-- Overlap regions for continuous color transitions
-- Progressive tile loading/unloading
+#### 5. Stream Processing Pipeline
+- Processes tiles sequentially to minimize memory usage
+- Implements producer-consumer pattern for tile processing
+- Located in: `src/imgcolorshine/io.py`
 
-2. Cache Systems
-- LUT caching for repeated transformations 
-- Tile analysis results caching
-- Intermediate color conversion caching
+### Critical Data Flows
 
-## Data Flow Components
-
-1. Input Processing
-- Image loading and color space conversion
-- Tile generation and scheduling
-- Parameter validation and normalization
-
-2. Color Transformation
-- Per-tile parallel processing
-- Multi-attractor influence calculation
-- Channel-specific transformations
-- Result merging and boundary handling
-
-3. Output Assembly
-- Tile recombination with overlap handling
-- Final color space conversion
-- Memory-efficient result writing
-
-File Paths:
+1. **Input Processing Flow**
 ```
-src/imgcolorshine/
-  spatial.py    - Spatial acceleration and tiling
-  hierar.py     - Hierarchical processing
-  trans_gpu.py  - GPU acceleration
-  kernel.py     - Core processing kernels
-  lut.py        - LUT acceleration
+Load Image -> Split into Tiles -> Convert Color Space -> Process Tiles -> Merge Results
+```
+
+2. **Tile Processing Flow**  
+```
+Get Tile -> Apply Color Transform -> Handle Edge Cases -> Write Back
+```
+
+3. **Memory Management Flow**
+```
+Check Size -> Calculate Tiles -> Allocate Buffers -> Process -> Release
 ```
 
 $END$
