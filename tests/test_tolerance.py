@@ -14,8 +14,8 @@ and produces expected results for known color distances.
 import numpy as np
 import pytest
 
-from imgcolorshine.color_engine import OKLCHEngine
-from imgcolorshine.transforms import MAX_DELTA_E, calculate_weights
+from imgcolorshine.color import OKLCHEngine
+from imgcolorshine.transform import MAX_DELTA_E, calculate_weights
 
 
 class TestToleranceCalculation:

@@ -51,7 +51,6 @@ dev = [
 test = [
     'pytest>=8.3.4',
     'pytest-cov>=6.0.0',
-    'pytest-xdist>=3.6.1',
     'pytest-benchmark[histogram]>=5.1.0',
     'pytest-asyncio>=0.26.0',
     'coverage[toml]>=7.6.12',
@@ -71,7 +70,6 @@ all = [
     'pytest-asyncio>=0.26.0',
     'pytest-benchmark[histogram]>=5.1.0',
     'pytest-cov>=6.0.0',
-    'pytest-xdist>=3.6.1',
     'pytest>=8.3.4',
     'pyupgrade>=3.19.1',
     'ruff>=0.9.7',
@@ -124,16 +122,16 @@ test = 'pytest {args:tests}'
 test-cov = 'pytest --cov-report=term-missing --cov-config=pyproject.toml --cov=src/imgcolorshine --cov=tests {args:tests}'
 type-check = 'mypy src/imgcolorshine tests'
 lint = [
-    'ruff check src/imgcolorshine tests',
-    'ruff format --respect-gitignore src/imgcolorshine tests',
+    'uvx ruff check src/imgcolorshine tests',
+    'uvx ruff format --respect-gitignore src/imgcolorshine tests', 'uvx ty check'
 ]
 fmt = [
-    'ruff format --respect-gitignore src/imgcolorshine tests',
-    'ruff check --fix src/imgcolorshine tests',
+    'uvx ruff format --respect-gitignore src/imgcolorshine tests',
+    'uvx ruff check --fix src/imgcolorshine tests',
 ]
 fix = [
-    'ruff check --fix --unsafe-fixes src/imgcolorshine tests',
-    'ruff format --respect-gitignore src/imgcolorshine tests',
+    'uvx ruff check --fix --unsafe-fixes src/imgcolorshine tests',
+    'uvx ruff format --respect-gitignore src/imgcolorshine tests',
 ]
 [[tool.hatch.envs.all.matrix]]
 python = [
@@ -170,8 +168,8 @@ all = [
 features = ['test']
 
 [tool.hatch.envs.test.scripts]
-test = 'python -m pytest -n auto {args:tests}'
-test-cov = 'python -m pytest -n auto --cov-report=term-missing --cov-config=pyproject.toml --cov=src/imgcolorshine --cov=tests {args:tests}'
+test = 'python -m pytest {args:tests}'
+test-cov = 'python -m pytest --cov-report=term-missing --cov-config=pyproject.toml --cov=src/imgcolorshine --cov=tests {args:tests}'
 bench = 'python -m pytest -v -p no:briefcase tests/test_benchmark.py --benchmark-only'
 bench-save = 'python -m pytest -v -p no:briefcase tests/test_benchmark.py --benchmark-only --benchmark-json=benchmark/results.json'
 
@@ -238,13 +236,14 @@ module = ['tests.*']
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 [tool.pytest.ini_options]
-addopts = '-v --durations=10 -p no:briefcase'
+addopts = '-v --durations=10 -p no:briefcase -p no:ruff -p no:black -p no:xdist'
 asyncio_mode = 'auto'
 asyncio_default_fixture_loop_scope = 'function'
 console_output_style = 'progress'
 filterwarnings = [
     'ignore::DeprecationWarning',
     'ignore::UserWarning',
+    'ignore:pkg_resources is deprecated:UserWarning',
 ]
 log_cli = true
 log_cli_level = 'INFO'

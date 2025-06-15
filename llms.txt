@@ -67,6 +67,7 @@ src/
     io.py
     kernel.py
     lut.py
+    py.typed
     spatial.py
     trans_gpu.py
     trans_numba.py
@@ -99,6 +100,916 @@ TODO.md
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="src/imgcolorshine/py.typed">
+# Marker file for PEP 561
+# this_file: src/imgcolorshine/py.typed
+</file>
+
+<file path=".giga/specifications.json">
+[
+  {
+    "fileName": "main-overview.mdc",
+    "description": "Complete system overview covering the image color transformation architecture, key components, and their interactions within the OKLCH color space system"
+  },
+  {
+    "fileName": "color-transformation-algorithms.mdc",
+    "description": "Detailed documentation of the core color transformation algorithms, including the attractor model, falloff functions, and gamut mapping implementations"
+  },
+  {
+    "fileName": "color-space-models.mdc",
+    "description": "Comprehensive documentation of the color space models (RGB, OKLCH, Oklab), their relationships, and conversion algorithms used throughout the system"
+  },
+  {
+    "fileName": "data-flow-processing.mdc",
+    "description": "Documentation of the image processing pipeline, memory management strategies, and data flow between components including tiled processing for large images"
+  },
+  {
+    "fileName": "attractor-model.mdc",
+    "description": "Detailed specification of the color attractor model, including distance calculations, blending mechanisms, and channel-specific transformations"
+  }
+]
+</file>
+
+<file path=".github/workflows/push.yml">
+name: Build & Test
+
+on:
+  push:
+    branches: [main]
+    tags-ignore: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Ruff lint
+        uses: astral-sh/ruff-action@v3
+        with:
+          version: "latest"
+          args: "check --output-format=github"
+
+      - name: Run Ruff Format
+        uses: astral-sh/ruff-action@v3
+        with:
+          version: "latest"
+          args: "format --check --respect-gitignore"
+
+  test:
+    name: Run Tests
+    needs: quality
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+        os: [ubuntu-latest]
+      fail-fast: true
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install UV
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-suffix: ${{ matrix.os }}-${{ matrix.python-version }}
+
+      - name: Install test dependencies
+        run: |
+          uv pip install --system --upgrade pip
+          uv pip install --system ".[test]"
+
+      - name: Run tests with Pytest
+        run: uv run pytest -n auto --maxfail=1 --disable-warnings --cov-report=xml --cov-config=pyproject.toml --cov=src/imgcolorshine --cov=tests tests/
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.python-version }}-${{ matrix.os }}
+          path: coverage.xml
+
+  build:
+    name: Build Distribution
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install UV
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install build tools
+        run: uv pip install build hatchling hatch-vcs
+
+      - name: Build distributions
+        run: uv run python -m build --outdir dist
+
+      - name: Upload distribution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-files
+          path: dist/
+          retention-days: 5
+</file>
+
+<file path=".github/workflows/release.yml">
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    name: Release to PyPI
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/imgcolorshine
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install UV
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install build tools
+        run: uv pip install build hatchling hatch-vcs
+
+      - name: Build distributions
+        run: uv run python -m build --outdir dist
+
+      - name: Verify distribution files
+        run: |
+          ls -la dist/
+          test -n "$(find dist -name '*.whl')" || (echo "Wheel file missing" && exit 1)
+          test -n "$(find dist -name '*.tar.gz')" || (echo "Source distribution missing" && exit 1)
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+</file>
+
+<file path="src/imgcolorshine/__main__.py">
+#!/usr/bin/env -S uv run -s
+# /// script
+# dependencies = []
+# ///
+# this_file: src/imgcolorshine/__main__.py
+
+"""
+Entry point for imgcolorshine package.
+
+Thin wrapper that calls the Fire CLI.
+"""
+
+from imgcolorshine.cli import main
+
+if __name__ == "__main__":
+    main()
+</file>
+
+<file path="src/imgcolorshine/falloff.py">
+#!/usr/bin/env -S uv run -s
+# /// script
+# dependencies = ["numpy", "numba"]
+# ///
+# this_file: src/imgcolorshine/falloff.py
+
+"""
+Falloff functions for color attraction.
+
+Provides various mathematical curves for controlling how color attraction
+strength decreases with distance. The raised cosine is the default and
+recommended function for smooth, natural transitions.
+"""
+
+from collections.abc import Callable
+from enum import Enum
+
+import numba
+import numpy as np
+
+
+class FalloffType(Enum):
+    """Available falloff curve types.
+
+    Different mathematical functions for controlling attraction falloff.
+    Used for customizing the behavior of color transformations.
+
+    Used in:
+    - old/imgcolorshine/test_imgcolorshine.py
+    - src/imgcolorshine/__init__.py
+    """
+
+    COSINE = "cosine"  # Smooth raised cosine (default)
+    LINEAR = "linear"  # Simple linear falloff
+    QUADRATIC = "quadratic"  # Quadratic ease-out
+    GAUSSIAN = "gaussian"  # Gaussian bell curve
+    CUBIC = "cubic"  # Cubic ease-out
+
+
+@numba.njit
+def falloff_cosine(d_norm: float) -> float:
+    """
+    Raised cosine falloff (smooth and natural).
+
+    This is the default and recommended falloff function,
+    providing smooth transitions without harsh edges.
+
+    """
+    return 0.5 * (np.cos(d_norm * np.pi) + 1.0)
+
+
+@numba.njit
+def falloff_linear(d_norm: float) -> float:
+    """Simple linear falloff."""
+    return 1.0 - d_norm
+
+
+@numba.njit
+def falloff_quadratic(d_norm: float) -> float:
+    """Quadratic ease-out falloff."""
+    return 1.0 - d_norm * d_norm
+
+
+@numba.njit
+def falloff_gaussian(d_norm: float) -> float:
+    """
+    Gaussian falloff with sigma=0.4.
+
+    Provides a bell curve with most influence near the center.
+
+    """
+    sigma = 0.4
+    return np.exp(-(d_norm * d_norm) / (2 * sigma * sigma))
+
+
+@numba.njit
+def falloff_cubic(d_norm: float) -> float:
+    """Cubic ease-out falloff."""
+    inv = 1.0 - d_norm
+    return inv * inv * inv
+
+
+@numba.njit
+def calculate_falloff(d_norm: float, falloff_type: int = 0) -> float:
+    """
+    Calculate falloff value based on normalized distance.
+
+    Args:
+        d_norm: Normalized distance (0 to 1)
+        falloff_type: Type of falloff curve (0=cosine, 1=linear, etc.)
+
+    Returns:
+        Falloff value (0 to 1)
+
+    """
+    if falloff_type == 0:  # COSINE
+        return falloff_cosine(d_norm)
+    if falloff_type == 1:  # LINEAR
+        return falloff_linear(d_norm)
+    if falloff_type == 2:  # QUADRATIC
+        return falloff_quadratic(d_norm)
+    if falloff_type == 3:  # GAUSSIAN
+        return falloff_gaussian(d_norm)
+    if falloff_type == 4:  # CUBIC
+        return falloff_cubic(d_norm)
+    # Default to cosine
+    return falloff_cosine(d_norm)
+
+
+def get_falloff_function(falloff_type: FalloffType) -> Callable[[float], float]:
+    """
+    Get the appropriate falloff function.
+
+    Args:
+        falloff_type: Type of falloff curve
+
+    Returns:
+        Falloff function
+
+    Used in:
+    - src/imgcolorshine/__init__.py
+    """
+    mapping = {
+        FalloffType.COSINE: falloff_cosine,
+        FalloffType.LINEAR: falloff_linear,
+        FalloffType.QUADRATIC: falloff_quadratic,
+        FalloffType.GAUSSIAN: falloff_gaussian,
+        FalloffType.CUBIC: falloff_cubic,
+    }
+
+    return mapping.get(falloff_type, falloff_cosine)
+
+
+def visualize_falloff(falloff_type: FalloffType, samples: int = 100) -> np.ndarray:
+    """
+    Generate data for visualizing a falloff curve.
+
+    Args:
+        falloff_type: Type of falloff curve
+        samples: Number of samples to generate
+
+    Returns:
+        Array of shape (samples, 2) with [distance, falloff] pairs
+
+    Used for testing and visualization purposes.
+
+    Used in:
+    - old/imgcolorshine/test_imgcolorshine.py
+    """
+    distances = np.linspace(0, 1, samples)
+    falloff_func = get_falloff_function(falloff_type)
+
+    values = np.array([falloff_func(d) for d in distances])
+
+    return np.column_stack([distances, values])
+
+
+def precompute_falloff_lut(falloff_type: FalloffType = FalloffType.COSINE, resolution: int = 1024) -> np.ndarray:
+    """
+    Precompute a lookup table for fast falloff calculations.
+
+    Args:
+        falloff_type: Type of falloff curve
+        resolution: Number of entries in the lookup table
+
+    Returns:
+        Lookup table array
+
+    """
+    lut = np.zeros(resolution, dtype=np.float32)
+    falloff_func = get_falloff_function(falloff_type)
+
+    for i in range(resolution):
+        d_norm = i / (resolution - 1)
+        lut[i] = falloff_func(d_norm)
+
+    return lut
+
+
+@numba.njit
+def apply_falloff_lut(d_norm: float, lut: np.ndarray) -> float:
+    """
+    Apply falloff using a precomputed lookup table.
+
+    Args:
+        d_norm: Normalized distance (0 to 1)
+        lut: Precomputed lookup table
+
+    Returns:
+        Interpolated falloff value
+
+    """
+    # Get LUT index
+    idx_float = d_norm * (len(lut) - 1)
+    idx = int(idx_float)
+
+    # Handle edge cases
+    if idx >= len(lut) - 1:
+        return lut[-1]
+    if idx < 0:
+        return lut[0]
+
+    # Linear interpolation between LUT entries
+    frac = idx_float - idx
+    return lut[idx] * (1 - frac) + lut[idx + 1] * frac
+</file>
+
+<file path="tests/debug_color_distances.py">
+#!/usr/bin/env python3
+"""
+Diagnostic script to understand color distances and tolerance issues in imgcolorshine.
+"""
+
+import numpy as np
+from coloraide import Color
+
+
+def test_color_distances():
+    """Test actual Delta E values between different colors."""
+
+    # Define test colors
+    colors = {
+        "blue": "blue",
+        "light_blue": "lightblue",
+        "cyan": "cyan",
+        "red": "red",
+        "green": "green",
+        "yellow": "yellow",
+        "white": "white",
+        "black": "black",
+        "gray": "gray",
+        "jacket_blue": "rgb(173, 216, 230)",  # Approximate jacket color from Louis image
+    }
+
+    # Convert to Oklab
+    oklab_colors = {}
+    for name, color_str in colors.items():
+        color = Color(color_str)
+        oklab = color.convert("oklab")
+        oklab_colors[name] = np.array([oklab["lightness"], oklab["a"], oklab["b"]])
+
+    blue_oklab = oklab_colors["blue"]
+
+    for name, oklab in oklab_colors.items():
+        if name != "blue":
+            delta_e = np.sqrt(np.sum((blue_oklab - oklab) ** 2))
+
+    # Test current tolerance formula
+    tolerances = [20, 40, 60, 80, 100]
+
+    for tolerance in tolerances:
+        # Current (broken) formula
+        current_max = 1.0 * (tolerance / 100.0) ** 2
+
+        # Proposed fixed formula
+        proposed_max = 5.0 * (tolerance / 100.0)
+
+    # Simulate what happens with tolerance=80, strength=80
+    tolerance = 80
+    current_max = 1.0 * (tolerance / 100.0) ** 2  # 0.64
+    proposed_max = 5.0 * (tolerance / 100.0)  # 4.0
+
+    for name, oklab in oklab_colors.items():
+        if name != "blue":
+            delta_e = np.sqrt(np.sum((blue_oklab - oklab) ** 2))
+            if delta_e <= current_max:
+                pass
+            else:
+                pass
+
+    for name, oklab in oklab_colors.items():
+        if name != "blue":
+            delta_e = np.sqrt(np.sum((blue_oklab - oklab) ** 2))
+            if delta_e <= proposed_max:
+                pass
+            else:
+                pass
+
+
+if __name__ == "__main__":
+    test_color_distances()
+</file>
+
+<file path=".cursorindexingignore">
+# Don't index SpecStory auto-save files, but allow explicit context inclusion via @ references
+.specstory/**
+</file>
+
+<file path=".gitignore">
+*_autogen/
+.DS_Store
+__version__.py
+__pycache__/
+_Chutzpah*
+_deps
+_NCrunch_*
+_pkginfo.txt
+_Pvt_Extensions
+_ReSharper*/
+_TeamCity*
+_UpgradeReport_Files/
+!?*.[Cc]ache/
+!.axoCover/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!**/[Pp]ackages/build/
+!Directory.Build.rsp
+.*crunch*.local.xml
+.axoCover/*
+.builds
+.cr/personal
+.fake/
+.history/
+.ionide/
+.localhistory/
+.mfractor/
+.ntvs_analysis.dat
+.paket/paket.exe
+.sass-cache/
+.vs/
+.vscode
+.vscode/*
+.vshistory/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+[Bb]in/
+[Bb]uild[Ll]og.*
+[Dd]ebug/
+[Dd]ebugPS/
+[Dd]ebugPublic/
+[Ee]xpress/
+[Ll]og/
+[Ll]ogs/
+[Oo]bj/
+[Rr]elease/
+[Rr]eleasePS/
+[Rr]eleases/
+[Tt]est[Rr]esult*/
+[Ww][Ii][Nn]32/
+*_h.h
+*_i.c
+*_p.c
+*_wpftmp.csproj
+*- [Bb]ackup ([0-9]).rdl
+*- [Bb]ackup ([0-9][0-9]).rdl
+*- [Bb]ackup.rdl
+*.[Cc]ache
+*.[Pp]ublish.xml
+*.[Rr]e[Ss]harper
+*.a
+*.app
+*.appx
+*.appxbundle
+*.appxupload
+*.aps
+*.azurePubxml
+*.bim_*.settings
+*.bim.layout
+*.binlog
+*.btm.cs
+*.btp.cs
+*.build.csdef
+*.cab
+*.cachefile
+*.code-workspace
+*.coverage
+*.coveragexml
+*.d
+*.dbmdl
+*.dbproj.schemaview
+*.dll
+*.dotCover
+*.DotSettings.user
+*.dsp
+*.dsw
+*.dylib
+*.e2e
+*.exe
+*.gch
+*.GhostDoc.xml
+*.gpState
+*.ilk
+*.iobj
+*.ipdb
+*.jfm
+*.jmconfig
+*.la
+*.lai
+*.ldf
+*.lib
+*.lo
+*.log
+*.mdf
+*.meta
+*.mm.*
+*.mod
+*.msi
+*.msix
+*.msm
+*.msp
+*.ncb
+*.ndf
+*.nuget.props
+*.nuget.targets
+*.nupkg
+*.nvuser
+*.o
+*.obj
+*.odx.cs
+*.opendb
+*.opensdf
+*.opt
+*.out
+*.pch
+*.pdb
+*.pfx
+*.pgc
+*.pgd
+*.pidb
+*.plg
+*.psess
+*.publishproj
+*.publishsettings
+*.pubxml
+*.pyc
+*.rdl.data
+*.rptproj.bak
+*.rptproj.rsuser
+*.rsp
+*.rsuser
+*.sap
+*.sbr
+*.scc
+*.sdf
+*.sln.docstates
+*.sln.iml
+*.slo
+*.smod
+*.snupkg
+*.so
+*.suo
+*.svclog
+*.tlb
+*.tlh
+*.tli
+*.tlog
+*.tmp
+*.tmp_proj
+*.tss
+*.user
+*.userosscache
+*.userprefs
+*.vbp
+*.vbw
+*.VC.db
+*.VC.VC.opendb
+*.VisualState.xml
+*.vsp
+*.vspscc
+*.vspx
+*.vssscc
+*.xsd.cs
+**/[Pp]ackages/*
+**/*.DesktopClient/GeneratedArtifacts
+**/*.DesktopClient/ModelManifest.xml
+**/*.HTMLClient/GeneratedArtifacts
+**/*.Server/GeneratedArtifacts
+**/*.Server/ModelManifest.xml
+*~
+~$*
+$tf/
+AppPackages/
+artifacts/
+ASALocalRun/
+AutoTest.Net/
+Backup*/
+BenchmarkDotNet.Artifacts/
+bld/
+BundleArtifacts/
+ClientBin/
+cmake_install.cmake
+CMakeCache.txt
+CMakeFiles
+CMakeLists.txt.user
+CMakeScripts
+CMakeUserPresets.json
+compile_commands.json
+coverage*.info
+coverage*.json
+coverage*.xml
+csx/
+CTestTestfile.cmake
+dlldata.c
+DocProject/buildhelp/
+DocProject/Help/*.hhc
+DocProject/Help/*.hhk
+DocProject/Help/*.hhp
+DocProject/Help/*.HxC
+DocProject/Help/*.HxT
+DocProject/Help/html
+DocProject/Help/Html2
+ecf/
+FakesAssemblies/
+FodyWeavers.xsd
+Generated_Code/
+Generated\ Files/
+healthchecksdb
+install_manifest.txt
+ipch/
+Makefile
+MigrationBackup/
+mono_crash.*
+nCrunchTemp_*
+node_modules/
+nunit-*.xml
+OpenCover/
+orleans.codegen.cs
+Package.StoreAssociation.xml
+paket-files/
+project.fragment.lock.json
+project.lock.json
+publish/
+PublishScripts/
+rcf/
+ScaffoldingReadMe.txt
+ServiceFabricBackup/
+StyleCopReport.xml
+Testing
+TestResult.xml
+UpgradeLog*.htm
+UpgradeLog*.XML
+x64/
+x86/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Distribution / packaging
+!dist/.gitkeep
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+.ruff_cache/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+__version__.py
+_private
+VERSION.txt
+</file>
+
+<file path=".pre-commit-config.yaml">
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.3.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+        args: [--respect-gitignore]
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+      - id: debug-statements
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]
+</file>
+
+<file path="LICENSE">
+MIT License
+
+Copyright (c) 2025 Adam Twardoch
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+</file>
+
+<file path="package.toml">
+# Package configuration
+[package]
+include_cli = true        # Include CLI boilerplate
+include_logging = true    # Include logging setup
+use_pydantic = true      # Use Pydantic for data validation
+use_rich = true          # Use Rich for terminal output
+
+[features]
+mkdocs = false           # Enable MkDocs documentation
+vcs = true              # Initialize Git repository
+github_actions = true   # Add GitHub Actions workflows
+</file>
+
+<file path="pyrightconfig.json">
+{
+  "include": [
+    "**/*.py"
+  ],
+  "exclude": [
+    ".",
+    "**/node_modules",
+    "**/__pycache__"
+  ],
+  "reportMissingImports": false,
+  "reportMissingTypeStubs": false,
+  "pythonVersion": "3.10"
+}
+</file>
 
 <file path=".cursor/rules/attractor-model.mdc">
 ---
@@ -343,208 +1254,6 @@ $END$
  If you're using this file in context, clearly say in italics in one small line that "Context added by Giga data-flow-processing".
 </file>
 
-<file path=".giga/specifications.json">
-[
-  {
-    "fileName": "main-overview.mdc",
-    "description": "Complete system overview covering the image color transformation architecture, key components, and their interactions within the OKLCH color space system"
-  },
-  {
-    "fileName": "color-transformation-algorithms.mdc",
-    "description": "Detailed documentation of the core color transformation algorithms, including the attractor model, falloff functions, and gamut mapping implementations"
-  },
-  {
-    "fileName": "color-space-models.mdc",
-    "description": "Comprehensive documentation of the color space models (RGB, OKLCH, Oklab), their relationships, and conversion algorithms used throughout the system"
-  },
-  {
-    "fileName": "data-flow-processing.mdc",
-    "description": "Documentation of the image processing pipeline, memory management strategies, and data flow between components including tiled processing for large images"
-  },
-  {
-    "fileName": "attractor-model.mdc",
-    "description": "Detailed specification of the color attractor model, including distance calculations, blending mechanisms, and channel-specific transformations"
-  }
-]
-</file>
-
-<file path=".github/workflows/push.yml">
-name: Build & Test
-
-on:
-  push:
-    branches: [main]
-    tags-ignore: ["v*"]
-  pull_request:
-    branches: [main]
-  workflow_dispatch:
-
-permissions:
-  contents: write
-  id-token: write
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-jobs:
-  quality:
-    name: Code Quality
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Run Ruff lint
-        uses: astral-sh/ruff-action@v3
-        with:
-          version: "latest"
-          args: "check --output-format=github"
-
-      - name: Run Ruff Format
-        uses: astral-sh/ruff-action@v3
-        with:
-          version: "latest"
-          args: "format --check --respect-gitignore"
-
-  test:
-    name: Run Tests
-    needs: quality
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.11", "3.12"]
-        os: [ubuntu-latest]
-      fail-fast: true
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install UV
-        uses: astral-sh/setup-uv@v5
-        with:
-          version: "latest"
-          python-version: ${{ matrix.python-version }}
-          enable-cache: true
-          cache-suffix: ${{ matrix.os }}-${{ matrix.python-version }}
-
-      - name: Install test dependencies
-        run: |
-          uv pip install --system --upgrade pip
-          uv pip install --system ".[test]"
-
-      - name: Run tests with Pytest
-        run: uv run pytest -n auto --maxfail=1 --disable-warnings --cov-report=xml --cov-config=pyproject.toml --cov=src/imgcolorshine --cov=tests tests/
-
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-${{ matrix.python-version }}-${{ matrix.os }}
-          path: coverage.xml
-
-  build:
-    name: Build Distribution
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install UV
-        uses: astral-sh/setup-uv@v5
-        with:
-          version: "latest"
-          python-version: "3.12"
-          enable-cache: true
-
-      - name: Install build tools
-        run: uv pip install build hatchling hatch-vcs
-
-      - name: Build distributions
-        run: uv run python -m build --outdir dist
-
-      - name: Upload distribution artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist-files
-          path: dist/
-          retention-days: 5
-</file>
-
-<file path=".github/workflows/release.yml">
-name: Release
-
-on:
-  push:
-    tags: ["v*"]
-
-permissions:
-  contents: write
-  id-token: write
-
-jobs:
-  release:
-    name: Release to PyPI
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/imgcolorshine
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install UV
-        uses: astral-sh/setup-uv@v5
-        with:
-          version: "latest"
-          python-version: "3.12"
-          enable-cache: true
-
-      - name: Install build tools
-        run: uv pip install build hatchling hatch-vcs
-
-      - name: Build distributions
-        run: uv run python -m build --outdir dist
-
-      - name: Verify distribution files
-        run: |
-          ls -la dist/
-          test -n "$(find dist -name '*.whl')" || (echo "Wheel file missing" && exit 1)
-          test -n "$(find dist -name '*.tar.gz')" || (echo "Source distribution missing" && exit 1)
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.PYPI_TOKEN }}
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: dist/*
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-</file>
-
 <file path="src/imgcolorshine/__init__.py">
 #!/usr/bin/env -S uv run -s
 # /// script
@@ -578,25 +1287,6 @@ __all__ = [
     "get_falloff_function",
     "validate_image",
 ]
-</file>
-
-<file path="src/imgcolorshine/__main__.py">
-#!/usr/bin/env -S uv run -s
-# /// script
-# dependencies = []
-# ///
-# this_file: src/imgcolorshine/__main__.py
-
-"""
-Entry point for imgcolorshine package.
-
-Thin wrapper that calls the Fire CLI.
-"""
-
-from imgcolorshine.cli import main
-
-if __name__ == "__main__":
-    main()
 </file>
 
 <file path="src/imgcolorshine/color.py">
@@ -889,574 +1579,6 @@ class OKLCHEngine:
         # Convert back to Oklab then to sRGB
         oklab_mapped = trans_numba.batch_oklch_to_oklab(oklch_mapped)
         return trans_numba.batch_oklab_to_srgb(oklab_mapped)
-</file>
-
-<file path="src/imgcolorshine/colorshine.py">
-#!/usr/bin/env -S uv run -s
-# /// script
-# dependencies = ["loguru", "numpy"]
-# ///
-# this_file: src/imgcolorshine/colorshine.py
-
-"""
-Core processing logic for imgcolorshine.
-
-Contains the main image transformation pipeline.
-"""
-
-import sys
-from pathlib import Path
-
-import numpy as np
-from loguru import logger
-
-from imgcolorshine.color import OKLCHEngine
-from imgcolorshine.io import ImageProcessor
-from imgcolorshine.transform import ColorTransformer
-
-
-def setup_logging(verbose: bool = False):
-    """Configure loguru logging based on verbosity."""
-    logger.remove()
-    if verbose:
-        logger.add(sys.stderr, level="DEBUG", format="{time:HH:mm:ss} | {level} | {message}")
-    else:
-        logger.add(sys.stderr, level="INFO", format="{message}")
-
-
-def parse_attractor(attractor_str: str) -> tuple[str, float, float]:
-    """Parse attractor string format: 'color;tolerance;strength'."""
-    try:
-        parts = attractor_str.split(";")
-        if len(parts) != 3:
-            msg = f"Invalid attractor format: {attractor_str}"
-            raise ValueError(msg)
-
-        color = parts[0].strip()
-        tolerance = float(parts[1])
-        strength = float(parts[2])
-
-        if not 0 <= tolerance <= 100:
-            msg = f"Tolerance must be 0-100, got {tolerance}"
-            raise ValueError(msg)
-        if not 0 <= strength <= 100:
-            msg = f"Strength must be 0-100, got {strength}"
-            raise ValueError(msg)
-
-        return color, tolerance, strength
-    except Exception as e:
-        msg = f"Invalid attractor '{attractor_str}': {e}"
-        raise ValueError(msg) from e
-
-
-def generate_output_path(input_path: Path) -> Path:
-    """Generate output filename if not provided."""
-    stem = input_path.stem
-    suffix = input_path.suffix
-    return input_path.parent / f"{stem}_colorshine{suffix}"
-
-
-def process_image(
-    input_image: str,
-    attractors: tuple[str, ...],
-    output_image: str | None = None,
-    luminance: bool = True,
-    saturation: bool = True,
-    chroma: bool = True,
-    verbose: bool = False,
-    tile_size: int = 1024,
-    gpu: bool = True,
-    lut_size: int = 0,
-    fast_hierar: bool = False,
-    fast_spatial: bool = True,
-) -> None:
-    """
-    Process an image with color attractors.
-
-    Main processing pipeline that handles logging setup, attractor parsing,
-    image loading, transformation, and saving.
-
-    Args:
-        input_image: Path to input image
-        attractors: Color attractors in format "color;tolerance;strength"
-        output_image: Output path (auto-generated if None)
-        luminance: Enable lightness transformation
-        saturation: Enable chroma transformation
-        chroma: Enable chroma transformation
-        verbose: Enable verbose logging
-        tile_size: Tile size for large image processing
-        gpu: Use GPU acceleration if available
-        lut_size: Size of 3D LUT (0=disabled)
-        fast_hierar: Enable fast_hierar multi-resolution processing
-        fast_spatial: Enable spatial acceleration
-
-    Used in:
-    - src/imgcolorshine/cli.py
-    """
-    setup_logging(verbose)
-
-    # Convert to Path
-    input_path = Path(input_image)
-
-    # Validate inputs
-    if not attractors:
-        msg = "At least one attractor must be provided"
-        raise ValueError(msg)
-
-    if not any([luminance, saturation, chroma]):
-        msg = "At least one channel (luminance, saturation, chroma) must be enabled"
-        raise ValueError(msg)
-
-    # Parse attractors
-    logger.debug(f"Parsing {len(attractors)} attractors")
-    parsed_attractors = []
-    for attr_str in attractors:
-        color, tolerance, strength = parse_attractor(attr_str)
-        parsed_attractors.append((color, tolerance, strength))
-        logger.debug(f"Attractor: color={color}, tolerance={tolerance}, strength={strength}")
-
-    # Set output path
-    if output_image is None:
-        output_path = generate_output_path(input_path)
-        logger.info(f"Output path auto-generated: {output_path}")
-    else:
-        output_path = Path(output_image)
-
-    # Initialize components
-    engine = OKLCHEngine()
-    processor = ImageProcessor(tile_size=tile_size)
-    transformer = ColorTransformer(engine)
-
-    # Create attractor objects
-    attractor_objects = []
-    for color_str, tolerance, strength in parsed_attractors:
-        attractor = engine.create_attractor(color_str, tolerance, strength)
-        attractor_objects.append(attractor)
-        logger.info(f"Created attractor: {color_str} (tolerance={tolerance}, strength={strength})")
-
-    # Load image
-    logger.info(f"Loading image: {input_path}")
-    image = processor.load_image(input_path)
-
-    # Try LUT transformation first if enabled
-    transformed = None
-    if lut_size > 0:
-        try:
-            logger.info(f"Building {lut_size}³ color LUT...")
-            import numpy as np
-            from colorshine.fused_kernels import transform_pixel_fused
-            from colorshine.lut import ColorLUT
-
-            # Create LUT
-            lut = ColorLUT(size=lut_size if lut_size > 0 else 65)
-
-            # Prepare attractor data
-            attractors_lab = np.array([a.oklab_values for a in attractor_objects])
-            tolerances = np.array([a.tolerance for a in attractor_objects])
-            strengths = np.array([a.strength for a in attractor_objects])
-            channels = [luminance, saturation, chroma]
-
-            # Build LUT using fused kernel
-            def transform_func(rgb, attr_lab, tol, str_vals, l, s, h):
-                return np.array(transform_pixel_fused(rgb[0], rgb[1], rgb[2], attr_lab, tol, str_vals, l, s, h))
-
-            lut.build_lut(transform_func, attractors_lab, tolerances, strengths, channels)
-
-            # Apply LUT
-            logger.info("Applying LUT transformation...")
-            transformed = lut.apply_lut(image)
-            logger.info("LUT processing successful")
-
-        except Exception as e:
-            logger.warning(f"LUT processing failed: {e}, falling back to standard processing")
-            transformed = None
-
-    # Try GPU transformation if LUT failed or disabled
-    if transformed is None and gpu:
-        try:
-            from colorshine.gpu import GPU_AVAILABLE
-
-            if GPU_AVAILABLE:
-                logger.info("Attempting GPU acceleration...")
-                import numpy as np
-                from colorshine.gpu_transforms import process_image_gpu
-
-                # Prepare attractor data
-                attractors_lab = np.array([a.oklab_values for a in attractor_objects])
-                tolerances = np.array([a.tolerance for a in attractor_objects])
-                strengths = np.array([a.strength for a in attractor_objects])
-
-                # Process on GPU
-                transformed = process_image_gpu(
-                    image, attractors_lab, tolerances, strengths, luminance, saturation, chroma
-                )
-
-                if transformed is not None:
-                    logger.info("GPU processing successful")
-                else:
-                    logger.warning("GPU processing failed, falling back to CPU")
-                    gpu = False
-            else:
-                logger.debug("GPU not available, using CPU")
-                gpu = False
-        except ImportError:
-            logger.debug("GPU libraries not installed, using CPU")
-            gpu = False
-
-    # CPU processing (fallback or if GPU disabled)
-    if not gpu or transformed is None:
-        # Check if we should use optimizations
-        if fast_hierar or fast_spatial:
-            logger.info("Using optimized CPU processing...")
-            transformed = process_with_optimizations(
-                image, attractor_objects, luminance, saturation, chroma, fast_hierar, fast_spatial, transformer, engine
-            )
-        else:
-            logger.info("Transforming colors on CPU...")
-            flags = {"luminance": luminance, "saturation": saturation, "chroma": chroma}
-            transformed = transformer.transform_image(image, attractor_objects, flags)
-
-    # Save image
-    logger.info(f"Saving image: {output_path}")
-    processor.save_image(transformed, output_path)
-
-    logger.info(f"Processing complete: {input_path} → {output_path}")
-
-
-def process_with_optimizations(
-    image: np.ndarray,
-    attractor_objects: list,
-    luminance: bool,
-    saturation: bool,
-    hue: bool,
-    hierarchical: bool,
-    spatial_accel: bool,
-    transformer: "ColorTransformer",
-    engine: "OKLCHEngine",
-) -> np.ndarray:
-    """
-    Process image with fast_hierar and/or spatial optimizations.
-
-    Combines both optimizations when both are enabled for maximum performance.
-    """
-    import numpy as np
-
-    # Prepare attractor data
-    attractors_lab = np.array([a.oklab_values for a in attractor_objects])
-    tolerances = np.array([a.tolerance for a in attractor_objects])
-    strengths = np.array([a.strength for a in attractor_objects])
-    channels = [luminance, saturation, hue]
-
-    # Import optimization modules
-    if hierarchical:
-        from imgcolorshine.hierar import HierarchicalProcessor
-    if spatial_accel:
-        from imgcolorshine.spatial import SpatialAccelerator
-
-    # Combined optimization path
-    if hierarchical and spatial_accel:
-        logger.info("Using combined fast_hierar + spatial acceleration")
-
-        # Initialize processors
-        hier_processor = HierarchicalProcessor()
-        spatial_acc = SpatialAccelerator()
-
-        # Build spatial index once
-        spatial_acc.build_spatial_index(attractors_lab, tolerances)
-
-        # Create a transform function that uses spatial acceleration
-        def spatial_transform_func(img, *args):
-            # Convert to Oklab for spatial queries
-            # Convert to Oklab for spatial queries
-            img_oklab = engine.batch_rgb_to_oklab(img / 255.0)
-
-            # Create transform function wrapper
-            attractors_lch = np.array([a.oklch_values for a in attractor_objects])
-            flags_array = np.array(channels)
-
-            def transform_wrapper(img_rgb, *args):
-                return (
-                    transformer._transform_tile(
-                        img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
-                    )
-                    * 255.0
-                )
-
-            # Use spatial acceleration
-            return spatial_acc.transform_with_spatial_accel(
-                img, img_oklab, attractors_lab, tolerances, strengths, transform_wrapper, channels
-            )
-
-        # Process hierarchically with spatial optimization
-        transformed = hier_processor.process_hierarchical(
-            image, spatial_transform_func, attractors_lab, tolerances, strengths, channels
-        )
-
-    elif hierarchical:
-        logger.info("Using fast_hierar processing")
-
-        hier_processor = HierarchicalProcessor()
-
-        # Create a wrapper for the transform function
-        def transform_func(img_rgb, *args):
-            # Prepare attractor data in OKLCH format too
-            attractors_lch = np.array([a.oklch_values for a in attractor_objects])
-            flags_array = np.array(channels)
-
-            # Use the transformer's tile transform method
-            return (
-                transformer._transform_tile(
-                    img_rgb / 255.0,  # Normalize to 0-1
-                    attractors_lab,
-                    attractors_lch,
-                    tolerances,
-                    strengths,
-                    flags_array,
-                )
-                * 255.0
-            )  # Convert back to 0-255
-
-        transformed = hier_processor.process_hierarchical(
-            image, transform_func, attractors_lab, tolerances, strengths, channels
-        )
-
-    elif spatial_accel:
-        logger.info("Using spatial acceleration")
-
-        # Convert image to Oklab for spatial queries
-        image_oklab = engine.batch_rgb_to_oklab(image / 255.0)
-
-        spatial_acc = SpatialAccelerator()
-
-        # Create transform function wrapper
-        attractors_lch = np.array([a.oklch_values for a in attractor_objects])
-        flags_array = np.array(channels)
-
-        def transform_func(img_rgb, *args):
-            return (
-                transformer._transform_tile(
-                    img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
-                )
-                * 255.0
-            )
-
-        transformed = spatial_acc.transform_with_spatial_accel(
-            image, image_oklab, attractors_lab, tolerances, strengths, transform_func, channels
-        )
-    else:
-        # Should not reach here, but fallback to standard processing
-        flags = {"luminance": luminance, "saturation": saturation, "chroma": hue}
-        transformed = transformer.transform_image(image, attractor_objects, flags)
-
-    return transformed
-</file>
-
-<file path="src/imgcolorshine/falloff.py">
-#!/usr/bin/env -S uv run -s
-# /// script
-# dependencies = ["numpy", "numba"]
-# ///
-# this_file: src/imgcolorshine/falloff.py
-
-"""
-Falloff functions for color attraction.
-
-Provides various mathematical curves for controlling how color attraction
-strength decreases with distance. The raised cosine is the default and
-recommended function for smooth, natural transitions.
-"""
-
-from collections.abc import Callable
-from enum import Enum
-
-import numba
-import numpy as np
-
-
-class FalloffType(Enum):
-    """Available falloff curve types.
-
-    Different mathematical functions for controlling attraction falloff.
-    Used for customizing the behavior of color transformations.
-
-    Used in:
-    - old/imgcolorshine/test_imgcolorshine.py
-    - src/imgcolorshine/__init__.py
-    """
-
-    COSINE = "cosine"  # Smooth raised cosine (default)
-    LINEAR = "linear"  # Simple linear falloff
-    QUADRATIC = "quadratic"  # Quadratic ease-out
-    GAUSSIAN = "gaussian"  # Gaussian bell curve
-    CUBIC = "cubic"  # Cubic ease-out
-
-
-@numba.njit
-def falloff_cosine(d_norm: float) -> float:
-    """
-    Raised cosine falloff (smooth and natural).
-
-    This is the default and recommended falloff function,
-    providing smooth transitions without harsh edges.
-
-    """
-    return 0.5 * (np.cos(d_norm * np.pi) + 1.0)
-
-
-@numba.njit
-def falloff_linear(d_norm: float) -> float:
-    """Simple linear falloff."""
-    return 1.0 - d_norm
-
-
-@numba.njit
-def falloff_quadratic(d_norm: float) -> float:
-    """Quadratic ease-out falloff."""
-    return 1.0 - d_norm * d_norm
-
-
-@numba.njit
-def falloff_gaussian(d_norm: float) -> float:
-    """
-    Gaussian falloff with sigma=0.4.
-
-    Provides a bell curve with most influence near the center.
-
-    """
-    sigma = 0.4
-    return np.exp(-(d_norm * d_norm) / (2 * sigma * sigma))
-
-
-@numba.njit
-def falloff_cubic(d_norm: float) -> float:
-    """Cubic ease-out falloff."""
-    inv = 1.0 - d_norm
-    return inv * inv * inv
-
-
-@numba.njit
-def calculate_falloff(d_norm: float, falloff_type: int = 0) -> float:
-    """
-    Calculate falloff value based on normalized distance.
-
-    Args:
-        d_norm: Normalized distance (0 to 1)
-        falloff_type: Type of falloff curve (0=cosine, 1=linear, etc.)
-
-    Returns:
-        Falloff value (0 to 1)
-
-    """
-    if falloff_type == 0:  # COSINE
-        return falloff_cosine(d_norm)
-    if falloff_type == 1:  # LINEAR
-        return falloff_linear(d_norm)
-    if falloff_type == 2:  # QUADRATIC
-        return falloff_quadratic(d_norm)
-    if falloff_type == 3:  # GAUSSIAN
-        return falloff_gaussian(d_norm)
-    if falloff_type == 4:  # CUBIC
-        return falloff_cubic(d_norm)
-    # Default to cosine
-    return falloff_cosine(d_norm)
-
-
-def get_falloff_function(falloff_type: FalloffType) -> Callable[[float], float]:
-    """
-    Get the appropriate falloff function.
-
-    Args:
-        falloff_type: Type of falloff curve
-
-    Returns:
-        Falloff function
-
-    Used in:
-    - src/imgcolorshine/__init__.py
-    """
-    mapping = {
-        FalloffType.COSINE: falloff_cosine,
-        FalloffType.LINEAR: falloff_linear,
-        FalloffType.QUADRATIC: falloff_quadratic,
-        FalloffType.GAUSSIAN: falloff_gaussian,
-        FalloffType.CUBIC: falloff_cubic,
-    }
-
-    return mapping.get(falloff_type, falloff_cosine)
-
-
-def visualize_falloff(falloff_type: FalloffType, samples: int = 100) -> np.ndarray:
-    """
-    Generate data for visualizing a falloff curve.
-
-    Args:
-        falloff_type: Type of falloff curve
-        samples: Number of samples to generate
-
-    Returns:
-        Array of shape (samples, 2) with [distance, falloff] pairs
-
-    Used for testing and visualization purposes.
-
-    Used in:
-    - old/imgcolorshine/test_imgcolorshine.py
-    """
-    distances = np.linspace(0, 1, samples)
-    falloff_func = get_falloff_function(falloff_type)
-
-    values = np.array([falloff_func(d) for d in distances])
-
-    return np.column_stack([distances, values])
-
-
-def precompute_falloff_lut(falloff_type: FalloffType = FalloffType.COSINE, resolution: int = 1024) -> np.ndarray:
-    """
-    Precompute a lookup table for fast falloff calculations.
-
-    Args:
-        falloff_type: Type of falloff curve
-        resolution: Number of entries in the lookup table
-
-    Returns:
-        Lookup table array
-
-    """
-    lut = np.zeros(resolution, dtype=np.float32)
-    falloff_func = get_falloff_function(falloff_type)
-
-    for i in range(resolution):
-        d_norm = i / (resolution - 1)
-        lut[i] = falloff_func(d_norm)
-
-    return lut
-
-
-@numba.njit
-def apply_falloff_lut(d_norm: float, lut: np.ndarray) -> float:
-    """
-    Apply falloff using a precomputed lookup table.
-
-    Args:
-        d_norm: Normalized distance (0 to 1)
-        lut: Precomputed lookup table
-
-    Returns:
-        Interpolated falloff value
-
-    """
-    # Get LUT index
-    idx_float = d_norm * (len(lut) - 1)
-    idx = int(idx_float)
-
-    # Handle edge cases
-    if idx >= len(lut) - 1:
-        return lut[-1]
-    if idx < 0:
-        return lut[0]
-
-    # Linear interpolation between LUT entries
-    frac = idx_float - idx
-    return lut[idx] * (1 - frac) + lut[idx + 1] * frac
 </file>
 
 <file path="src/imgcolorshine/gamut.py">
@@ -3646,391 +3768,6 @@ class SpatialAccelerator:
         logger.debug("Cleared tile cache")
 </file>
 
-<file path="src/imgcolorshine/trans_gpu.py">
-#!/usr/bin/env -S uv run -s
-# /// script
-# dependencies = ["numpy", "loguru"]
-# ///
-# this_file: src/imgcolorshine/trans_gpu.py
-
-"""
-GPU-accelerated color transformations using CuPy.
-
-Provides GPU versions of all color space conversions and transformations
-with automatic memory management and optimized kernels.
-"""
-
-import numpy as np
-from colorshine.gpu import check_gpu_memory_available, estimate_gpu_memory_required, get_array_module
-from loguru import logger
-
-# Try to import CuPy
-try:
-    import cupy as cp
-
-    CUPY_AVAILABLE = cp.cuda.is_available()
-except:
-    CUPY_AVAILABLE = False
-    cp = None
-
-
-def get_gpu_color_matrices(xp):
-    """Get color transformation matrices for the given array module."""
-    # Linear RGB to XYZ D65 matrix
-    LINEAR_RGB_TO_XYZ = xp.array(
-        [
-            [0.4123907992659595, 0.3575843393838780, 0.1804807884018343],
-            [0.2126390058715104, 0.7151686787677559, 0.0721923153607337],
-            [0.0193308187155918, 0.1191947797946259, 0.9505321522496608],
-        ],
-        dtype=xp.float32,
-    )
-
-    # XYZ D65 to Linear RGB matrix
-    XYZ_TO_LINEAR_RGB = xp.array(
-        [
-            [3.2409699419045213, -1.5373831775700935, -0.4986107602930033],
-            [-0.9692436362808798, 1.8759675015077206, 0.0415550574071756],
-            [0.0556300796969936, -0.2039769588889765, 1.0569715142428784],
-        ],
-        dtype=xp.float32,
-    )
-
-    # XYZ D65 to LMS matrix
-    XYZ_TO_LMS = xp.array(
-        [
-            [0.8189330101, 0.3618667424, -0.1288597137],
-            [0.0329845436, 0.9293118715, 0.0361456387],
-            [0.0482003018, 0.2643662691, 0.6338517070],
-        ],
-        dtype=xp.float32,
-    )
-
-    # LMS to XYZ D65 matrix
-    LMS_TO_XYZ = xp.array(
-        [
-            [1.2270138511035211, -0.5577999806518222, 0.2812561489664678],
-            [-0.0405801784232806, 1.1122568696168302, -0.0716766786656012],
-            [-0.0763812845057069, -0.4214819784180127, 1.5861632204407947],
-        ],
-        dtype=xp.float32,
-    )
-
-    # LMS to Oklab matrix
-    LMS_TO_OKLAB = xp.array(
-        [
-            [0.2104542553, 0.7936177850, -0.0040720468],
-            [1.9779984951, -2.4285922050, 0.4505937099],
-            [0.0259040371, 0.7827717662, -0.8086757660],
-        ],
-        dtype=xp.float32,
-    )
-
-    # Oklab to LMS matrix
-    OKLAB_TO_LMS = xp.array(
-        [
-            [1.0000000000, 0.3963377774, 0.2158037573],
-            [1.0000000000, -0.1055613458, -0.0638541728],
-            [1.0000000000, -0.0894841775, -1.2914855480],
-        ],
-        dtype=xp.float32,
-    )
-
-    return {
-        "LINEAR_RGB_TO_XYZ": LINEAR_RGB_TO_XYZ,
-        "XYZ_TO_LINEAR_RGB": XYZ_TO_LINEAR_RGB,
-        "XYZ_TO_LMS": XYZ_TO_LMS,
-        "LMS_TO_XYZ": LMS_TO_XYZ,
-        "LMS_TO_OKLAB": LMS_TO_OKLAB,
-        "OKLAB_TO_LMS": OKLAB_TO_LMS,
-    }
-
-
-def srgb_to_linear_gpu(srgb, xp):
-    """GPU version of sRGB to linear conversion."""
-    return xp.where(srgb <= 0.04045, srgb / 12.92, ((srgb + 0.055) / 1.055) ** 2.4)
-
-
-def linear_to_srgb_gpu(linear, xp):
-    """GPU version of linear to sRGB conversion."""
-    return xp.where(linear <= 0.0031308, linear * 12.92, 1.055 * (linear ** (1.0 / 2.4)) - 0.055)
-
-
-def batch_srgb_to_oklab_gpu(rgb_image, xp=None):
-    """
-    GPU version of batch sRGB to Oklab conversion.
-
-    Args:
-        rgb_image: Input image (H, W, 3) in sRGB [0, 1]
-        xp: Array module (auto-detect if None)
-
-    Returns:
-        Image in Oklab space
-    """
-    if xp is None:
-        xp = get_array_module(use_gpu=True)
-
-    # Get color matrices
-    matrices = get_gpu_color_matrices(xp)
-
-    # Ensure image is on GPU
-    rgb_gpu = xp.asarray(rgb_image, dtype=xp.float32)
-
-    # Step 1: sRGB to linear RGB
-    linear = srgb_to_linear_gpu(rgb_gpu, xp)
-
-    # Step 2: Linear RGB to XYZ (using einsum for efficiency)
-    xyz = xp.einsum("ij,...j->...i", matrices["LINEAR_RGB_TO_XYZ"], linear)
-
-    # Step 3: XYZ to LMS
-    lms = xp.einsum("ij,...j->...i", matrices["XYZ_TO_LMS"], xyz)
-
-    # Step 4: Apply cube root
-    lms_cbrt = xp.cbrt(lms)
-
-    # Step 5: LMS to Oklab
-    return xp.einsum("ij,...j->...i", matrices["LMS_TO_OKLAB"], lms_cbrt)
-
-
-def batch_oklab_to_srgb_gpu(oklab_image, xp=None):
-    """
-    GPU version of batch Oklab to sRGB conversion.
-
-    Args:
-        oklab_image: Input image (H, W, 3) in Oklab
-        xp: Array module (auto-detect if None)
-
-    Returns:
-        Image in sRGB space [0, 1]
-    """
-    if xp is None:
-        xp = get_array_module(use_gpu=True)
-
-    # Get color matrices
-    matrices = get_gpu_color_matrices(xp)
-
-    # Ensure image is on GPU
-    oklab_gpu = xp.asarray(oklab_image, dtype=xp.float32)
-
-    # Step 1: Oklab to LMS (cbrt space)
-    lms_cbrt = xp.einsum("ij,...j->...i", matrices["OKLAB_TO_LMS"], oklab_gpu)
-
-    # Step 2: Apply cube
-    lms = lms_cbrt**3
-
-    # Step 3: LMS to XYZ
-    xyz = xp.einsum("ij,...j->...i", matrices["LMS_TO_XYZ"], lms)
-
-    # Step 4: XYZ to linear RGB
-    linear = xp.einsum("ij,...j->...i", matrices["XYZ_TO_LINEAR_RGB"], xyz)
-
-    # Step 5: Linear RGB to sRGB
-    srgb = linear_to_srgb_gpu(linear, xp)
-
-    # Clamp to valid range
-    return xp.clip(srgb, 0.0, 1.0)
-
-
-def batch_oklab_to_oklch_gpu(oklab_image, xp=None):
-    """GPU version of Oklab to OKLCH conversion."""
-    if xp is None:
-        xp = get_array_module(use_gpu=True)
-
-    oklab_gpu = xp.asarray(oklab_image, dtype=xp.float32)
-
-    l = oklab_gpu[..., 0]
-    a = oklab_gpu[..., 1]
-    b = oklab_gpu[..., 2]
-
-    c = xp.sqrt(a * a + b * b)
-    h = xp.arctan2(b, a) * 180.0 / xp.pi
-    h = xp.where(h < 0, h + 360.0, h)
-
-    return xp.stack([l, c, h], axis=-1)
-
-
-def batch_oklch_to_oklab_gpu(oklch_image, xp=None):
-    """GPU version of OKLCH to Oklab conversion."""
-    if xp is None:
-        xp = get_array_module(use_gpu=True)
-
-    oklch_gpu = xp.asarray(oklch_image, dtype=xp.float32)
-
-    l = oklch_gpu[..., 0]
-    c = oklch_gpu[..., 1]
-    h = oklch_gpu[..., 2]
-
-    h_rad = h * xp.pi / 180.0
-    a = c * xp.cos(h_rad)
-    b = c * xp.sin(h_rad)
-
-    return xp.stack([l, a, b], axis=-1)
-
-
-def transform_pixels_gpu(
-    oklab_image, oklch_image, attractors_lab, attractors_lch, tolerances, strengths, flags, xp=None
-):
-    """
-    GPU version of pixel transformation.
-
-    Args:
-        oklab_image: Image in Oklab space (H, W, 3)
-        oklch_image: Image in OKLCH space (H, W, 3)
-        attractors_lab: Attractors in Oklab (N, 3)
-        attractors_lch: Attractors in OKLCH (N, 3)
-        tolerances: Tolerance values [0, 100]
-        strengths: Strength values [0, 100]
-        flags: Boolean array [luminance, saturation, chroma]
-        xp: Array module (auto-detect if None)
-
-    Returns:
-        Transformed image in Oklab space
-    """
-    if xp is None:
-        xp = get_array_module(use_gpu=True)
-
-    # Transfer to GPU
-    oklab_gpu = xp.asarray(oklab_image, dtype=xp.float32)
-    oklch_gpu = xp.asarray(oklch_image, dtype=xp.float32)
-    attr_lab = xp.asarray(attractors_lab, dtype=xp.float32)
-    attr_lch = xp.asarray(attractors_lch, dtype=xp.float32)
-    tol = xp.asarray(tolerances, dtype=xp.float32)
-    str_vals = xp.asarray(strengths, dtype=xp.float32)
-
-    h, w = oklab_gpu.shape[:2]
-    num_attractors = len(attr_lab)
-
-    # Reshape for broadcasting
-    pixels_lab = oklab_gpu.reshape(-1, 3)  # (H*W, 3)
-    pixels_lch = oklch_gpu.reshape(-1, 3)  # (H*W, 3)
-
-    # Calculate distances to all attractors
-    # Broadcasting: (H*W, 1, 3) - (1, N, 3) = (H*W, N, 3)
-    delta = pixels_lab[:, None, :] - attr_lab[None, :, :]
-    distances = xp.sqrt(xp.sum(delta**2, axis=2))  # (H*W, N)
-
-    # Calculate weights
-    max_distances = 2.5 * (tol / 100.0)  # Linear mapping
-    d_norm = distances / max_distances[None, :]
-
-    # Raised cosine falloff
-    within_tolerance = d_norm <= 1.0
-    falloff = 0.5 * (xp.cos(d_norm * xp.pi) + 1.0)
-    weights = within_tolerance * (str_vals[None, :] / 100.0) * falloff  # (H*W, N)
-
-    # Normalize weights
-    total_weights = xp.sum(weights, axis=1, keepdims=True)  # (H*W, 1)
-    has_weight = total_weights > 0
-
-    # Source weight for pixels with attractors
-    source_weights = xp.where(total_weights > 1.0, 0.0, 1.0 - total_weights)
-
-    # Normalize if needed
-    weights = xp.where(total_weights > 1.0, weights / total_weights, weights)
-
-    # Initialize result with original values
-    result_lch = pixels_lch.copy()
-
-    # Transform each channel if enabled
-    if flags[0]:  # Luminance
-        weighted_l = xp.sum(weights * attr_lch[:, 0][None, :], axis=1)
-        result_lch[:, 0] = xp.where(
-            has_weight.squeeze(), source_weights.squeeze() * pixels_lch[:, 0] + weighted_l, pixels_lch[:, 0]
-        )
-
-    if flags[1]:  # Saturation
-        weighted_c = xp.sum(weights * attr_lch[:, 1][None, :], axis=1)
-        result_lch[:, 1] = xp.where(
-            has_weight.squeeze(), source_weights.squeeze() * pixels_lch[:, 1] + weighted_c, pixels_lch[:, 1]
-        )
-
-    if flags[2]:  # Hue
-        # Circular mean for chroma
-        h_rad = pixels_lch[:, 2] * xp.pi / 180.0
-        sin_sum = source_weights.squeeze() * xp.sin(h_rad)
-        cos_sum = source_weights.squeeze() * xp.cos(h_rad)
-
-        # Add weighted attractor hues
-        for i in range(num_attractors):
-            h_attr_rad = attr_lch[i, 2] * xp.pi / 180.0
-            sin_sum += weights[:, i] * xp.sin(h_attr_rad)
-            cos_sum += weights[:, i] * xp.cos(h_attr_rad)
-
-        new_h = xp.arctan2(sin_sum, cos_sum) * 180.0 / xp.pi
-        new_h = xp.where(new_h < 0, new_h + 360.0, new_h)
-
-        result_lch[:, 2] = xp.where(has_weight.squeeze(), new_h, pixels_lch[:, 2])
-
-    # Convert back to Oklab
-    h_rad = result_lch[:, 2] * xp.pi / 180.0
-    result_lab = xp.stack(
-        [result_lch[:, 0], result_lch[:, 1] * xp.cos(h_rad), result_lch[:, 1] * xp.sin(h_rad)], axis=1
-    )
-
-    # Reshape back to image dimensions
-    return result_lab.reshape(h, w, 3)
-
-
-def process_image_gpu(
-    rgb_image, attractors_lab, tolerances, strengths, enable_luminance=True, enable_saturation=True, enable_hue=True
-):
-    """
-    Complete GPU pipeline for image processing.
-
-    Args:
-        rgb_image: Input image (H, W, 3) in sRGB [0, 1]
-        attractors_lab: Attractor colors in Oklab (N, 3)
-        tolerances: Tolerance values [0, 100]
-        strengths: Strength values [0, 100]
-        enable_luminance: Transform lightness
-        enable_saturation: Transform chroma
-        enable_hue: Transform chroma
-
-    Returns:
-        Transformed image in sRGB [0, 1]
-    """
-    # Check GPU memory
-    required_mb = estimate_gpu_memory_required(rgb_image.shape, len(attractors_lab))
-    has_memory, free_mb, total_mb = check_gpu_memory_available(required_mb)
-
-    if not has_memory:
-        logger.warning(f"Insufficient GPU memory: need {required_mb:.1f}MB, have {free_mb:.1f}MB")
-        return None
-
-    xp = get_array_module(use_gpu=True)
-
-    try:
-        # Convert to Oklab
-        oklab = batch_srgb_to_oklab_gpu(rgb_image, xp)
-
-        # Convert to OKLCH
-        oklch = batch_oklab_to_oklch_gpu(oklab, xp)
-
-        # Also convert attractors to OKLCH
-        attr_lab_gpu = xp.asarray(attractors_lab, dtype=xp.float32)
-        attr_lch = batch_oklab_to_oklch_gpu(attr_lab_gpu.reshape(-1, 1, 3), xp).reshape(-1, 3)
-
-        # Transform
-        flags = xp.array([enable_luminance, enable_saturation, enable_hue])
-        transformed_lab = transform_pixels_gpu(oklab, oklch, attractors_lab, attr_lch, tolerances, strengths, flags, xp)
-
-        # Gamut mapping in OKLCH space
-        batch_oklab_to_oklch_gpu(transformed_lab, xp)
-        # Simple gamut clipping for now (TODO: implement proper gamut mapping)
-
-        # Convert back to sRGB
-        result_srgb = batch_oklab_to_srgb_gpu(transformed_lab, xp)
-
-        # Transfer back to CPU
-        if hasattr(result_srgb, "get"):  # CuPy array
-            return result_srgb.get()
-        return np.array(result_srgb)
-
-    except Exception as e:
-        logger.error(f"GPU processing failed: {e}")
-        return None
-</file>
-
 <file path="src/imgcolorshine/trans_numba.py">
 #!/usr/bin/env -S uv run -s
 # /// script
@@ -4719,82 +4456,6 @@ class ColorTransformer:
         return np.clip(result, 0, 1)
 </file>
 
-<file path="tests/debug_color_distances.py">
-#!/usr/bin/env python3
-"""
-Diagnostic script to understand color distances and tolerance issues in imgcolorshine.
-"""
-
-import numpy as np
-from coloraide import Color
-
-
-def test_color_distances():
-    """Test actual Delta E values between different colors."""
-
-    # Define test colors
-    colors = {
-        "blue": "blue",
-        "light_blue": "lightblue",
-        "cyan": "cyan",
-        "red": "red",
-        "green": "green",
-        "yellow": "yellow",
-        "white": "white",
-        "black": "black",
-        "gray": "gray",
-        "jacket_blue": "rgb(173, 216, 230)",  # Approximate jacket color from Louis image
-    }
-
-    # Convert to Oklab
-    oklab_colors = {}
-    for name, color_str in colors.items():
-        color = Color(color_str)
-        oklab = color.convert("oklab")
-        oklab_colors[name] = np.array([oklab["lightness"], oklab["a"], oklab["b"]])
-
-    blue_oklab = oklab_colors["blue"]
-
-    for name, oklab in oklab_colors.items():
-        if name != "blue":
-            delta_e = np.sqrt(np.sum((blue_oklab - oklab) ** 2))
-
-    # Test current tolerance formula
-    tolerances = [20, 40, 60, 80, 100]
-
-    for tolerance in tolerances:
-        # Current (broken) formula
-        current_max = 1.0 * (tolerance / 100.0) ** 2
-
-        # Proposed fixed formula
-        proposed_max = 5.0 * (tolerance / 100.0)
-
-    # Simulate what happens with tolerance=80, strength=80
-    tolerance = 80
-    current_max = 1.0 * (tolerance / 100.0) ** 2  # 0.64
-    proposed_max = 5.0 * (tolerance / 100.0)  # 4.0
-
-    for name, oklab in oklab_colors.items():
-        if name != "blue":
-            delta_e = np.sqrt(np.sum((blue_oklab - oklab) ** 2))
-            if delta_e <= current_max:
-                pass
-            else:
-                pass
-
-    for name, oklab in oklab_colors.items():
-        if name != "blue":
-            delta_e = np.sqrt(np.sum((blue_oklab - oklab) ** 2))
-            if delta_e <= proposed_max:
-                pass
-            else:
-                pass
-
-
-if __name__ == "__main__":
-    test_color_distances()
-</file>
-
 <file path="tests/simple_debug.py">
 #!/usr/bin/env python3
 """
@@ -4905,9 +4566,11 @@ from loguru import logger
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from imgcolorshine import ColorTransformer, ImageProcessor, OKLCHEngine
-from imgcolorshine.hierarchical import HierarchicalProcessor
-from imgcolorshine.spatial_accel import SpatialAccelerator
+from imgcolorshine.color import OKLCHEngine
+from imgcolorshine.hierar import HierarchicalProcessor
+from imgcolorshine.io import ImageProcessor
+from imgcolorshine.spatial import SpatialAccelerator
+from imgcolorshine.transform import ColorTransformer
 
 
 def create_test_image(width: int, height: int) -> np.ndarray:
@@ -5058,7 +4721,7 @@ def test_combined_optimizations():
     attractor_objects = [attractor1, attractor2]
 
     # Use the process_with_optimizations function
-    from imgcolorshine.imgcolorshine import process_with_optimizations
+    from imgcolorshine.colorshine import process_with_optimizations
 
     start_time = time.time()
     result = process_with_optimizations(
@@ -5098,404 +4761,760 @@ if __name__ == "__main__":
     logger.info("\n=== All tests completed successfully! ===")
 </file>
 
-<file path=".cursorindexingignore">
-# Don't index SpecStory auto-save files, but allow explicit context inclusion via @ references
-.specstory/**
+<file path="tests/test_package.py">
+"""Test suite for imgcolorshine."""
+
+
+def test_version():
+    """Verify package exposes version."""
+    import imgcolorshine
+
+    assert imgcolorshine.__version__
 </file>
 
-<file path=".gitignore">
-*_autogen/
-.DS_Store
-__version__.py
-__pycache__/
-_Chutzpah*
-_deps
-_NCrunch_*
-_pkginfo.txt
-_Pvt_Extensions
-_ReSharper*/
-_TeamCity*
-_UpgradeReport_Files/
-!?*.[Cc]ache/
-!.axoCover/settings.json
-!.vscode/extensions.json
-!.vscode/launch.json
-!.vscode/settings.json
-!.vscode/tasks.json
-!**/[Pp]ackages/build/
-!Directory.Build.rsp
-.*crunch*.local.xml
-.axoCover/*
-.builds
-.cr/personal
-.fake/
-.history/
-.ionide/
-.localhistory/
-.mfractor/
-.ntvs_analysis.dat
-.paket/paket.exe
-.sass-cache/
-.vs/
-.vscode
-.vscode/*
-.vshistory/
-[Aa][Rr][Mm]/
-[Aa][Rr][Mm]64/
-[Bb]in/
-[Bb]uild[Ll]og.*
-[Dd]ebug/
-[Dd]ebugPS/
-[Dd]ebugPublic/
-[Ee]xpress/
-[Ll]og/
-[Ll]ogs/
-[Oo]bj/
-[Rr]elease/
-[Rr]eleasePS/
-[Rr]eleases/
-[Tt]est[Rr]esult*/
-[Ww][Ii][Nn]32/
-*_h.h
-*_i.c
-*_p.c
-*_wpftmp.csproj
-*- [Bb]ackup ([0-9]).rdl
-*- [Bb]ackup ([0-9][0-9]).rdl
-*- [Bb]ackup.rdl
-*.[Cc]ache
-*.[Pp]ublish.xml
-*.[Rr]e[Ss]harper
-*.a
-*.app
-*.appx
-*.appxbundle
-*.appxupload
-*.aps
-*.azurePubxml
-*.bim_*.settings
-*.bim.layout
-*.binlog
-*.btm.cs
-*.btp.cs
-*.build.csdef
-*.cab
-*.cachefile
-*.code-workspace
-*.coverage
-*.coveragexml
-*.d
-*.dbmdl
-*.dbproj.schemaview
-*.dll
-*.dotCover
-*.DotSettings.user
-*.dsp
-*.dsw
-*.dylib
-*.e2e
-*.exe
-*.gch
-*.GhostDoc.xml
-*.gpState
-*.ilk
-*.iobj
-*.ipdb
-*.jfm
-*.jmconfig
-*.la
-*.lai
-*.ldf
-*.lib
-*.lo
-*.log
-*.mdf
-*.meta
-*.mm.*
-*.mod
-*.msi
-*.msix
-*.msm
-*.msp
-*.ncb
-*.ndf
-*.nuget.props
-*.nuget.targets
-*.nupkg
-*.nvuser
-*.o
-*.obj
-*.odx.cs
-*.opendb
-*.opensdf
-*.opt
-*.out
-*.pch
-*.pdb
-*.pfx
-*.pgc
-*.pgd
-*.pidb
-*.plg
-*.psess
-*.publishproj
-*.publishsettings
-*.pubxml
-*.pyc
-*.rdl.data
-*.rptproj.bak
-*.rptproj.rsuser
-*.rsp
-*.rsuser
-*.sap
-*.sbr
-*.scc
-*.sdf
-*.sln.docstates
-*.sln.iml
-*.slo
-*.smod
-*.snupkg
-*.so
-*.suo
-*.svclog
-*.tlb
-*.tlh
-*.tli
-*.tlog
-*.tmp
-*.tmp_proj
-*.tss
-*.user
-*.userosscache
-*.userprefs
-*.vbp
-*.vbw
-*.VC.db
-*.VC.VC.opendb
-*.VisualState.xml
-*.vsp
-*.vspscc
-*.vspx
-*.vssscc
-*.xsd.cs
-**/[Pp]ackages/*
-**/*.DesktopClient/GeneratedArtifacts
-**/*.DesktopClient/ModelManifest.xml
-**/*.HTMLClient/GeneratedArtifacts
-**/*.Server/GeneratedArtifacts
-**/*.Server/ModelManifest.xml
-*~
-~$*
-$tf/
-AppPackages/
-artifacts/
-ASALocalRun/
-AutoTest.Net/
-Backup*/
-BenchmarkDotNet.Artifacts/
-bld/
-BundleArtifacts/
-ClientBin/
-cmake_install.cmake
-CMakeCache.txt
-CMakeFiles
-CMakeLists.txt.user
-CMakeScripts
-CMakeUserPresets.json
-compile_commands.json
-coverage*.info
-coverage*.json
-coverage*.xml
-csx/
-CTestTestfile.cmake
-dlldata.c
-DocProject/buildhelp/
-DocProject/Help/*.hhc
-DocProject/Help/*.hhk
-DocProject/Help/*.hhp
-DocProject/Help/*.HxC
-DocProject/Help/*.HxT
-DocProject/Help/html
-DocProject/Help/Html2
-ecf/
-FakesAssemblies/
-FodyWeavers.xsd
-Generated_Code/
-Generated\ Files/
-healthchecksdb
-install_manifest.txt
-ipch/
-Makefile
-MigrationBackup/
-mono_crash.*
-nCrunchTemp_*
-node_modules/
-nunit-*.xml
-OpenCover/
-orleans.codegen.cs
-Package.StoreAssociation.xml
-paket-files/
-project.fragment.lock.json
-project.lock.json
-publish/
-PublishScripts/
-rcf/
-ScaffoldingReadMe.txt
-ServiceFabricBackup/
-StyleCopReport.xml
-Testing
-TestResult.xml
-UpgradeLog*.htm
-UpgradeLog*.XML
-x64/
-x86/
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+<file path="src/imgcolorshine/colorshine.py">
+#!/usr/bin/env -S uv run -s
+# /// script
+# dependencies = ["loguru", "numpy"]
+# ///
+# this_file: src/imgcolorshine/colorshine.py
 
-# Distribution / packaging
-!dist/.gitkeep
+"""
+Core processing logic for imgcolorshine.
 
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-cover/
-.ruff_cache/
+Contains the main image transformation pipeline.
+"""
 
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+import sys
+from pathlib import Path
 
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
+import numpy as np
+from loguru import logger
 
-# OS
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+from imgcolorshine.color import OKLCHEngine
+from imgcolorshine.io import ImageProcessor
+from imgcolorshine.transform import ColorTransformer
 
-# Project specific
-__version__.py
-_private
-VERSION.txt
+
+def setup_logging(verbose: bool = False):
+    """Configure loguru logging based on verbosity."""
+    logger.remove()
+    if verbose:
+        logger.add(sys.stderr, level="DEBUG", format="{time:HH:mm:ss} | {level} | {message}")
+    else:
+        logger.add(sys.stderr, level="INFO", format="{message}")
+
+
+def parse_attractor(attractor_str: str) -> tuple[str, float, float]:
+    """Parse attractor string format: 'color;tolerance;strength'."""
+    try:
+        parts = attractor_str.split(";")
+        if len(parts) != 3:
+            msg = f"Invalid attractor format: {attractor_str}"
+            raise ValueError(msg)
+
+        color = parts[0].strip()
+        tolerance = float(parts[1])
+        strength = float(parts[2])
+
+        if not 0 <= tolerance <= 100:
+            msg = f"Tolerance must be 0-100, got {tolerance}"
+            raise ValueError(msg)
+        if not 0 <= strength <= 100:
+            msg = f"Strength must be 0-100, got {strength}"
+            raise ValueError(msg)
+
+        return color, tolerance, strength
+    except Exception as e:
+        msg = f"Invalid attractor '{attractor_str}': {e}"
+        raise ValueError(msg) from e
+
+
+def generate_output_path(input_path: Path) -> Path:
+    """Generate output filename if not provided."""
+    stem = input_path.stem
+    suffix = input_path.suffix
+    return input_path.parent / f"{stem}_colorshine{suffix}"
+
+
+def process_image(
+    input_image: str,
+    attractors: tuple[str, ...],
+    output_image: str | None = None,
+    luminance: bool = True,
+    saturation: bool = True,
+    chroma: bool = True,
+    verbose: bool = False,
+    tile_size: int = 1024,
+    gpu: bool = True,
+    lut_size: int = 0,
+    fast_hierar: bool = False,
+    fast_spatial: bool = True,
+) -> None:
+    """
+    Process an image with color attractors.
+
+    Main processing pipeline that handles logging setup, attractor parsing,
+    image loading, transformation, and saving.
+
+    Args:
+        input_image: Path to input image
+        attractors: Color attractors in format "color;tolerance;strength"
+        output_image: Output path (auto-generated if None)
+        luminance: Enable lightness transformation
+        saturation: Enable chroma transformation
+        chroma: Enable chroma transformation
+        verbose: Enable verbose logging
+        tile_size: Tile size for large image processing
+        gpu: Use GPU acceleration if available
+        lut_size: Size of 3D LUT (0=disabled)
+        fast_hierar: Enable fast_hierar multi-resolution processing
+        fast_spatial: Enable spatial acceleration
+
+    Used in:
+    - src/imgcolorshine/cli.py
+    """
+    setup_logging(verbose)
+
+    # Convert to Path
+    input_path = Path(input_image)
+
+    # Validate inputs
+    if not attractors:
+        msg = "At least one attractor must be provided"
+        raise ValueError(msg)
+
+    if not any([luminance, saturation, chroma]):
+        msg = "At least one channel (luminance, saturation, chroma) must be enabled"
+        raise ValueError(msg)
+
+    # Parse attractors
+    logger.debug(f"Parsing {len(attractors)} attractors")
+    parsed_attractors = []
+    for attr_str in attractors:
+        color, tolerance, strength = parse_attractor(attr_str)
+        parsed_attractors.append((color, tolerance, strength))
+        logger.debug(f"Attractor: color={color}, tolerance={tolerance}, strength={strength}")
+
+    # Set output path
+    if output_image is None:
+        output_path = generate_output_path(input_path)
+        logger.info(f"Output path auto-generated: {output_path}")
+    else:
+        output_path = Path(output_image)
+
+    # Initialize components
+    engine = OKLCHEngine()
+    processor = ImageProcessor(tile_size=tile_size)
+    transformer = ColorTransformer(engine)
+
+    # Create attractor objects
+    attractor_objects = []
+    for color_str, tolerance, strength in parsed_attractors:
+        attractor = engine.create_attractor(color_str, tolerance, strength)
+        attractor_objects.append(attractor)
+        logger.info(f"Created attractor: {color_str} (tolerance={tolerance}, strength={strength})")
+
+    # Load image
+    logger.info(f"Loading image: {input_path}")
+    image = processor.load_image(input_path)
+
+    # Try LUT transformation first if enabled
+    transformed = None
+    if lut_size > 0:
+        try:
+            logger.info(f"Building {lut_size}³ color LUT...")
+            import numpy as np
+            from colorshine.fused_kernels import transform_pixel_fused
+            from colorshine.lut import ColorLUT
+
+            # Create LUT
+            lut = ColorLUT(size=lut_size if lut_size > 0 else 65)
+
+            # Prepare attractor data
+            attractors_lab = np.array([a.oklab_values for a in attractor_objects])
+            tolerances = np.array([a.tolerance for a in attractor_objects])
+            strengths = np.array([a.strength for a in attractor_objects])
+            channels = [luminance, saturation, chroma]
+
+            # Build LUT using fused kernel
+            def transform_func(rgb, attr_lab, tol, str_vals, l, s, h):
+                return np.array(transform_pixel_fused(rgb[0], rgb[1], rgb[2], attr_lab, tol, str_vals, l, s, h))
+
+            lut.build_lut(transform_func, attractors_lab, tolerances, strengths, channels)
+
+            # Apply LUT
+            logger.info("Applying LUT transformation...")
+            transformed = lut.apply_lut(image)
+            logger.info("LUT processing successful")
+
+        except Exception as e:
+            logger.warning(f"LUT processing failed: {e}, falling back to standard processing")
+            transformed = None
+
+    # Try GPU transformation if LUT failed or disabled
+    if transformed is None and gpu:
+        try:
+            from colorshine.gpu import GPU_AVAILABLE
+
+            if GPU_AVAILABLE:
+                logger.info("Attempting GPU acceleration...")
+                import numpy as np
+                from colorshine.gpu_transforms import process_image_gpu
+
+                # Prepare attractor data
+                attractors_lab = np.array([a.oklab_values for a in attractor_objects])
+                tolerances = np.array([a.tolerance for a in attractor_objects])
+                strengths = np.array([a.strength for a in attractor_objects])
+
+                # Process on GPU
+                transformed = process_image_gpu(
+                    image, attractors_lab, tolerances, strengths, luminance, saturation, chroma
+                )
+
+                if transformed is not None:
+                    logger.info("GPU processing successful")
+                else:
+                    logger.warning("GPU processing failed, falling back to CPU")
+                    gpu = False
+            else:
+                logger.debug("GPU not available, using CPU")
+                gpu = False
+        except ImportError:
+            logger.debug("GPU libraries not installed, using CPU")
+            gpu = False
+
+    # CPU processing (fallback or if GPU disabled)
+    if not gpu or transformed is None:
+        # Check if we should use optimizations
+        if fast_hierar or fast_spatial:
+            logger.info("Using optimized CPU processing...")
+            transformed = process_with_optimizations(
+                image, attractor_objects, luminance, saturation, chroma, fast_hierar, fast_spatial, transformer, engine
+            )
+        else:
+            logger.info("Transforming colors on CPU...")
+            flags = {"luminance": luminance, "saturation": saturation, "chroma": chroma}
+            transformed = transformer.transform_image(image, attractor_objects, flags)
+
+    # Save image
+    logger.info(f"Saving image: {output_path}")
+    processor.save_image(transformed, output_path)
+
+    logger.info(f"Processing complete: {input_path} → {output_path}")
+
+
+def process_with_optimizations(
+    image: np.ndarray,
+    attractor_objects: list,
+    luminance: bool,
+    saturation: bool,
+    hue: bool,
+    hierarchical: bool,
+    spatial_accel: bool,
+    transformer: "ColorTransformer",
+    engine: "OKLCHEngine",
+) -> np.ndarray:
+    """
+    Process image with fast_hierar and/or spatial optimizations.
+
+    Combines both optimizations when both are enabled for maximum performance.
+    """
+    import numpy as np
+
+    # Prepare attractor data
+    attractors_lab = np.array([a.oklab_values for a in attractor_objects])
+    tolerances = np.array([a.tolerance for a in attractor_objects])
+    strengths = np.array([a.strength for a in attractor_objects])
+    channels = [luminance, saturation, hue]
+
+    # Import optimization modules
+    if hierarchical:
+        from imgcolorshine.hierar import HierarchicalProcessor
+    if spatial_accel:
+        from imgcolorshine.spatial import SpatialAccelerator
+
+    # Combined optimization path
+    if hierarchical and spatial_accel:
+        logger.info("Using combined fast_hierar + spatial acceleration")
+
+        # Initialize processors
+        hier_processor = HierarchicalProcessor()
+        spatial_acc = SpatialAccelerator()
+
+        # Build spatial index once
+        spatial_acc.build_spatial_index(attractors_lab, tolerances)
+
+        # Create a transform function that uses spatial acceleration
+        def spatial_transform_func(img, *args):
+            # Convert to Oklab for spatial queries
+            # Convert to Oklab for spatial queries
+            img_oklab = engine.batch_rgb_to_oklab(img / 255.0)
+
+            # Create transform function wrapper
+            attractors_lch = np.array([a.oklch_values for a in attractor_objects])
+            flags_array = np.array(channels)
+
+            def transform_wrapper(img_rgb, *args):
+                return (
+                    transformer._transform_tile(
+                        img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
+                    )
+                    * 255.0
+                )
+
+            # Use spatial acceleration
+            return spatial_acc.transform_with_spatial_accel(
+                img, img_oklab, attractors_lab, tolerances, strengths, transform_wrapper, channels
+            )
+
+        # Process hierarchically with spatial optimization
+        transformed = hier_processor.process_hierarchical(
+            image, spatial_transform_func, attractors_lab, tolerances, strengths, channels
+        )
+
+    elif hierarchical:
+        logger.info("Using fast_hierar processing")
+
+        hier_processor = HierarchicalProcessor()
+
+        # Create a wrapper for the transform function
+        def transform_func(img_rgb, *args):
+            # Prepare attractor data in OKLCH format too
+            attractors_lch = np.array([a.oklch_values for a in attractor_objects])
+            flags_array = np.array(channels)
+
+            # Use the transformer's tile transform method
+            return (
+                transformer._transform_tile(
+                    img_rgb / 255.0,  # Normalize to 0-1
+                    attractors_lab,
+                    attractors_lch,
+                    tolerances,
+                    strengths,
+                    flags_array,
+                )
+                * 255.0
+            )  # Convert back to 0-255
+
+        transformed = hier_processor.process_hierarchical(
+            image, transform_func, attractors_lab, tolerances, strengths, channels
+        )
+
+    elif spatial_accel:
+        logger.info("Using spatial acceleration")
+
+        # Convert image to Oklab for spatial queries
+        image_oklab = engine.batch_rgb_to_oklab(image / 255.0)
+
+        spatial_acc = SpatialAccelerator()
+
+        # Create transform function wrapper
+        attractors_lch = np.array([a.oklch_values for a in attractor_objects])
+        flags_array = np.array(channels)
+
+        def transform_func(img_rgb, *args):
+            return (
+                transformer._transform_tile(
+                    img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
+                )
+                * 255.0
+            )
+
+        transformed = spatial_acc.transform_with_spatial_accel(
+            image, image_oklab, attractors_lab, tolerances, strengths, transform_func, channels
+        )
+    else:
+        # Should not reach here, but fallback to standard processing
+        flags = {"luminance": luminance, "saturation": saturation, "chroma": hue}
+        transformed = transformer.transform_image(image, attractor_objects, flags)
+
+    return transformed
 </file>
 
-<file path=".pre-commit-config.yaml">
-repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.3.4
-    hooks:
-      - id: ruff
-        args: [--fix]
-      - id: ruff-format
-        args: [--respect-gitignore]
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
-    hooks:
-      - id: trailing-whitespace
-      - id: check-yaml
-      - id: check-toml
-      - id: check-added-large-files
-      - id: debug-statements
-      - id: check-case-conflict
-      - id: mixed-line-ending
-        args: [--fix=lf]
-</file>
+<file path="src/imgcolorshine/trans_gpu.py">
+#!/usr/bin/env -S uv run -s
+# /// script
+# dependencies = ["numpy", "loguru"]
+# ///
+# this_file: src/imgcolorshine/trans_gpu.py
 
-<file path="LICENSE">
-MIT License
+"""
+GPU-accelerated color transformations using CuPy.
 
-Copyright (c) 2025 Adam Twardoch
+Provides GPU versions of all color space conversions and transformations
+with automatic memory management and optimized kernels.
+"""
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+import numpy as np
+from colorshine.gpu import check_gpu_memory_available, estimate_gpu_memory_required, get_array_module
+from loguru import logger
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+# Try to import CuPy
+try:
+    import cupy as cp
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-</file>
+    CUPY_AVAILABLE = cp.cuda.is_available()
+except:
+    CUPY_AVAILABLE = False
+    cp = None
 
-<file path="package.toml">
-# Package configuration
-[package]
-include_cli = true        # Include CLI boilerplate
-include_logging = true    # Include logging setup
-use_pydantic = true      # Use Pydantic for data validation
-use_rich = true          # Use Rich for terminal output
 
-[features]
-mkdocs = false           # Enable MkDocs documentation
-vcs = true              # Initialize Git repository
-github_actions = true   # Add GitHub Actions workflows
-</file>
+def get_gpu_color_matrices(xp):
+    """Get color transformation matrices for the given array module."""
+    # Linear RGB to XYZ D65 matrix
+    LINEAR_RGB_TO_XYZ = xp.array(
+        [
+            [0.4123907992659595, 0.3575843393838780, 0.1804807884018343],
+            [0.2126390058715104, 0.7151686787677559, 0.0721923153607337],
+            [0.0193308187155918, 0.1191947797946259, 0.9505321522496608],
+        ],
+        dtype=xp.float32,
+    )
 
-<file path="pyrightconfig.json">
-{
-  "include": [
-    "**/*.py"
-  ],
-  "exclude": [
-    ".",
-    "**/node_modules",
-    "**/__pycache__"
-  ],
-  "reportMissingImports": false,
-  "reportMissingTypeStubs": false,
-  "pythonVersion": "3.10"
-}
+    # XYZ D65 to Linear RGB matrix
+    XYZ_TO_LINEAR_RGB = xp.array(
+        [
+            [3.2409699419045213, -1.5373831775700935, -0.4986107602930033],
+            [-0.9692436362808798, 1.8759675015077206, 0.0415550574071756],
+            [0.0556300796969936, -0.2039769588889765, 1.0569715142428784],
+        ],
+        dtype=xp.float32,
+    )
+
+    # XYZ D65 to LMS matrix
+    XYZ_TO_LMS = xp.array(
+        [
+            [0.8189330101, 0.3618667424, -0.1288597137],
+            [0.0329845436, 0.9293118715, 0.0361456387],
+            [0.0482003018, 0.2643662691, 0.6338517070],
+        ],
+        dtype=xp.float32,
+    )
+
+    # LMS to XYZ D65 matrix
+    LMS_TO_XYZ = xp.array(
+        [
+            [1.2270138511035211, -0.5577999806518222, 0.2812561489664678],
+            [-0.0405801784232806, 1.1122568696168302, -0.0716766786656012],
+            [-0.0763812845057069, -0.4214819784180127, 1.5861632204407947],
+        ],
+        dtype=xp.float32,
+    )
+
+    # LMS to Oklab matrix
+    LMS_TO_OKLAB = xp.array(
+        [
+            [0.2104542553, 0.7936177850, -0.0040720468],
+            [1.9779984951, -2.4285922050, 0.4505937099],
+            [0.0259040371, 0.7827717662, -0.8086757660],
+        ],
+        dtype=xp.float32,
+    )
+
+    # Oklab to LMS matrix
+    OKLAB_TO_LMS = xp.array(
+        [
+            [1.0000000000, 0.3963377774, 0.2158037573],
+            [1.0000000000, -0.1055613458, -0.0638541728],
+            [1.0000000000, -0.0894841775, -1.2914855480],
+        ],
+        dtype=xp.float32,
+    )
+
+    return {
+        "LINEAR_RGB_TO_XYZ": LINEAR_RGB_TO_XYZ,
+        "XYZ_TO_LINEAR_RGB": XYZ_TO_LINEAR_RGB,
+        "XYZ_TO_LMS": XYZ_TO_LMS,
+        "LMS_TO_XYZ": LMS_TO_XYZ,
+        "LMS_TO_OKLAB": LMS_TO_OKLAB,
+        "OKLAB_TO_LMS": OKLAB_TO_LMS,
+    }
+
+
+def srgb_to_linear_gpu(srgb, xp):
+    """GPU version of sRGB to linear conversion."""
+    return xp.where(srgb <= 0.04045, srgb / 12.92, ((srgb + 0.055) / 1.055) ** 2.4)
+
+
+def linear_to_srgb_gpu(linear, xp):
+    """GPU version of linear to sRGB conversion."""
+    return xp.where(linear <= 0.0031308, linear * 12.92, 1.055 * (linear ** (1.0 / 2.4)) - 0.055)
+
+
+def batch_srgb_to_oklab_gpu(rgb_image, xp=None):
+    """
+    GPU version of batch sRGB to Oklab conversion.
+
+    Args:
+        rgb_image: Input image (H, W, 3) in sRGB [0, 1]
+        xp: Array module (auto-detect if None)
+
+    Returns:
+        Image in Oklab space
+    """
+    if xp is None:
+        xp = get_array_module(use_gpu=True)
+
+    # Get color matrices
+    matrices = get_gpu_color_matrices(xp)
+
+    # Ensure image is on GPU
+    rgb_gpu = xp.asarray(rgb_image, dtype=xp.float32)
+
+    # Step 1: sRGB to linear RGB
+    linear = srgb_to_linear_gpu(rgb_gpu, xp)
+
+    # Step 2: Linear RGB to XYZ (using einsum for efficiency)
+    xyz = xp.einsum("ij,...j->...i", matrices["LINEAR_RGB_TO_XYZ"], linear)
+
+    # Step 3: XYZ to LMS
+    lms = xp.einsum("ij,...j->...i", matrices["XYZ_TO_LMS"], xyz)
+
+    # Step 4: Apply cube root
+    lms_cbrt = xp.cbrt(lms)
+
+    # Step 5: LMS to Oklab
+    return xp.einsum("ij,...j->...i", matrices["LMS_TO_OKLAB"], lms_cbrt)
+
+
+def batch_oklab_to_srgb_gpu(oklab_image, xp=None):
+    """
+    GPU version of batch Oklab to sRGB conversion.
+
+    Args:
+        oklab_image: Input image (H, W, 3) in Oklab
+        xp: Array module (auto-detect if None)
+
+    Returns:
+        Image in sRGB space [0, 1]
+    """
+    if xp is None:
+        xp = get_array_module(use_gpu=True)
+
+    # Get color matrices
+    matrices = get_gpu_color_matrices(xp)
+
+    # Ensure image is on GPU
+    oklab_gpu = xp.asarray(oklab_image, dtype=xp.float32)
+
+    # Step 1: Oklab to LMS (cbrt space)
+    lms_cbrt = xp.einsum("ij,...j->...i", matrices["OKLAB_TO_LMS"], oklab_gpu)
+
+    # Step 2: Apply cube
+    lms = lms_cbrt**3
+
+    # Step 3: LMS to XYZ
+    xyz = xp.einsum("ij,...j->...i", matrices["LMS_TO_XYZ"], lms)
+
+    # Step 4: XYZ to linear RGB
+    linear = xp.einsum("ij,...j->...i", matrices["XYZ_TO_LINEAR_RGB"], xyz)
+
+    # Step 5: Linear RGB to sRGB
+    srgb = linear_to_srgb_gpu(linear, xp)
+
+    # Clamp to valid range
+    return xp.clip(srgb, 0.0, 1.0)
+
+
+def batch_oklab_to_oklch_gpu(oklab_image, xp=None):
+    """GPU version of Oklab to OKLCH conversion."""
+    if xp is None:
+        xp = get_array_module(use_gpu=True)
+
+    oklab_gpu = xp.asarray(oklab_image, dtype=xp.float32)
+
+    l = oklab_gpu[..., 0]
+    a = oklab_gpu[..., 1]
+    b = oklab_gpu[..., 2]
+
+    c = xp.sqrt(a * a + b * b)
+    h = xp.arctan2(b, a) * 180.0 / xp.pi
+    h = xp.where(h < 0, h + 360.0, h)
+
+    return xp.stack([l, c, h], axis=-1)
+
+
+def batch_oklch_to_oklab_gpu(oklch_image, xp=None):
+    """GPU version of OKLCH to Oklab conversion."""
+    if xp is None:
+        xp = get_array_module(use_gpu=True)
+
+    oklch_gpu = xp.asarray(oklch_image, dtype=xp.float32)
+
+    l = oklch_gpu[..., 0]
+    c = oklch_gpu[..., 1]
+    h = oklch_gpu[..., 2]
+
+    h_rad = h * xp.pi / 180.0
+    a = c * xp.cos(h_rad)
+    b = c * xp.sin(h_rad)
+
+    return xp.stack([l, a, b], axis=-1)
+
+
+def transform_pixels_gpu(
+    oklab_image, oklch_image, attractors_lab, attractors_lch, tolerances, strengths, flags, xp=None
+):
+    """
+    GPU version of pixel transformation.
+
+    Args:
+        oklab_image: Image in Oklab space (H, W, 3)
+        oklch_image: Image in OKLCH space (H, W, 3)
+        attractors_lab: Attractors in Oklab (N, 3)
+        attractors_lch: Attractors in OKLCH (N, 3)
+        tolerances: Tolerance values [0, 100]
+        strengths: Strength values [0, 100]
+        flags: Boolean array [luminance, saturation, chroma]
+        xp: Array module (auto-detect if None)
+
+    Returns:
+        Transformed image in Oklab space
+    """
+    if xp is None:
+        xp = get_array_module(use_gpu=True)
+
+    # Transfer to GPU
+    oklab_gpu = xp.asarray(oklab_image, dtype=xp.float32)
+    oklch_gpu = xp.asarray(oklch_image, dtype=xp.float32)
+    attr_lab = xp.asarray(attractors_lab, dtype=xp.float32)
+    attr_lch = xp.asarray(attractors_lch, dtype=xp.float32)
+    tol = xp.asarray(tolerances, dtype=xp.float32)
+    str_vals = xp.asarray(strengths, dtype=xp.float32)
+
+    h, w = oklab_gpu.shape[:2]
+    num_attractors = len(attr_lab)
+
+    # Reshape for broadcasting
+    pixels_lab = oklab_gpu.reshape(-1, 3)  # (H*W, 3)
+    pixels_lch = oklch_gpu.reshape(-1, 3)  # (H*W, 3)
+
+    # Calculate distances to all attractors
+    # Broadcasting: (H*W, 1, 3) - (1, N, 3) = (H*W, N, 3)
+    delta = pixels_lab[:, None, :] - attr_lab[None, :, :]
+    distances = xp.sqrt(xp.sum(delta**2, axis=2))  # (H*W, N)
+
+    # Calculate weights
+    max_distances = 2.5 * (tol / 100.0)  # Linear mapping
+    d_norm = distances / max_distances[None, :]
+
+    # Raised cosine falloff
+    within_tolerance = d_norm <= 1.0
+    falloff = 0.5 * (xp.cos(d_norm * xp.pi) + 1.0)
+    weights = within_tolerance * (str_vals[None, :] / 100.0) * falloff  # (H*W, N)
+
+    # Normalize weights
+    total_weights = xp.sum(weights, axis=1, keepdims=True)  # (H*W, 1)
+    has_weight = total_weights > 0
+
+    # Source weight for pixels with attractors
+    source_weights = xp.where(total_weights > 1.0, 0.0, 1.0 - total_weights)
+
+    # Normalize if needed
+    weights = xp.where(total_weights > 1.0, weights / total_weights, weights)
+
+    # Initialize result with original values
+    result_lch = pixels_lch.copy()
+
+    # Transform each channel if enabled
+    if flags[0]:  # Luminance
+        weighted_l = xp.sum(weights * attr_lch[:, 0][None, :], axis=1)
+        result_lch[:, 0] = xp.where(
+            has_weight.squeeze(), source_weights.squeeze() * pixels_lch[:, 0] + weighted_l, pixels_lch[:, 0]
+        )
+
+    if flags[1]:  # Saturation
+        weighted_c = xp.sum(weights * attr_lch[:, 1][None, :], axis=1)
+        result_lch[:, 1] = xp.where(
+            has_weight.squeeze(), source_weights.squeeze() * pixels_lch[:, 1] + weighted_c, pixels_lch[:, 1]
+        )
+
+    if flags[2]:  # Hue
+        # Circular mean for chroma
+        h_rad = pixels_lch[:, 2] * xp.pi / 180.0
+        sin_sum = source_weights.squeeze() * xp.sin(h_rad)
+        cos_sum = source_weights.squeeze() * xp.cos(h_rad)
+
+        # Add weighted attractor hues
+        for i in range(num_attractors):
+            h_attr_rad = attr_lch[i, 2] * xp.pi / 180.0
+            sin_sum += weights[:, i] * xp.sin(h_attr_rad)
+            cos_sum += weights[:, i] * xp.cos(h_attr_rad)
+
+        new_h = xp.arctan2(sin_sum, cos_sum) * 180.0 / xp.pi
+        new_h = xp.where(new_h < 0, new_h + 360.0, new_h)
+
+        result_lch[:, 2] = xp.where(has_weight.squeeze(), new_h, pixels_lch[:, 2])
+
+    # Convert back to Oklab
+    h_rad = result_lch[:, 2] * xp.pi / 180.0
+    result_lab = xp.stack(
+        [result_lch[:, 0], result_lch[:, 1] * xp.cos(h_rad), result_lch[:, 1] * xp.sin(h_rad)], axis=1
+    )
+
+    # Reshape back to image dimensions
+    return result_lab.reshape(h, w, 3)
+
+
+def process_image_gpu(
+    rgb_image, attractors_lab, tolerances, strengths, enable_luminance=True, enable_saturation=True, enable_hue=True
+):
+    """
+    Complete GPU pipeline for image processing.
+
+    Args:
+        rgb_image: Input image (H, W, 3) in sRGB [0, 1]
+        attractors_lab: Attractor colors in Oklab (N, 3)
+        tolerances: Tolerance values [0, 100]
+        strengths: Strength values [0, 100]
+        enable_luminance: Transform lightness
+        enable_saturation: Transform chroma
+        enable_hue: Transform chroma
+
+    Returns:
+        Transformed image in sRGB [0, 1]
+    """
+    # Check GPU memory
+    required_mb = estimate_gpu_memory_required(rgb_image.shape, len(attractors_lab))
+    has_memory, free_mb, total_mb = check_gpu_memory_available(required_mb)
+
+    if not has_memory:
+        logger.warning(f"Insufficient GPU memory: need {required_mb:.1f}MB, have {free_mb:.1f}MB")
+        return None
+
+    xp = get_array_module(use_gpu=True)
+
+    try:
+        # Convert to Oklab
+        oklab = batch_srgb_to_oklab_gpu(rgb_image, xp)
+
+        # Convert to OKLCH
+        oklch = batch_oklab_to_oklch_gpu(oklab, xp)
+
+        # Also convert attractors to OKLCH
+        attr_lab_gpu = xp.asarray(attractors_lab, dtype=xp.float32)
+        attr_lch = batch_oklab_to_oklch_gpu(attr_lab_gpu.reshape(-1, 1, 3), xp).reshape(-1, 3)
+
+        # Transform
+        flags = xp.array([enable_luminance, enable_saturation, enable_hue])
+        transformed_lab = transform_pixels_gpu(oklab, oklch, attractors_lab, attr_lch, tolerances, strengths, flags, xp)
+
+        # Gamut mapping in OKLCH space
+        batch_oklab_to_oklch_gpu(transformed_lab, xp)
+        # Simple gamut clipping for now (TODO: implement proper gamut mapping)
+
+        # Convert back to sRGB
+        result_srgb = batch_oklab_to_srgb_gpu(transformed_lab, xp)
+
+        # Transfer back to CPU
+        if hasattr(result_srgb, "get"):  # CuPy array
+            return result_srgb.get()
+        return np.array(result_srgb)
+
+    except Exception as e:
+        logger.error(f"GPU processing failed: {e}")
+        return None
 </file>
 
 <file path="tests/debug_transformation.py">
@@ -5799,15 +5818,209 @@ if __name__ == "__main__":
     sys.exit(0 if success else 1)
 </file>
 
-<file path="tests/test_package.py">
-"""Test suite for imgcolorshine."""
+<file path="tests/test_tolerance.py">
+#!/usr/bin/env -S uv run -s
+# /// script
+# dependencies = ["pytest", "numpy", "coloraide", "loguru"]
+# ///
+# this_file: tests/test_tolerance.py
+
+"""
+Unit tests for tolerance calculation and color transformation logic.
+
+These tests verify that the linear tolerance mapping works correctly
+and produces expected results for known color distances.
+"""
+
+import numpy as np
+import pytest
+
+from imgcolorshine.color import OKLCHEngine
+from imgcolorshine.transform import MAX_DELTA_E, calculate_weights
 
 
-def test_version():
-    """Verify package exposes version."""
-    import imgcolorshine
+class TestToleranceCalculation:
+    """Test suite for tolerance-based weight calculations."""
 
-    assert imgcolorshine.__version__
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.engine = OKLCHEngine()
+
+    def test_max_delta_e_value(self):
+        """Verify MAX_DELTA_E is set to expected value."""
+        assert MAX_DELTA_E == 2.5
+
+    def test_linear_tolerance_mapping(self):
+        """Test that tolerance maps linearly to delta_e_max."""
+        # Create a dummy pixel and attractor
+        pixel_lab = np.array([0.5, 0.0, 0.0])
+        attractors_lab = np.array([[0.5, 0.0, 0.0]])  # Same color
+
+        # Test various tolerance values (skip 0 to avoid division by zero in the algorithm)
+        for tolerance in [1, 25, 50, 75, 100]:
+            tolerances = np.array([tolerance])
+            strengths = np.array([100])
+
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
+
+            # For identical colors, weight should equal strength/100
+            expected_weight = 1.0  # strength=100, distance=0
+            assert np.isclose(weights[0], expected_weight, rtol=1e-5)
+
+    def test_tolerance_radius_effect(self):
+        """Test that tolerance correctly controls the radius of influence."""
+        # Create colors with known distances
+        pixel_lab = np.array([0.5, 0.0, 0.0])
+
+        # Test different distances
+        test_cases = [
+            # (distance, tolerance, should_affect)
+            (0.49, 20, True),  # 0.49 < 20 * 2.5 / 100 = 0.5
+            (0.5, 21, True),  # 0.5 < 21 * 2.5 / 100 = 0.525
+            (0.51, 20, False),  # 0.51 > 20 * 2.5 / 100 = 0.5
+            (0.99, 40, True),  # 0.99 < 40 * 2.5 / 100 = 1.0
+            (1.0, 41, True),  # 1.0 < 41 * 2.5 / 100 = 1.025
+            (1.01, 40, False),  # 1.01 > 40 * 2.5 / 100 = 1.0
+            (1.99, 80, True),  # 1.99 < 80 * 2.5 / 100 = 2.0
+            (2.0, 81, True),  # 2.0 < 81 * 2.5 / 100 = 2.025
+            (2.01, 80, False),  # 2.01 > 80 * 2.5 / 100 = 2.0
+        ]
+
+        for distance, tolerance, should_affect in test_cases:
+            # Create attractor at specified distance
+            attractors_lab = np.array([[0.5, distance, 0.0]])
+            tolerances = np.array([tolerance])
+            strengths = np.array([100])
+
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
+
+            if should_affect:
+                assert weights[0] > 0, f"Expected non-zero weight for distance={distance}, tolerance={tolerance}"
+            else:
+                assert weights[0] == 0, f"Expected zero weight for distance={distance}, tolerance={tolerance}"
+
+    def test_strength_scaling(self):
+        """Test that strength correctly scales the weight."""
+        pixel_lab = np.array([0.5, 0.0, 0.0])
+        attractors_lab = np.array([[0.5, 0.0, 0.0]])  # Same color
+        tolerances = np.array([100])
+
+        # Test different strength values
+        for strength in [0, 25, 50, 75, 100]:
+            strengths = np.array([strength])
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
+
+            # For identical colors, weight should equal strength/100
+            expected_weight = strength / 100.0
+            assert np.isclose(weights[0], expected_weight, rtol=1e-5)
+
+    def test_falloff_function(self):
+        """Test the raised cosine falloff function behavior."""
+        pixel_lab = np.array([0.5, 0.0, 0.0])
+        tolerances = np.array([100])
+        strengths = np.array([100])
+
+        # Test falloff at different normalized distances
+        test_distances = [0.0, 0.25, 0.5, 0.75, 1.0]
+        expected_falloffs = [
+            1.0,
+            0.8536,
+            0.5,
+            0.1464,
+            0.0,
+        ]  # Raised cosine values
+
+        for d_norm, expected_falloff in zip(test_distances, expected_falloffs, strict=True):
+            # Create attractor at distance that gives desired d_norm
+            distance = d_norm * MAX_DELTA_E
+            attractors_lab = np.array([[0.5, distance, 0.0]])
+
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
+
+            # Weight should be strength * falloff
+            expected_weight = expected_falloff
+            assert np.isclose(weights[0], expected_weight, rtol=1e-3)
+
+    def test_multiple_attractors(self):
+        """Test weight calculation with multiple attractors."""
+        pixel_lab = np.array([0.5, 0.0, 0.0])
+
+        # Create three attractors at different distances
+        attractors_lab = np.array(
+            [
+                [0.5, 0.0, 0.0],  # Same color
+                [0.5, 0.5, 0.0],  # Medium distance
+                [0.5, 2.0, 0.0],  # Far distance
+            ]
+        )
+
+        tolerances = np.array([100, 50, 30])
+        strengths = np.array([100, 80, 60])
+
+        weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
+
+        # First attractor: same color, should have full weight
+        assert np.isclose(weights[0], 1.0, rtol=1e-5)
+
+        # Second attractor: should have partial weight
+        assert 0 < weights[1] < 0.8
+
+        # Third attractor: outside tolerance, should have zero weight
+        assert weights[2] == 0.0
+
+    def test_known_color_pairs(self):
+        """Test with real color pairs and known perceptual distances."""
+        # Test cases with approximate known distances
+        test_cases = [
+            # (color1, color2, approx_distance, tolerance_needed)
+            ("red", "darkred", 0.3, 15),
+            ("red", "orange", 0.4, 20),
+            ("red", "yellow", 0.8, 35),
+            ("red", "green", 1.2, 50),
+            ("red", "blue", 1.5, 65),
+            ("white", "black", 1.0, 45),
+            ("gray", "darkgray", 0.25, 12),
+        ]
+
+        for color1_str, color2_str, _, min_tolerance in test_cases:
+            # Convert colors to Oklab
+            color1 = self.engine.parse_color(color1_str).convert("oklab")
+            color2 = self.engine.parse_color(color2_str).convert("oklab")
+
+            pixel_lab = np.array([color1["lightness"], color1["a"], color1["b"]])
+            attractors_lab = np.array([[color2["lightness"], color2["a"], color2["b"]]])
+
+            # Test that min_tolerance allows influence
+            tolerances = np.array([min_tolerance])
+            strengths = np.array([100])
+
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
+
+            # Should have some influence at min_tolerance
+            assert weights[0] > 0, (
+                f"Expected {color1_str} to be influenced by {color2_str} at tolerance={min_tolerance}"
+            )
+
+    def test_edge_cases(self):
+        """Test edge cases and boundary conditions."""
+        pixel_lab = np.array([0.5, 0.0, 0.0])
+        attractors_lab = np.array([[0.5, 1.0, 0.0]])
+
+        # Test tolerance = 0
+        weights = calculate_weights(pixel_lab, attractors_lab, np.array([0]), np.array([100]))
+        assert weights[0] == 0.0
+
+        # Test strength = 0
+        weights = calculate_weights(pixel_lab, attractors_lab, np.array([100]), np.array([0]))
+        assert weights[0] == 0.0
+
+        # Test very small but non-zero values
+        weights = calculate_weights(pixel_lab, attractors_lab, np.array([0.1]), np.array([0.1]))
+        assert weights[0] >= 0.0
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
 </file>
 
 <file path="cleanup.sh">
@@ -5817,12 +6030,387 @@ rm -rf dist/imgcolorshine*.*
 uv build
 
 python -m uzpy run -e src
-fd -e py -x autoflake -i {}
-fd -e py -x pyupgrade --py311-plus {}
-fd -e py -x ruff check --output-format=github --fix --unsafe-fixes {}
-fd -e py -x ruff format --respect-gitignore --target-version py311 {}
+fd -e py -x uvx autoflake -i {}
+fd -e py -x uvx pyupgrade --py311-plus {}
+fd -e py -x uvx ruff check --output-format=github --fix --unsafe-fixes {}
+fd -e py -x uvx ruff format --respect-gitignore --target-version py311 {}
+uvx ty check
+PYTHONPATH=src mypy -p imgcolorshine
+
 repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules,docs -o llms.txt .
 python -m pytest
+</file>
+
+<file path="pyproject.toml">
+[project]
+name = 'imgcolorshine'
+description = ''
+readme = 'README.md'
+requires-python = '>=3.10'
+keywords = []
+dynamic = ['version']
+classifiers = [
+    'Development Status :: 4 - Beta',
+    'Programming Language :: Python',
+    'Programming Language :: Python :: 3.10',
+    'Programming Language :: Python :: 3.11',
+    'Programming Language :: Python :: 3.12',
+    'Programming Language :: Python :: Implementation :: CPython',
+    'Programming Language :: Python :: Implementation :: PyPy',
+    'Operating System :: OS Independent',
+    'License :: OSI Approved :: MIT License',
+    'Intended Audience :: Developers',
+]
+dependencies = [
+    'fire>=0.6.0',
+    'loguru>=0.7.0',
+    'numpy>=2.2.2',
+    'numba>=0.58.0',
+    'coloraide>=4.6',
+    'opencv-python>=4.8.0',
+    'pillow>=11.1.0',
+]
+
+[[project.authors]]
+name = 'Adam Twardoch'
+email = 'adam+github@twardoch.com'
+
+[project.license]
+text = 'MIT'
+
+[project.urls]
+Documentation = 'https://github.com/twardoch/imgcolorshine#readme'
+Issues = 'https://github.com/twardoch/imgcolorshine/issues'
+Source = 'https://github.com/twardoch/imgcolorshine'
+
+[project.optional-dependencies]
+dev = [
+    'pre-commit>=4.1.0',
+    'ruff>=0.9.7',
+    'mypy>=1.15.0',
+    'absolufy-imports>=0.3.1',
+    'pyupgrade>=3.19.1',
+    'isort>=6.0.1',
+]
+test = [
+    'pytest>=8.3.4',
+    'pytest-cov>=6.0.0',
+    'pytest-benchmark[histogram]>=5.1.0',
+    'pytest-asyncio>=0.26.0',
+    'coverage[toml]>=7.6.12',
+]
+docs = [
+    'sphinx>=8.2.3',
+    'sphinx-rtd-theme>=3.0.2',
+    'sphinx-autodoc-typehints>=2.0.0',
+    'myst-parser>=4.0.1',
+]
+all = [
+    'absolufy-imports>=0.3.1',
+    'coverage[toml]>=7.6.12',
+    'isort>=6.0.1',
+    'mypy>=1.15.0',
+    'pre-commit>=4.1.0',
+    'pytest-asyncio>=0.26.0',
+    'pytest-benchmark[histogram]>=5.1.0',
+    'pytest-cov>=6.0.0',
+    'pytest>=8.3.4',
+    'pyupgrade>=3.19.1',
+    'ruff>=0.9.7',
+    'myst-parser>=4.0.1',
+    'sphinx-autodoc-typehints>=2.0.0',
+    'sphinx-rtd-theme>=3.0.2',
+    'sphinx>=8.2.3',
+]
+
+[project.scripts]
+imgcolorshine = 'imgcolorshine.cli:main'
+
+[build-system]
+requires = [
+    'hatchling>=1.27.0',
+    'hatch-vcs>=0.4.0',
+]
+build-backend = 'hatchling.build'
+[tool.hatch.build]
+include = [
+    'src/imgcolorshine/py.typed',
+    'src/imgcolorshine/data/**/*',
+]
+exclude = [
+    '**/__pycache__',
+    '**/.pytest_cache',
+    '**/.mypy_cache',
+]
+[tool.hatch.build.targets.wheel]
+packages = ['src/imgcolorshine']
+reproducible = true
+[tool.hatch.build.hooks.vcs]
+version-file = 'src/imgcolorshine/__version__.py'
+
+[tool.hatch.version]
+source = 'vcs'
+
+[tool.hatch.metadata]
+allow-direct-references = true
+[tool.hatch.envs.default]
+features = [
+    'dev',
+    'test',
+    'all',
+]
+dependencies = []
+
+[tool.hatch.envs.default.scripts]
+test = 'pytest {args:tests}'
+test-cov = 'pytest --cov-report=term-missing --cov-config=pyproject.toml --cov=src/imgcolorshine --cov=tests {args:tests}'
+type-check = 'mypy src/imgcolorshine tests'
+lint = [
+    'uvx ruff check src/imgcolorshine tests',
+    'uvx ruff format --respect-gitignore src/imgcolorshine tests', 'uvx ty check'
+]
+fmt = [
+    'uvx ruff format --respect-gitignore src/imgcolorshine tests',
+    'uvx ruff check --fix src/imgcolorshine tests',
+]
+fix = [
+    'uvx ruff check --fix --unsafe-fixes src/imgcolorshine tests',
+    'uvx ruff format --respect-gitignore src/imgcolorshine tests',
+]
+[[tool.hatch.envs.all.matrix]]
+python = [
+    '3.10',
+    '3.11',
+    '3.12',
+]
+
+[tool.hatch.envs.lint]
+detached = true
+features = ['dev']
+
+[tool.hatch.envs.lint.scripts]
+typing = 'mypy --install-types --non-interactive {args:src/imgcolorshine tests}'
+style = [
+    'ruff check {args:.}',
+    'ruff format --respect-gitignore {args:.}',
+]
+fmt = [
+    'ruff format --respect-gitignore {args:.}',
+    'ruff check --fix {args:.}',
+]
+fix = [
+    'ruff check --fix --unsafe-fixes {args:.}',
+    'ruff format --respect-gitignore {args:.}',
+]
+all = [
+    'style',
+    'typing',
+    'fix',
+]
+
+[tool.hatch.envs.test]
+features = ['test']
+
+[tool.hatch.envs.test.scripts]
+test = 'python -m pytest {args:tests}'
+test-cov = 'python -m pytest --cov-report=term-missing --cov-config=pyproject.toml --cov=src/imgcolorshine --cov=tests {args:tests}'
+bench = 'python -m pytest -v -p no:briefcase tests/test_benchmark.py --benchmark-only'
+bench-save = 'python -m pytest -v -p no:briefcase tests/test_benchmark.py --benchmark-only --benchmark-json=benchmark/results.json'
+
+[tool.hatch.envs.docs]
+features = ['docs']
+
+[tool.hatch.envs.docs.scripts]
+build = 'sphinx-build -b html docs/source docs/build'
+
+[tool.hatch.envs.ci]
+features = ['test']
+
+[tool.hatch.envs.ci.scripts]
+test = 'pytest --cov=src/imgcolorshine --cov-report=xml'
+[tool.coverage.paths]
+imgcolorshine = [
+    'src/imgcolorshine',
+    '*/imgcolorshine/src/imgcolorshine',
+]
+tests = [
+    'tests',
+    '*/imgcolorshine/tests',
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    'no cov',
+    'if __name__ == .__main__.:',
+    'if TYPE_CHECKING:',
+    'pass',
+    'raise NotImplementedError',
+    'raise ImportError',
+    'except ImportError',
+    'except KeyError',
+    'except AttributeError',
+    'except NotImplementedError',
+]
+
+[tool.coverage.run]
+source_pkgs = [
+    'imgcolorshine',
+    'tests',
+]
+branch = true
+parallel = true
+omit = ['src/imgcolorshine/__about__.py']
+
+[tool.mypy]
+python_version = '3.10'
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = ['tests.*']
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+[tool.pytest.ini_options]
+addopts = '-v --durations=10 -p no:briefcase -p no:ruff -p no:black -p no:xdist'
+asyncio_mode = 'auto'
+asyncio_default_fixture_loop_scope = 'function'
+console_output_style = 'progress'
+filterwarnings = [
+    'ignore::DeprecationWarning',
+    'ignore::UserWarning',
+    'ignore:pkg_resources is deprecated:UserWarning',
+]
+log_cli = true
+log_cli_level = 'INFO'
+markers = [
+    '''benchmark: marks tests as benchmarks (select with '-m benchmark')''',
+    'unit: mark a test as a unit test',
+    'integration: mark a test as an integration test',
+    'permutation: tests for permutation functionality',
+    'parameter: tests for parameter parsing',
+    'prompt: tests for prompt parsing',
+]
+norecursedirs = [
+    '.*',
+    'build',
+    'dist',
+    'venv',
+    '__pycache__',
+    '*.egg-info',
+    '_private',
+]
+python_classes = ['Test*']
+python_files = ['test_*.py']
+python_functions = ['test_*']
+testpaths = ['tests']
+
+[tool.pytest-benchmark]
+min_rounds = 100
+min_time = 0.1
+histogram = true
+storage = 'file'
+save-data = true
+compare = [
+    'min',
+    'max',
+    'mean',
+    'stddev',
+    'median',
+    'iqr',
+    'ops',
+    'rounds',
+]
+
+[tool.ruff]
+target-version = 'py310'
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    'A',
+    'ARG',
+    'ASYNC',
+    'B',
+    'C',
+    'DTZ',
+    'E',
+    'EM',
+    'F',
+    'FBT',
+    'I',
+    'ICN',
+    'ISC',
+    'LOG',
+    'N',
+    'PLC',
+    'PLE',
+    'PLR',
+    'PLW',
+    'PT',
+    'PTH',
+    'PYI',
+    'RET',
+    'RSE',
+    'RUF',
+    'S',
+    'SIM',
+    'T',
+    'TCH',
+    'TID',
+    'UP',
+    'W',
+    'YTT',
+]
+ignore = [
+    'B027',
+    'C901',
+    'FBT003',
+    'PLR0911',
+    'PLR0912',
+    'PLR0913',
+    'PLR0915',
+    'PLR1714',
+    'PLW0603',
+    'PT013',
+    'PTH123',
+    'PYI056',
+    'S105',
+    'S106',
+    'S107',
+    'S110',
+    'SIM102',
+]
+unfixable = ['F401']
+exclude = [
+    '.git',
+    '.venv',
+    'venv',
+    'dist',
+    'build',
+    'old',
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ['imgcolorshine']
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = 'all'
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*" = [
+    'PLR2004',
+    'S101',
+    'TID252',
+]
 </file>
 
 <file path="src/imgcolorshine/utils.py">
@@ -6223,584 +6811,6 @@ if __name__ == "__main__":
     test_performance_comparison()
 </file>
 
-<file path="tests/test_tolerance.py">
-#!/usr/bin/env -S uv run -s
-# /// script
-# dependencies = ["pytest", "numpy", "coloraide", "loguru"]
-# ///
-# this_file: tests/test_tolerance.py
-
-"""
-Unit tests for tolerance calculation and color transformation logic.
-
-These tests verify that the linear tolerance mapping works correctly
-and produces expected results for known color distances.
-"""
-
-import numpy as np
-import pytest
-
-from imgcolorshine.color_engine import OKLCHEngine
-from imgcolorshine.transforms import MAX_DELTA_E, calculate_weights
-
-
-class TestToleranceCalculation:
-    """Test suite for tolerance-based weight calculations."""
-
-    def setup_method(self):
-        """Set up test fixtures."""
-        self.engine = OKLCHEngine()
-
-    def test_max_delta_e_value(self):
-        """Verify MAX_DELTA_E is set to expected value."""
-        assert MAX_DELTA_E == 2.5
-
-    def test_linear_tolerance_mapping(self):
-        """Test that tolerance maps linearly to delta_e_max."""
-        # Create a dummy pixel and attractor
-        pixel_lab = np.array([0.5, 0.0, 0.0])
-        attractors_lab = np.array([[0.5, 0.0, 0.0]])  # Same color
-
-        # Test various tolerance values (skip 0 to avoid division by zero in the algorithm)
-        for tolerance in [1, 25, 50, 75, 100]:
-            tolerances = np.array([tolerance])
-            strengths = np.array([100])
-
-            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
-
-            # For identical colors, weight should equal strength/100
-            expected_weight = 1.0  # strength=100, distance=0
-            assert np.isclose(weights[0], expected_weight, rtol=1e-5)
-
-    def test_tolerance_radius_effect(self):
-        """Test that tolerance correctly controls the radius of influence."""
-        # Create colors with known distances
-        pixel_lab = np.array([0.5, 0.0, 0.0])
-
-        # Test different distances
-        test_cases = [
-            # (distance, tolerance, should_affect)
-            (0.49, 20, True),  # 0.49 < 20 * 2.5 / 100 = 0.5
-            (0.5, 21, True),  # 0.5 < 21 * 2.5 / 100 = 0.525
-            (0.51, 20, False),  # 0.51 > 20 * 2.5 / 100 = 0.5
-            (0.99, 40, True),  # 0.99 < 40 * 2.5 / 100 = 1.0
-            (1.0, 41, True),  # 1.0 < 41 * 2.5 / 100 = 1.025
-            (1.01, 40, False),  # 1.01 > 40 * 2.5 / 100 = 1.0
-            (1.99, 80, True),  # 1.99 < 80 * 2.5 / 100 = 2.0
-            (2.0, 81, True),  # 2.0 < 81 * 2.5 / 100 = 2.025
-            (2.01, 80, False),  # 2.01 > 80 * 2.5 / 100 = 2.0
-        ]
-
-        for distance, tolerance, should_affect in test_cases:
-            # Create attractor at specified distance
-            attractors_lab = np.array([[0.5, distance, 0.0]])
-            tolerances = np.array([tolerance])
-            strengths = np.array([100])
-
-            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
-
-            if should_affect:
-                assert weights[0] > 0, f"Expected non-zero weight for distance={distance}, tolerance={tolerance}"
-            else:
-                assert weights[0] == 0, f"Expected zero weight for distance={distance}, tolerance={tolerance}"
-
-    def test_strength_scaling(self):
-        """Test that strength correctly scales the weight."""
-        pixel_lab = np.array([0.5, 0.0, 0.0])
-        attractors_lab = np.array([[0.5, 0.0, 0.0]])  # Same color
-        tolerances = np.array([100])
-
-        # Test different strength values
-        for strength in [0, 25, 50, 75, 100]:
-            strengths = np.array([strength])
-            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
-
-            # For identical colors, weight should equal strength/100
-            expected_weight = strength / 100.0
-            assert np.isclose(weights[0], expected_weight, rtol=1e-5)
-
-    def test_falloff_function(self):
-        """Test the raised cosine falloff function behavior."""
-        pixel_lab = np.array([0.5, 0.0, 0.0])
-        tolerances = np.array([100])
-        strengths = np.array([100])
-
-        # Test falloff at different normalized distances
-        test_distances = [0.0, 0.25, 0.5, 0.75, 1.0]
-        expected_falloffs = [
-            1.0,
-            0.8536,
-            0.5,
-            0.1464,
-            0.0,
-        ]  # Raised cosine values
-
-        for d_norm, expected_falloff in zip(test_distances, expected_falloffs, strict=True):
-            # Create attractor at distance that gives desired d_norm
-            distance = d_norm * MAX_DELTA_E
-            attractors_lab = np.array([[0.5, distance, 0.0]])
-
-            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
-
-            # Weight should be strength * falloff
-            expected_weight = expected_falloff
-            assert np.isclose(weights[0], expected_weight, rtol=1e-3)
-
-    def test_multiple_attractors(self):
-        """Test weight calculation with multiple attractors."""
-        pixel_lab = np.array([0.5, 0.0, 0.0])
-
-        # Create three attractors at different distances
-        attractors_lab = np.array(
-            [
-                [0.5, 0.0, 0.0],  # Same color
-                [0.5, 0.5, 0.0],  # Medium distance
-                [0.5, 2.0, 0.0],  # Far distance
-            ]
-        )
-
-        tolerances = np.array([100, 50, 30])
-        strengths = np.array([100, 80, 60])
-
-        weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
-
-        # First attractor: same color, should have full weight
-        assert np.isclose(weights[0], 1.0, rtol=1e-5)
-
-        # Second attractor: should have partial weight
-        assert 0 < weights[1] < 0.8
-
-        # Third attractor: outside tolerance, should have zero weight
-        assert weights[2] == 0.0
-
-    def test_known_color_pairs(self):
-        """Test with real color pairs and known perceptual distances."""
-        # Test cases with approximate known distances
-        test_cases = [
-            # (color1, color2, approx_distance, tolerance_needed)
-            ("red", "darkred", 0.3, 15),
-            ("red", "orange", 0.4, 20),
-            ("red", "yellow", 0.8, 35),
-            ("red", "green", 1.2, 50),
-            ("red", "blue", 1.5, 65),
-            ("white", "black", 1.0, 45),
-            ("gray", "darkgray", 0.25, 12),
-        ]
-
-        for color1_str, color2_str, _, min_tolerance in test_cases:
-            # Convert colors to Oklab
-            color1 = self.engine.parse_color(color1_str).convert("oklab")
-            color2 = self.engine.parse_color(color2_str).convert("oklab")
-
-            pixel_lab = np.array([color1["lightness"], color1["a"], color1["b"]])
-            attractors_lab = np.array([[color2["lightness"], color2["a"], color2["b"]]])
-
-            # Test that min_tolerance allows influence
-            tolerances = np.array([min_tolerance])
-            strengths = np.array([100])
-
-            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
-
-            # Should have some influence at min_tolerance
-            assert weights[0] > 0, (
-                f"Expected {color1_str} to be influenced by {color2_str} at tolerance={min_tolerance}"
-            )
-
-    def test_edge_cases(self):
-        """Test edge cases and boundary conditions."""
-        pixel_lab = np.array([0.5, 0.0, 0.0])
-        attractors_lab = np.array([[0.5, 1.0, 0.0]])
-
-        # Test tolerance = 0
-        weights = calculate_weights(pixel_lab, attractors_lab, np.array([0]), np.array([100]))
-        assert weights[0] == 0.0
-
-        # Test strength = 0
-        weights = calculate_weights(pixel_lab, attractors_lab, np.array([100]), np.array([0]))
-        assert weights[0] == 0.0
-
-        # Test very small but non-zero values
-        weights = calculate_weights(pixel_lab, attractors_lab, np.array([0.1]), np.array([0.1]))
-        assert weights[0] >= 0.0
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
-</file>
-
-<file path="pyproject.toml">
-[project]
-name = 'imgcolorshine'
-description = ''
-readme = 'README.md'
-requires-python = '>=3.10'
-keywords = []
-dynamic = ['version']
-classifiers = [
-    'Development Status :: 4 - Beta',
-    'Programming Language :: Python',
-    'Programming Language :: Python :: 3.10',
-    'Programming Language :: Python :: 3.11',
-    'Programming Language :: Python :: 3.12',
-    'Programming Language :: Python :: Implementation :: CPython',
-    'Programming Language :: Python :: Implementation :: PyPy',
-    'Operating System :: OS Independent',
-    'License :: OSI Approved :: MIT License',
-    'Intended Audience :: Developers',
-]
-dependencies = [
-    'fire>=0.6.0',
-    'loguru>=0.7.0',
-    'numpy>=2.2.2',
-    'numba>=0.58.0',
-    'coloraide>=4.6',
-    'opencv-python>=4.8.0',
-    'pillow>=11.1.0',
-]
-
-[[project.authors]]
-name = 'Adam Twardoch'
-email = 'adam+github@twardoch.com'
-
-[project.license]
-text = 'MIT'
-
-[project.urls]
-Documentation = 'https://github.com/twardoch/imgcolorshine#readme'
-Issues = 'https://github.com/twardoch/imgcolorshine/issues'
-Source = 'https://github.com/twardoch/imgcolorshine'
-
-[project.optional-dependencies]
-dev = [
-    'pre-commit>=4.1.0',
-    'ruff>=0.9.7',
-    'mypy>=1.15.0',
-    'absolufy-imports>=0.3.1',
-    'pyupgrade>=3.19.1',
-    'isort>=6.0.1',
-]
-test = [
-    'pytest>=8.3.4',
-    'pytest-cov>=6.0.0',
-    'pytest-xdist>=3.6.1',
-    'pytest-benchmark[histogram]>=5.1.0',
-    'pytest-asyncio>=0.26.0',
-    'coverage[toml]>=7.6.12',
-]
-docs = [
-    'sphinx>=8.2.3',
-    'sphinx-rtd-theme>=3.0.2',
-    'sphinx-autodoc-typehints>=2.0.0',
-    'myst-parser>=4.0.1',
-]
-all = [
-    'absolufy-imports>=0.3.1',
-    'coverage[toml]>=7.6.12',
-    'isort>=6.0.1',
-    'mypy>=1.15.0',
-    'pre-commit>=4.1.0',
-    'pytest-asyncio>=0.26.0',
-    'pytest-benchmark[histogram]>=5.1.0',
-    'pytest-cov>=6.0.0',
-    'pytest-xdist>=3.6.1',
-    'pytest>=8.3.4',
-    'pyupgrade>=3.19.1',
-    'ruff>=0.9.7',
-    'myst-parser>=4.0.1',
-    'sphinx-autodoc-typehints>=2.0.0',
-    'sphinx-rtd-theme>=3.0.2',
-    'sphinx>=8.2.3',
-]
-
-[project.scripts]
-imgcolorshine = 'imgcolorshine.cli:main'
-
-[build-system]
-requires = [
-    'hatchling>=1.27.0',
-    'hatch-vcs>=0.4.0',
-]
-build-backend = 'hatchling.build'
-[tool.hatch.build]
-include = [
-    'src/imgcolorshine/py.typed',
-    'src/imgcolorshine/data/**/*',
-]
-exclude = [
-    '**/__pycache__',
-    '**/.pytest_cache',
-    '**/.mypy_cache',
-]
-[tool.hatch.build.targets.wheel]
-packages = ['src/imgcolorshine']
-reproducible = true
-[tool.hatch.build.hooks.vcs]
-version-file = 'src/imgcolorshine/__version__.py'
-
-[tool.hatch.version]
-source = 'vcs'
-
-[tool.hatch.metadata]
-allow-direct-references = true
-[tool.hatch.envs.default]
-features = [
-    'dev',
-    'test',
-    'all',
-]
-dependencies = []
-
-[tool.hatch.envs.default.scripts]
-test = 'pytest {args:tests}'
-test-cov = 'pytest --cov-report=term-missing --cov-config=pyproject.toml --cov=src/imgcolorshine --cov=tests {args:tests}'
-type-check = 'mypy src/imgcolorshine tests'
-lint = [
-    'ruff check src/imgcolorshine tests',
-    'ruff format --respect-gitignore src/imgcolorshine tests',
-]
-fmt = [
-    'ruff format --respect-gitignore src/imgcolorshine tests',
-    'ruff check --fix src/imgcolorshine tests',
-]
-fix = [
-    'ruff check --fix --unsafe-fixes src/imgcolorshine tests',
-    'ruff format --respect-gitignore src/imgcolorshine tests',
-]
-[[tool.hatch.envs.all.matrix]]
-python = [
-    '3.10',
-    '3.11',
-    '3.12',
-]
-
-[tool.hatch.envs.lint]
-detached = true
-features = ['dev']
-
-[tool.hatch.envs.lint.scripts]
-typing = 'mypy --install-types --non-interactive {args:src/imgcolorshine tests}'
-style = [
-    'ruff check {args:.}',
-    'ruff format --respect-gitignore {args:.}',
-]
-fmt = [
-    'ruff format --respect-gitignore {args:.}',
-    'ruff check --fix {args:.}',
-]
-fix = [
-    'ruff check --fix --unsafe-fixes {args:.}',
-    'ruff format --respect-gitignore {args:.}',
-]
-all = [
-    'style',
-    'typing',
-    'fix',
-]
-
-[tool.hatch.envs.test]
-features = ['test']
-
-[tool.hatch.envs.test.scripts]
-test = 'python -m pytest -n auto {args:tests}'
-test-cov = 'python -m pytest -n auto --cov-report=term-missing --cov-config=pyproject.toml --cov=src/imgcolorshine --cov=tests {args:tests}'
-bench = 'python -m pytest -v -p no:briefcase tests/test_benchmark.py --benchmark-only'
-bench-save = 'python -m pytest -v -p no:briefcase tests/test_benchmark.py --benchmark-only --benchmark-json=benchmark/results.json'
-
-[tool.hatch.envs.docs]
-features = ['docs']
-
-[tool.hatch.envs.docs.scripts]
-build = 'sphinx-build -b html docs/source docs/build'
-
-[tool.hatch.envs.ci]
-features = ['test']
-
-[tool.hatch.envs.ci.scripts]
-test = 'pytest --cov=src/imgcolorshine --cov-report=xml'
-[tool.coverage.paths]
-imgcolorshine = [
-    'src/imgcolorshine',
-    '*/imgcolorshine/src/imgcolorshine',
-]
-tests = [
-    'tests',
-    '*/imgcolorshine/tests',
-]
-
-[tool.coverage.report]
-exclude_lines = [
-    'no cov',
-    'if __name__ == .__main__.:',
-    'if TYPE_CHECKING:',
-    'pass',
-    'raise NotImplementedError',
-    'raise ImportError',
-    'except ImportError',
-    'except KeyError',
-    'except AttributeError',
-    'except NotImplementedError',
-]
-
-[tool.coverage.run]
-source_pkgs = [
-    'imgcolorshine',
-    'tests',
-]
-branch = true
-parallel = true
-omit = ['src/imgcolorshine/__about__.py']
-
-[tool.mypy]
-python_version = '3.10'
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
-
-[[tool.mypy.overrides]]
-module = ['tests.*']
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-[tool.pytest.ini_options]
-addopts = '-v --durations=10 -p no:briefcase'
-asyncio_mode = 'auto'
-asyncio_default_fixture_loop_scope = 'function'
-console_output_style = 'progress'
-filterwarnings = [
-    'ignore::DeprecationWarning',
-    'ignore::UserWarning',
-]
-log_cli = true
-log_cli_level = 'INFO'
-markers = [
-    '''benchmark: marks tests as benchmarks (select with '-m benchmark')''',
-    'unit: mark a test as a unit test',
-    'integration: mark a test as an integration test',
-    'permutation: tests for permutation functionality',
-    'parameter: tests for parameter parsing',
-    'prompt: tests for prompt parsing',
-]
-norecursedirs = [
-    '.*',
-    'build',
-    'dist',
-    'venv',
-    '__pycache__',
-    '*.egg-info',
-    '_private',
-]
-python_classes = ['Test*']
-python_files = ['test_*.py']
-python_functions = ['test_*']
-testpaths = ['tests']
-
-[tool.pytest-benchmark]
-min_rounds = 100
-min_time = 0.1
-histogram = true
-storage = 'file'
-save-data = true
-compare = [
-    'min',
-    'max',
-    'mean',
-    'stddev',
-    'median',
-    'iqr',
-    'ops',
-    'rounds',
-]
-
-[tool.ruff]
-target-version = 'py310'
-line-length = 120
-
-[tool.ruff.lint]
-select = [
-    'A',
-    'ARG',
-    'ASYNC',
-    'B',
-    'C',
-    'DTZ',
-    'E',
-    'EM',
-    'F',
-    'FBT',
-    'I',
-    'ICN',
-    'ISC',
-    'LOG',
-    'N',
-    'PLC',
-    'PLE',
-    'PLR',
-    'PLW',
-    'PT',
-    'PTH',
-    'PYI',
-    'RET',
-    'RSE',
-    'RUF',
-    'S',
-    'SIM',
-    'T',
-    'TCH',
-    'TID',
-    'UP',
-    'W',
-    'YTT',
-]
-ignore = [
-    'B027',
-    'C901',
-    'FBT003',
-    'PLR0911',
-    'PLR0912',
-    'PLR0913',
-    'PLR0915',
-    'PLR1714',
-    'PLW0603',
-    'PT013',
-    'PTH123',
-    'PYI056',
-    'S105',
-    'S106',
-    'S107',
-    'S110',
-    'SIM102',
-]
-unfixable = ['F401']
-exclude = [
-    '.git',
-    '.venv',
-    'venv',
-    'dist',
-    'build',
-    'old',
-]
-
-[tool.ruff.lint.isort]
-known-first-party = ['imgcolorshine']
-
-[tool.ruff.lint.flake8-tidy-imports]
-ban-relative-imports = 'all'
-
-[tool.ruff.lint.per-file-ignores]
-"tests/**/*" = [
-    'PLR2004',
-    'S101',
-    'TID252',
-]
-</file>
-
 <file path="src/imgcolorshine/cli.py">
 #!/usr/bin/env -S uv run -s
 # /// script
@@ -6889,6 +6899,118 @@ def main():
 
 if __name__ == "__main__":
     main()
+</file>
+
+<file path="testdata/example.sh">
+#!/usr/bin/env bash
+# this_file: example.sh
+
+# Example script demonstrating various imgcolorshine shine operations on louis.jpg
+# Run from the project root directory
+
+# Change working directory to the location of this script
+cd "$(dirname "$0")"
+
+set -e # Exit on error
+
+# Check if GNU Parallel is available and silence citation notice
+if ! command -v parallel &>/dev/null; then
+    echo "GNU Parallel is not installed. Running in sequential mode."
+    PARALLEL_AVAILABLE=0
+else
+    # Silence the citation notice
+    parallel --citation >/dev/null 2>&1 || true
+    PARALLEL_AVAILABLE=1
+fi
+
+# Create output directory if it doesn't exist
+mkdir -p output
+
+echo "Running imgcolorshine examples on louis.jpg..."
+echo "================================================"
+
+# Generate all parameter combinations
+generate_params() {
+    for a in 50 99; do
+        for b in 50 99; do
+            for c in blue yellow; do
+                echo "$c;$a;$b"
+            done
+        done
+    done
+}
+
+# Function to process a single parameter set
+process_params() {
+    local params=$1
+    local luminance=$2
+    local saturation=$3
+    local chroma=$4
+    local suffix=$5
+
+    # Extract color and values from params
+    IFS=';' read -r color tolerance strength <<<"$params"
+
+    echo "Processing: $color with tolerance=$tolerance, strength=$strength (l=$luminance,s=$saturation,h=$chroma)"
+    imgcolorshine shine louis.jpg "$params" \
+        --luminance "$luminance" --saturation "$saturation" --chroma "$chroma" \
+        --output_image="output/louis-$suffix-$color-$tolerance-$strength.jpg"
+}
+
+export -f process_params
+
+# Generate all parameter combinations
+PARAMS=$(generate_params)
+
+# Process with different flag combinations
+if [ "$PARALLEL_AVAILABLE" -eq 1 ]; then
+    echo "Running in parallel mode..."
+
+    # Luminance only
+    echo "$PARAMS" | parallel process_params {} True False False "l"
+
+    # Saturation only
+    echo "$PARAMS" | parallel process_params {} False True False "s"
+
+    # chroma only
+    echo "$PARAMS" | parallel process_params {} False False True "h"
+
+    # All flags enabled
+    echo "$PARAMS" | parallel process_params {} True True True "lsh"
+
+else
+    echo "Running in sequential mode..."
+
+    # Luminance only
+    echo "$PARAMS" | while read -r params; do
+        process_params "$params" True False False "l"
+    done
+
+    # Saturation only
+    echo "$PARAMS" | while read -r params; do
+        process_params "$params" False True False "s"
+    done
+
+    # chroma only
+    echo "$PARAMS" | while read -r params; do
+        process_params "$params" False False True "h"
+    done
+
+    # All flags enabled
+    echo "$PARAMS" | while read -r params; do
+        process_params "$params" True True True "lsh"
+    done
+fi
+
+# Optional: Create a comparison montage using ImageMagick if available
+if command -v montage &>/dev/null; then
+    echo "Creating comparison montage..."
+    montage louis.jpg output/louis-*.jpg \
+        -tile 4x4 -geometry 200x200+5+5 \
+        -label '%f' \
+        output/montage-comparison.jpg
+    echo "Montage created: output/montage-comparison.jpg"
+fi
 </file>
 
 <file path="tests/conftest.py">
@@ -7199,118 +7321,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - JIT compilation for performance-critical code paths
 </file>
 
-<file path="testdata/example.sh">
-#!/usr/bin/env bash
-# this_file: example.sh
-
-# Example script demonstrating various imgcolorshine shine operations on louis.jpg
-# Run from the project root directory
-
-# Change working directory to the location of this script
-cd "$(dirname "$0")"
-
-set -e # Exit on error
-
-# Check if GNU Parallel is available and silence citation notice
-if ! command -v parallel &>/dev/null; then
-    echo "GNU Parallel is not installed. Running in sequential mode."
-    PARALLEL_AVAILABLE=0
-else
-    # Silence the citation notice
-    parallel --citation >/dev/null 2>&1 || true
-    PARALLEL_AVAILABLE=1
-fi
-
-# Create output directory if it doesn't exist
-mkdir -p output
-
-echo "Running imgcolorshine examples on louis.jpg..."
-echo "================================================"
-
-# Generate all parameter combinations
-generate_params() {
-    for a in 50 99; do
-        for b in 50 99; do
-            for c in blue yellow; do
-                echo "$c;$a;$b"
-            done
-        done
-    done
-}
-
-# Function to process a single parameter set
-process_params() {
-    local params=$1
-    local luminance=$2
-    local saturation=$3
-    local chroma=$4
-    local suffix=$5
-
-    # Extract color and values from params
-    IFS=';' read -r color tolerance strength <<<"$params"
-
-    echo "Processing: $color with tolerance=$tolerance, strength=$strength (l=$luminance,s=$saturation,h=$chroma)"
-    imgcolorshine shine louis.jpg "$params" \
-        --luminance "$luminance" --saturation "$saturation" --chroma "$chroma" \
-        --output_image="output/louis-$suffix-$color-$tolerance-$strength.jpg"
-}
-
-export -f process_params
-
-# Generate all parameter combinations
-PARAMS=$(generate_params)
-
-# Process with different flag combinations
-if [ "$PARALLEL_AVAILABLE" -eq 1 ]; then
-    echo "Running in parallel mode..."
-
-    # Luminance only
-    echo "$PARAMS" | parallel process_params {} True False False "l"
-
-    # Saturation only
-    echo "$PARAMS" | parallel process_params {} False True False "s"
-
-    # chroma only
-    echo "$PARAMS" | parallel process_params {} False False True "h"
-
-    # All flags enabled
-    echo "$PARAMS" | parallel process_params {} True True True "lsh"
-
-else
-    echo "Running in sequential mode..."
-
-    # Luminance only
-    echo "$PARAMS" | while read -r params; do
-        process_params "$params" True False False "l"
-    done
-
-    # Saturation only
-    echo "$PARAMS" | while read -r params; do
-        process_params "$params" False True False "s"
-    done
-
-    # chroma only
-    echo "$PARAMS" | while read -r params; do
-        process_params "$params" False False True "h"
-    done
-
-    # All flags enabled
-    echo "$PARAMS" | while read -r params; do
-        process_params "$params" True True True "lsh"
-    done
-fi
-
-# Optional: Create a comparison montage using ImageMagick if available
-if command -v montage &>/dev/null; then
-    echo "Creating comparison montage..."
-    montage louis.jpg output/louis-*.jpg \
-        -tile 4x4 -geometry 200x200+5+5 \
-        -label '%f' \
-        output/montage-comparison.jpg
-    echo "Montage created: output/montage-comparison.jpg"
-fi
-</file>
-
 <file path="README.md">
 # imgcolorshine
 
@@ -7544,7 +7554,7 @@ Use `uv` or `hatch` or `python`, not `python3`.
 - [ ] Analyze full codebase from llms.txt
 - [ ] Identify which tests are not covered
 - [ ] Identify which tests are not working
-- [ ] Write into `PLAN.md` a detailed plan for writing additional tests, and for fixing the failing tests. 
+- [ ] Write into `PLAN.md` a detailed plan for writing additional tests, and for fixing the failing tests. Note: sometimes we need to fix the code in `src` but sometimes it makes more sense to fix the tests in `tests`, because the tests are not adequare or are outdated.  
 - [ ] Also write into `PLAN.md` very clear instructions that encourage to run tests, review, revise, improve, iterate.
 </file>
 

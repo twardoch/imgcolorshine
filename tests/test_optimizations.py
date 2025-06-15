@@ -17,9 +17,11 @@ from loguru import logger
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from imgcolorshine import ColorTransformer, ImageProcessor, OKLCHEngine
-from imgcolorshine.hierarchical import HierarchicalProcessor
-from imgcolorshine.spatial_accel import SpatialAccelerator
+from imgcolorshine.color import OKLCHEngine
+from imgcolorshine.hierar import HierarchicalProcessor
+from imgcolorshine.io import ImageProcessor
+from imgcolorshine.spatial import SpatialAccelerator
+from imgcolorshine.transform import ColorTransformer
 
 
 def create_test_image(width: int, height: int) -> np.ndarray:
@@ -170,7 +172,7 @@ def test_combined_optimizations():
     attractor_objects = [attractor1, attractor2]
 
     # Use the process_with_optimizations function
-    from imgcolorshine.imgcolorshine import process_with_optimizations
+    from imgcolorshine.colorshine import process_with_optimizations
 
     start_time = time.time()
     result = process_with_optimizations(
