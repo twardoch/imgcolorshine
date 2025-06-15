@@ -27,6 +27,9 @@ from imgcolorshine.trans_numba import (
     oklch_to_oklab_single,
 )
 
+# Constants
+FULL_CIRCLE_DEGREES = 360.0
+
 
 @numba.njit(cache=True)
 def binary_search_chroma(l: float, c: float, h: float, epsilon: float = 0.0001) -> float:
@@ -94,7 +97,7 @@ def batch_map_oklch_numba(colors_flat: np.ndarray, epsilon: float = 0.0001) -> n
     n_colors = colors_flat.shape[0]
     mapped_colors = np.empty_like(colors_flat)
 
-    for i in numba.prange(n_colors):
+    for i in numba.prange(n_colors):  # type: ignore[attr-defined]
         l, c, h = colors_flat[i]
         c_mapped = binary_search_chroma(l, c, h, epsilon)
         mapped_colors[i] = np.array([l, c_mapped, h], dtype=colors_flat.dtype)
@@ -205,7 +208,7 @@ class GamutMapper:
         c = np.sqrt(a**2 + b**2)
         h = np.rad2deg(np.arctan2(b, a))
         if h < 0:
-            h += 360
+            h += FULL_CIRCLE_DEGREES
 
         # Map to gamut
         l_mapped, c_mapped, h_mapped = self.map_oklch_to_gamut(l, c, h)
@@ -323,7 +326,7 @@ def create_gamut_boundary_lut(hue_steps: int = 360, lightness_steps: int = 100) 
             continue
 
         for h_idx in range(hue_steps):
-            h = (h_idx / hue_steps) * 360
+            h = (h_idx / hue_steps) * FULL_CIRCLE_DEGREES
 
             # Binary search for max chroma
             c_min, c_max = 0.0, 0.5  # Max reasonable chroma

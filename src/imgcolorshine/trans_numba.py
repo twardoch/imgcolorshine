@@ -20,6 +20,9 @@ from typing import Any
 import numba
 import numpy as np
 
+# Constants
+FULL_CIRCLE_DEGREES = 360.0
+
 # ===========================================================================
 # COLOR SPACE MATRICES (CSS Color Module 4 reference values)
 # ===========================================================================
@@ -171,7 +174,7 @@ def oklab_to_srgb_single(oklab: np.ndarray) -> np.ndarray:
 def batch_srgb_to_oklab(rgb_image: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
     h, w = rgb_image.shape[:2]
     out = np.empty_like(rgb_image, dtype=np.float32)
-    for y in numba.prange(h):
+    for y in numba.prange(h):  # type: ignore[attr-defined]
         for x in range(w):
             out[y, x] = srgb_to_oklab_single(rgb_image[y, x])
     return out
@@ -181,7 +184,7 @@ def batch_srgb_to_oklab(rgb_image: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]
 def batch_oklab_to_srgb(oklab_image: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
     h, w = oklab_image.shape[:2]
     out = np.empty_like(oklab_image, dtype=np.float32)
-    for y in numba.prange(h):
+    for y in numba.prange(h):  # type: ignore[attr-defined]
         for x in range(w):
             out[y, x] = oklab_to_srgb_single(oklab_image[y, x])
     return out
@@ -198,7 +201,7 @@ def oklab_to_oklch_single(oklab: np.ndarray) -> np.ndarray:
     C = np.sqrt(a * a + b * b)
     H = np.degrees(np.arctan2(b, a))
     if H < 0:
-        H += 360.0
+        H += FULL_CIRCLE_DEGREES
     return np.array([L, C, H], dtype=oklab.dtype)
 
 
@@ -215,7 +218,7 @@ def oklch_to_oklab_single(oklch: np.ndarray) -> np.ndarray:
 def batch_oklab_to_oklch(oklab_image: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
     h, w = oklab_image.shape[:2]
     out = np.empty_like(oklab_image, dtype=np.float32)
-    for y in numba.prange(h):
+    for y in numba.prange(h):  # type: ignore[attr-defined]
         for x in range(w):
             out[y, x] = oklab_to_oklch_single(oklab_image[y, x])
     return out
@@ -225,7 +228,7 @@ def batch_oklab_to_oklch(oklab_image: np.ndarray[Any, Any]) -> np.ndarray[Any, A
 def batch_oklch_to_oklab(oklch_image: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
     h, w = oklch_image.shape[:2]
     out = np.empty_like(oklch_image, dtype=np.float32)
-    for y in numba.prange(h):
+    for y in numba.prange(h):  # type: ignore[attr-defined]
         for x in range(w):
             out[y, x] = oklch_to_oklab_single(oklch_image[y, x])
     return out
@@ -238,8 +241,9 @@ def batch_oklch_to_oklab(oklch_image: np.ndarray[Any, Any]) -> np.ndarray[Any, A
 
 
 @numba.njit(cache=True)
-def _in_gamut(r_lin: float, g_lin: float, b_lin: float) -> bool:
-    return bool((0 <= r_lin <= 1) and (0 <= g_lin <= 1) and (0 <= b_lin <= 1))
+def is_in_gamut_srgb(rgb: np.ndarray) -> bool:
+    """Checks if a single sRGB color is within the [0, 1] gamut."""
+    return bool((0.0 <= rgb[0] <= 1.0) and (0.0 <= rgb[1] <= 1.0) and (0.0 <= rgb[2] <= 1.0))
 
 
 @numba.njit(cache=True)
@@ -247,14 +251,14 @@ def gamut_map_oklch_single(oklch: np.ndarray, eps: float = 1e-4) -> np.ndarray:
     L, C, H = oklch
     oklab = oklch_to_oklab_single(oklch)
     rgb = oklab_to_srgb_single(oklab)
-    if _in_gamut(rgb[0], rgb[1], rgb[2]):
+    if is_in_gamut_srgb(rgb):
         return oklch
     c_lo, c_hi = 0.0, C
     while c_hi - c_lo > eps:
         c_mid = 0.5 * (c_lo + c_hi)
         test_oklch = np.array([L, c_mid, H], dtype=np.float32)
         test_rgb = oklab_to_srgb_single(oklch_to_oklab_single(test_oklch))
-        if _in_gamut(test_rgb[0], test_rgb[1], test_rgb[2]):
+        if is_in_gamut_srgb(test_rgb):
             c_lo = c_mid
         else:
             c_hi = c_mid
@@ -265,7 +269,7 @@ def gamut_map_oklch_single(oklch: np.ndarray, eps: float = 1e-4) -> np.ndarray:
 def batch_gamut_map_oklch(oklch_image: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
     h, w = oklch_image.shape[:2]
     out = np.empty_like(oklch_image, dtype=np.float32)
-    for y in numba.prange(h):
+    for y in numba.prange(h):  # type: ignore[attr-defined]
         for x in range(w):
             out[y, x] = gamut_map_oklch_single(oklch_image[y, x])
     return out

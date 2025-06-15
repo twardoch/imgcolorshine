@@ -16,11 +16,19 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+import numba
 import numpy as np
 from coloraide import Color
 from loguru import logger
 
 from imgcolorshine import trans_numba
+from imgcolorshine.gpu import GPU_AVAILABLE, ArrayModule, get_array_module
+
+# Constants for attractor model
+TOLERANCE_MIN, TOLERANCE_MAX = 0.0, 100.0
+STRENGTH_MIN, STRENGTH_MAX = 0.0, 200.0
+STRENGTH_TRADITIONAL_MAX = 100.0  # Traditional strength regime boundary
+FULL_CIRCLE_DEGREES = 360.0  # Degrees in a full circle
 
 
 @dataclass
@@ -200,8 +208,8 @@ def _transform_pixels_percentile_vec(
     falloff = 0.5 * (np.cos(d_norm * np.pi) + 1.0)  # Raised-cosine 1 → 0
 
     # Traditional (≤100) vs extended (>100) strength regime
-    base_strength = np.minimum(strengths_b, 100.0) / 100.0  # 0-1
-    s_extra = np.clip(strengths_b - 100.0, 0.0, None) / 100.0  # 0-1 for >100
+    base_strength = np.minimum(strengths_b, STRENGTH_TRADITIONAL_MAX) / STRENGTH_TRADITIONAL_MAX  # 0-1
+    s_extra = np.clip(strengths_b - STRENGTH_TRADITIONAL_MAX, 0.0, None) / STRENGTH_TRADITIONAL_MAX  # 0-1 for >100
     weights = base_strength * falloff + s_extra * (1.0 - falloff)  # (N, A)
 
     # Zero-out weights for pixels outside tolerance
@@ -241,7 +249,7 @@ def _transform_pixels_percentile_vec(
     else:
         final_h = pix_lch_flat[:, 2]
 
-    final_h = np.where(final_h < 0.0, final_h + 360.0, final_h)
+    final_h = np.where(final_h < 0.0, final_h + FULL_CIRCLE_DEGREES, final_h)
     h_rad = np.deg2rad(final_h)
 
     # Convert LCH → Lab --------------------------------------------------
@@ -253,12 +261,200 @@ def _transform_pixels_percentile_vec(
     return out_lab_flat.reshape(h, w, 3)
 
 
+@numba.njit(parallel=True, cache=True)
+def _fused_transform_kernel(
+    image_lab: np.ndarray,
+    attractors_lab: np.ndarray,
+    attractors_lch: np.ndarray,
+    delta_e_maxs: np.ndarray,
+    strengths: np.ndarray,
+    flags: np.ndarray,
+) -> np.ndarray:
+    """Fused transformation kernel for improved performance.
+
+    Processes one pixel at a time through the entire pipeline, keeping
+    intermediate values in CPU registers and improving cache performance.
+    """
+    h, w, _ = image_lab.shape
+    transformed_lab = np.empty_like(image_lab)
+    n_attractors = len(attractors_lab)
+
+    for i in numba.prange(h * w):  # type: ignore[attr-defined]
+        y = i // w
+        x = i % w
+        pixel_lab = image_lab[y, x]
+
+        # Convert pixel to LCH
+        pixel_lch = trans_numba.oklab_to_oklch_single(pixel_lab)
+
+        # Calculate distances and weights (no large intermediate arrays)
+        weights = np.zeros(n_attractors, dtype=np.float32)
+        for j in range(n_attractors):
+            delta_e = np.sqrt(np.sum((pixel_lab - attractors_lab[j]) ** 2))
+            delta_e_max = delta_e_maxs[j]
+
+            if delta_e < delta_e_max and delta_e_max > 0:
+                d_norm = delta_e / delta_e_max
+                falloff = 0.5 * (np.cos(d_norm * np.pi) + 1.0)
+
+                # Traditional vs extended strength regime
+                base_strength = min(strengths[j], STRENGTH_TRADITIONAL_MAX) / STRENGTH_TRADITIONAL_MAX
+                s_extra = max(strengths[j] - STRENGTH_TRADITIONAL_MAX, 0.0) / STRENGTH_TRADITIONAL_MAX
+                weights[j] = base_strength * falloff + s_extra * (1.0 - falloff)
+            else:
+                weights[j] = 0.0
+
+        # Blend colors
+        total_w = np.sum(weights)
+        src_w = 1.0 - total_w if total_w < 1.0 else 0.0
+
+        # Luminance
+        final_l = pixel_lch[0]
+        if flags[0]:
+            final_l = src_w * pixel_lch[0]
+            for j in range(n_attractors):
+                final_l += weights[j] * attractors_lch[j, 0]
+
+        # Chroma
+        final_c = pixel_lch[1]
+        if flags[1]:
+            final_c = src_w * pixel_lch[1]
+            for j in range(n_attractors):
+                final_c += weights[j] * attractors_lch[j, 1]
+
+        # Hue (using circular average)
+        final_h = pixel_lch[2]
+        if flags[2]:
+            pix_h_rad = np.deg2rad(pixel_lch[2])
+            sin_sum = src_w * np.sin(pix_h_rad)
+            cos_sum = src_w * np.cos(pix_h_rad)
+
+            for j in range(n_attractors):
+                attr_h_rad = np.deg2rad(attractors_lch[j, 2])
+                sin_sum += weights[j] * np.sin(attr_h_rad)
+                cos_sum += weights[j] * np.cos(attr_h_rad)
+
+            final_h = np.rad2deg(np.arctan2(sin_sum, cos_sum))
+            if final_h < 0.0:
+                final_h += FULL_CIRCLE_DEGREES
+
+        # Convert back to Lab
+        final_h_rad = np.deg2rad(final_h)
+        final_lab = np.array(
+            [final_l, final_c * np.cos(final_h_rad), final_c * np.sin(final_h_rad)], dtype=pixel_lab.dtype
+        )
+
+        transformed_lab[y, x] = final_lab
+
+    return transformed_lab
+
+
+def _transform_pixels_gpu(
+    image_lab: np.ndarray,
+    image_lch: np.ndarray,
+    attractors_lab: np.ndarray,
+    attractors_lch: np.ndarray,
+    delta_e_maxs: np.ndarray,
+    strengths: np.ndarray,
+    flags: np.ndarray,
+    xp: Any,
+) -> np.ndarray:
+    """GPU-accelerated version of the percentile transformation.
+
+    Uses CuPy for GPU computation with the same algorithm as the CPU version.
+    """
+    h, w = image_lab.shape[:2]
+
+    # Transfer data to GPU
+    image_lab_gpu = xp.asarray(image_lab)
+    image_lch_gpu = xp.asarray(image_lch)
+    attractors_lab_gpu = xp.asarray(attractors_lab)
+    attractors_lch_gpu = xp.asarray(attractors_lch)
+    delta_e_maxs_gpu = xp.asarray(delta_e_maxs)
+    strengths_gpu = xp.asarray(strengths)
+
+    # Flatten images for vectorized operations
+    pix_lab_flat = image_lab_gpu.reshape(-1, 3)  # (N, 3)
+    pix_lch_flat = image_lch_gpu.reshape(-1, 3)  # (N, 3)
+
+    # Compute distances
+    deltas = pix_lab_flat[:, None, :] - attractors_lab_gpu[None, :, :]  # (N, A, 3)
+    delta_e = xp.sqrt(xp.sum(deltas**2, axis=2))  # (N, A)
+
+    # Compute weights
+    within_tol = (delta_e < delta_e_maxs_gpu) & (delta_e_maxs_gpu > 0.0)
+    d_norm = xp.where(within_tol, delta_e / delta_e_maxs_gpu, 1.0)
+    falloff = 0.5 * (xp.cos(d_norm * xp.pi) + 1.0)
+
+    base_strength = xp.minimum(strengths_gpu, STRENGTH_TRADITIONAL_MAX) / STRENGTH_TRADITIONAL_MAX
+    s_extra = xp.clip(strengths_gpu - STRENGTH_TRADITIONAL_MAX, 0.0, None) / STRENGTH_TRADITIONAL_MAX
+    weights = base_strength * falloff + s_extra * (1.0 - falloff)
+    weights = xp.where(within_tol, weights, 0.0).astype(xp.float32)
+
+    # Blend channels
+    total_w = weights.sum(axis=1, keepdims=True)
+    src_w = xp.where(total_w < 1.0, 1.0 - total_w, 0.0).astype(xp.float32)
+
+    # Pre-compute trig for attractor hues
+    attr_h_rad = xp.deg2rad(attractors_lch_gpu[:, 2])
+    attr_sin = xp.sin(attr_h_rad)
+    attr_cos = xp.cos(attr_h_rad)
+
+    # Luminance
+    final_l = (
+        src_w[:, 0] * pix_lch_flat[:, 0] + (weights * attractors_lch_gpu[:, 0][None, :]).sum(axis=1)
+        if flags[0]
+        else pix_lch_flat[:, 0]
+    )
+
+    # Chroma
+    final_c = (
+        src_w[:, 0] * pix_lch_flat[:, 1] + (weights * attractors_lch_gpu[:, 1][None, :]).sum(axis=1)
+        if flags[1]
+        else pix_lch_flat[:, 1]
+    )
+
+    # Hue
+    if flags[2]:
+        pix_h_rad = xp.deg2rad(pix_lch_flat[:, 2])
+        sin_sum = src_w[:, 0] * xp.sin(pix_h_rad) + (weights * attr_sin[None, :]).sum(axis=1)
+        cos_sum = src_w[:, 0] * xp.cos(pix_h_rad) + (weights * attr_cos[None, :]).sum(axis=1)
+        final_h = xp.rad2deg(xp.arctan2(sin_sum, cos_sum))
+    else:
+        final_h = pix_lch_flat[:, 2]
+
+    final_h = xp.where(final_h < 0.0, final_h + FULL_CIRCLE_DEGREES, final_h)
+    h_rad = xp.deg2rad(final_h)
+
+    # Convert LCH → Lab
+    out_lab_flat = xp.empty_like(pix_lab_flat)
+    out_lab_flat[:, 0] = final_l
+    out_lab_flat[:, 1] = final_c * xp.cos(h_rad)
+    out_lab_flat[:, 2] = final_c * xp.sin(h_rad)
+
+    # Transfer back to CPU and reshape
+    result = out_lab_flat.reshape(h, w, 3)
+    if xp.__name__ == "cupy":
+        result = xp.asnumpy(result)
+
+    return result
+
+
 class ColorTransformer:
     """High-level color transformation interface."""
 
-    def __init__(self, engine: OKLCHEngine):
+    def __init__(self, engine: OKLCHEngine, use_fused_kernel: bool = False, use_gpu: bool = False):
         self.engine = engine
-        logger.debug("Initialized ColorTransformer")
+        self.use_fused_kernel = use_fused_kernel
+        self.use_gpu = use_gpu and GPU_AVAILABLE
+
+        if self.use_gpu:
+            self.array_module = ArrayModule("cupy")
+            self.xp = self.array_module.xp
+        else:
+            self.xp = np
+
+        logger.debug(f"Initialized ColorTransformer (fused_kernel={use_fused_kernel}, gpu={self.use_gpu})")
 
     def transform_image(
         self,
@@ -287,9 +483,9 @@ class ColorTransformer:
         delta_e_maxs = np.zeros_like(tolerances, dtype=np.float32)
         for i in range(len(attractors)):
             distances = np.sqrt(np.sum((image_lab - attractors_lab[i]) ** 2, axis=-1))
-            if tolerances[i] <= 0:
+            if tolerances[i] <= TOLERANCE_MIN:
                 delta_e_maxs[i] = 0.0
-            elif tolerances[i] >= 100:
+            elif tolerances[i] >= TOLERANCE_MAX:
                 delta_e_maxs[i] = np.max(distances) + 1e-6
             else:
                 delta_e_maxs[i] = np.percentile(distances, tolerances[i])
@@ -297,10 +493,35 @@ class ColorTransformer:
         logger.debug(f"Calculated distance thresholds (ΔE max): {delta_e_maxs}")
 
         logger.info("Applying color transformation...")
-        image_lch = trans_numba.batch_oklab_to_oklch(image_lab.astype(np.float32))
-        transformed_lab = _transform_pixels_percentile_vec(
-            image_lab, image_lch, attractors_lab, attractors_lch, delta_e_maxs, strengths, flags_array
-        )
+
+        if self.use_gpu:
+            logger.debug("Using GPU acceleration")
+            image_lch = trans_numba.batch_oklab_to_oklch(image_lab.astype(np.float32))
+            transformed_lab = _transform_pixels_gpu(
+                image_lab.astype(np.float32),
+                image_lch,
+                attractors_lab.astype(np.float32),
+                attractors_lch.astype(np.float32),
+                delta_e_maxs.astype(np.float32),
+                strengths.astype(np.float32),
+                flags_array,
+                self.xp,
+            )
+        elif self.use_fused_kernel:
+            logger.debug("Using fused transformation kernel")
+            transformed_lab = _fused_transform_kernel(
+                image_lab.astype(np.float32),
+                attractors_lab.astype(np.float32),
+                attractors_lch.astype(np.float32),
+                delta_e_maxs.astype(np.float32),
+                strengths.astype(np.float32),
+                flags_array.astype(np.bool_),
+            )
+        else:
+            image_lch = trans_numba.batch_oklab_to_oklch(image_lab.astype(np.float32))
+            transformed_lab = _transform_pixels_percentile_vec(
+                image_lab, image_lch, attractors_lab, attractors_lch, delta_e_maxs, strengths, flags_array
+            )
 
         result = self.engine.batch_oklab_to_rgb(transformed_lab)
         if progress_callback:
