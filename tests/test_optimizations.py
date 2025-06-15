@@ -81,9 +81,7 @@ def test_hierarchical_processing():
 
     # Test fast_hierar processing
     start_time = time.time()
-    result = hier_processor.process_hierarchical(
-        image, transform_func, attractors_lab, tolerances, strengths, channels
-    )
+    result = hier_processor.process_hierarchical(image, transform_func, attractors_lab, tolerances, strengths, channels)
     elapsed = time.time() - start_time
 
     logger.info(f"Hierarchical processing completed in {elapsed:.3f}s")

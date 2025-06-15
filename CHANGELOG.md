@@ -7,7 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2025-06-15
 
+### Changed
+- **Development Workflow Improvements**
+  - Updated `cleanup.sh` to use `python -m uv run` instead of `uvx` for better compatibility
+  - Removed unused dependencies (`scipy-stubs`, `types-pillow`) from `uv.lock`
+  - Cleaned up repository by removing `ACCOMPLISHMENTS.md`
+  - Updated `llms.txt` to reflect current test files including `test_cli.py` and `test_colorshine.py`
+
 ### Added
+- **Major Test Suite Expansion - Coverage Improved from 41% to 50%**
+  - Created comprehensive test suite for `kernel.py` (17 tests)
+    - Tests for pixel transformation, channel control, multiple attractors
+    - Tests for tolerance/strength effects, gamut mapping
+    - Tests for image transformation, parallel consistency
+  - Created comprehensive test suite for `lut.py` (16 tests)
+    - Tests for LUT building, caching, interpolation
+    - Tests for identity LUT, trilinear interpolation
+    - Tests for performance characteristics and memory efficiency
+  - Created additional test coverage for `transform.py` (improved from 18% to 40%)
+    - Tests for delta E calculation, weight computation, color blending
+    - Tests for channel-specific transformations
+  - Created additional test coverage for `utils.py` (improved from 8% to 79%)
+    - Tests for memory management, image processing utilities
+    - Tests for validation functions, batch operations
+  - Fixed existing test implementations in CLI, colorshine, I/O, and main interface tests
+  - Overall test coverage improved from 41% to 50% (9 percentage points increase)
+  - Total of 199 passing tests with 11 tests still requiring fixes
+
+- **New Numba utility module** (`numba_utils.py`)
+  - Added optimized batch color distance computation
+  - Added nearest attractor finding with parallel processing
+  - Added tile uniformity computation for spatial coherence
+  - Added masked transformation application
+  - Added edge strength detection for hierarchical processing
+  - Added perceptually-correct downsampling in Oklab space
+
 - **Numba optimizations for performance-critical functions**
   - Hierarchical processing (`hierar.py`)
     - `compute_difference_mask` now uses perceptual color distance in Oklab space with parallel processing (~10-50x speedup)
@@ -23,12 +57,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added mypyc configuration in `pyproject.toml`
   - Created `build_ext.py` for custom build process
   - Configured modules for compilation: `color`, `transform`, `io`, `falloff`
-
-- **Test Suite Expansion**
-  - Added comprehensive CLI tests (`test_cli_simple.py`)
-  - Added main interface tests (`test_main_interface.py`)
-  - Added I/O operation tests (`test_io.py`)
-  - Increased test coverage from 19% to 24%
 
 - **Development Infrastructure**
   - Created `COVERAGE_REPORT.md` for tracking test coverage

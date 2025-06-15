@@ -54,9 +54,7 @@ def test_single_pixel_conversion():
         max_diff = max(max_diff, diff)
 
         # Log comparison results
-        logger.debug(
-            f"RGB {rgb} → Oklab CA: {oklab_ca_arr}, NB: {oklab_nb}, diff: {diff:.6f}"
-        )
+        logger.debug(f"RGB {rgb} → Oklab CA: {oklab_ca_arr}, NB: {oklab_nb}, diff: {diff:.6f}")
 
         # Test round trip
         rgb_back = trans_numba.oklab_to_srgb_single(oklab_nb)
@@ -69,9 +67,7 @@ def test_single_pixel_conversion():
     logger.info(f"Result: {'PASS' if max_diff < 0.001 else 'FAIL'}")
 
     assert max_diff < 0.001, f"Maximum difference {max_diff} exceeds threshold"
-    assert max_roundtrip_diff < 0.001, (
-        f"Maximum round-trip difference {max_roundtrip_diff} exceeds threshold"
-    )
+    assert max_roundtrip_diff < 0.001, f"Maximum round-trip difference {max_roundtrip_diff} exceeds threshold"
 
 
 def test_batch_conversion():
@@ -95,9 +91,7 @@ def test_batch_conversion():
     logger.info(f"Maximum round-trip difference: {max_diff:.6f}")
 
     assert valid_range, "RGB values outside valid range [0,1]"
-    assert max_diff < 0.001, (
-        f"Maximum round-trip difference {max_diff} exceeds threshold"
-    )
+    assert max_diff < 0.001, f"Maximum round-trip difference {max_diff} exceeds threshold"
 
 
 def test_oklch_conversions():
@@ -127,16 +121,12 @@ def test_oklch_conversions():
         max_diff = max(max_diff, diff)
 
         # Log conversion results
-        logger.debug(
-            f"Oklab {oklab} → OKLCH {oklch} → Oklab {oklab_back}, diff: {diff:.6f}"
-        )
+        logger.debug(f"Oklab {oklab} → OKLCH {oklch} → Oklab {oklab_back}, diff: {diff:.6f}")
 
     logger.info(f"Maximum round-trip difference: {max_diff:.6f}")
     logger.info(f"Result: {'PASS' if max_diff < 0.0001 else 'FAIL'}")
 
-    assert max_diff < 0.0001, (
-        f"Maximum round-trip difference {max_diff} exceeds threshold"
-    )
+    assert max_diff < 0.0001, f"Maximum round-trip difference {max_diff} exceeds threshold"
 
 
 def main():

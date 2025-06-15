@@ -95,9 +95,7 @@ def debug_transformation():
             pixel_lch = sample_lch[y, x]
 
             # Calculate weight
-            weights_array = calculate_weights(
-                pixel_lab, attractors_lab, np.array([tolerance]), np.array([80])
-            )
+            weights_array = calculate_weights(pixel_lab, attractors_lab, np.array([tolerance]), np.array([80]))
 
             if weights_array[0] > 0:
                 affected_count += 1

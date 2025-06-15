@@ -55,9 +55,7 @@ def process_large_image(
     total_tiles = tiles_y * tiles_x
     processed_tiles = 0
 
-    logger.info(
-        f"Processing image in {tiles_x}×{tiles_y} tiles (size: {tile_size}×{tile_size})"
-    )
+    logger.info(f"Processing image in {tiles_x}×{tiles_y} tiles (size: {tile_size}×{tile_size})")
 
     for ty in range(tiles_y):
         for tx in range(tiles_x):
@@ -104,9 +102,7 @@ def process_large_image(
     return result
 
 
-def estimate_optimal_tile_size(
-    image_shape: tuple, available_memory_mb: int = 2048, bytes_per_pixel: int = 12
-) -> int:
+def estimate_optimal_tile_size(image_shape: tuple, available_memory_mb: int = 2048, bytes_per_pixel: int = 12) -> int:
     """
     Estimate optimal tile size based on available memory.
 
@@ -138,9 +134,7 @@ def estimate_optimal_tile_size(
     # Clamp to reasonable range
     tile_size = max(256, min(tile_size, 4096))
 
-    logger.debug(
-        f"Optimal tile size: {tile_size}×{tile_size} (for {available_memory_mb}MB memory)"
-    )
+    logger.debug(f"Optimal tile size: {tile_size}×{tile_size} (for {available_memory_mb}MB memory)")
 
     return tile_size
 
@@ -226,9 +220,7 @@ def clamp_to_gamut(colors: np.ndarray) -> np.ndarray:
     return np.clip(colors, 0, 1)
 
 
-def batch_process_images(
-    image_paths: list, output_dir: str, transform_func: Callable, **kwargs
-) -> None:
+def batch_process_images(image_paths: list, output_dir: str, transform_func: Callable, **kwargs) -> None:
     """
     Process multiple images in batch.
 

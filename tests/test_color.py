@@ -154,9 +154,7 @@ def test_oklab_to_oklch_conversion(engine: OKLCHEngine):
 def test_srgb_to_linear_and_back(engine: OKLCHEngine):
     """"""
     srgb_color = np.array([0.5, 0.2, 0.8])
-    linear_color = engine.srgb_to_linear(
-        srgb_color.copy()
-    )  # Use copy to avoid in-place modification issues if any
+    linear_color = engine.srgb_to_linear(srgb_color.copy())  # Use copy to avoid in-place modification issues if any
     srgb_restored = engine.linear_to_srgb(linear_color.copy())
     assert_np_arrays_equal(srgb_restored, srgb_color, tolerance=1e-6)
 
@@ -203,9 +201,7 @@ def test_gamut_map_oklch_out_of_gamut(engine: OKLCHEngine):
 
     # Check if the mapped color is now in gamut
     mapped_color = Color("oklch", [mapped_l, mapped_c, mapped_h])
-    assert mapped_color.in_gamut(
-        "srgb", tolerance=0.0001
-    )  # Use small tolerance due to binary search precision
+    assert mapped_color.in_gamut("srgb", tolerance=0.0001)  # Use small tolerance due to binary search precision
 
 
 # The following tests for batch operations are simplified as they call Numba functions.
@@ -228,9 +224,7 @@ def test_batch_oklab_to_rgb(engine: OKLCHEngine, oklab_shape: tuple):
     # Create Oklab values within a typical range
     oklab_image = np.random.rand(*oklab_shape).astype(np.float32)
     oklab_image[..., 0] = oklab_image[..., 0]  # L: 0-1
-    oklab_image[..., 1:] = (
-        oklab_image[..., 1:] * 0.5 - 0.25
-    )  # a, b: approx -0.25 to 0.25
+    oklab_image[..., 1:] = oklab_image[..., 1:] * 0.5 - 0.25  # a, b: approx -0.25 to 0.25
 
     rgb_image = engine.batch_oklab_to_rgb(oklab_image)
     assert rgb_image.shape == oklab_shape

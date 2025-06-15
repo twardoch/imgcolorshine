@@ -190,9 +190,7 @@ def test_array_module_jax_auto_if_cupy_not_present(mock_check_jax):
 
         test_array = np.array([1, 2, 3])
         device_array = am.to_device(test_array)
-        assert isinstance(
-            device_array, np.ndarray
-        )  # MockJax.numpy.asarray returns np.ndarray
+        assert isinstance(device_array, np.ndarray)  # MockJax.numpy.asarray returns np.ndarray
 
         cpu_array = am.to_cpu(device_array)
         assert isinstance(cpu_array, np.ndarray)
@@ -240,17 +238,13 @@ def test_estimate_gpu_memory_required():
     """"""
     shape = (1000, 1000, 3)
     attractors = 10
-    mem_mb = gpu_module.estimate_gpu_memory_required(
-        shape, attractors, dtype=np.float32
-    )
+    mem_mb = gpu_module.estimate_gpu_memory_required(shape, attractors, dtype=np.float32)
 
     bytes_per_element = np.dtype(np.float32).itemsize
     expected_image_mem = shape[0] * shape[1] * shape[2] * bytes_per_element * 4
     expected_attractor_mem = attractors * shape[2] * bytes_per_element * 2
     expected_weight_mem = shape[0] * shape[1] * attractors * bytes_per_element
-    expected_total_bytes = (
-        expected_image_mem + expected_attractor_mem + expected_weight_mem
-    ) * 1.2
+    expected_total_bytes = (expected_image_mem + expected_attractor_mem + expected_weight_mem) * 1.2
     expected_mem_mb = expected_total_bytes / (1024 * 1024)
 
     assert np.isclose(mem_mb, expected_mem_mb)
@@ -265,9 +259,7 @@ def test_check_gpu_memory_available_cupy():
 
     # MockCuPy.cuda.Device().mem_info is (1GB free, 2GB total)
     # 1GB = 1024 MB
-    has_enough, free_mb, total_mb = gpu_module.check_gpu_memory_available(
-        required_mb=500
-    )
+    has_enough, free_mb, total_mb = gpu_module.check_gpu_memory_available(required_mb=500)
     assert has_enough is True
     assert free_mb == 1000
     assert total_mb == 2000
@@ -284,9 +276,7 @@ def test_check_gpu_memory_available_jax(mock_check_jax):
     gpu_module.JAX_AVAILABLE = True  # Set by mock
     sys.modules["jax"] = MockJax()  # Ensure mock is in sys.modules
 
-    has_enough, free_mb, total_mb = gpu_module.check_gpu_memory_available(
-        required_mb=500
-    )
+    has_enough, free_mb, total_mb = gpu_module.check_gpu_memory_available(required_mb=500)
     assert has_enough is True
     assert free_mb == 0  # JAX path returns 0 for free/total
     assert total_mb == 0
@@ -294,9 +284,7 @@ def test_check_gpu_memory_available_jax(mock_check_jax):
 
 def test_check_gpu_memory_no_gpu():
     """"""
-    has_enough, free_mb, total_mb = gpu_module.check_gpu_memory_available(
-        required_mb=500
-    )
+    has_enough, free_mb, total_mb = gpu_module.check_gpu_memory_available(required_mb=500)
     assert has_enough is False
     assert free_mb == 0
     assert total_mb == 0
@@ -406,9 +394,7 @@ def test_check_jax_numpy_compatibility_error():
     """"""
     # Simulate the specific NumPy version incompatibility error
     mock_jax_module = sys.modules["jax"]
-    mock_jax_module.devices.side_effect = ImportError(
-        "numpy.core._multiarray_umath failed to import"
-    )
+    mock_jax_module.devices.side_effect = ImportError("numpy.core._multiarray_umath failed to import")
 
     gpu_module.JAX_AVAILABLE = False
     assert gpu_module._check_jax_available() is False
@@ -487,9 +473,7 @@ def test_cupy_import_generic_exception():
     # The reset_globals fixture will run after this test, cleaning up for the next.
     # Simplest is to assert that CUPY part of GPU_AVAILABLE logic is False.
     # If JAX was not available, then GPU_AVAILABLE should be False.
-    if (
-        not original_jax_available
-    ):  # If JAX wasn't making GPU_AVAILABLE true before reload
+    if not original_jax_available:  # If JAX wasn't making GPU_AVAILABLE true before reload
         assert not gpu_module.GPU_AVAILABLE
 
 
@@ -508,9 +492,7 @@ def test_jax_import_generic_exception():
     gpu_module._jax_checked = False  # Force re-check
 
     # Call a function that triggers _check_jax_available
-    gpu_module.ArrayModule(
-        backend="jax"
-    )  # This will call _select_backend -> _check_jax_available
+    gpu_module.ArrayModule(backend="jax")  # This will call _select_backend -> _check_jax_available
 
     assert not gpu_module.JAX_AVAILABLE
     # GPU_AVAILABLE should now only reflect CuPy's status

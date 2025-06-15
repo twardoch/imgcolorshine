@@ -12,12 +12,13 @@ with automatic memory management and optimized kernels.
 """
 
 import numpy as np
+from loguru import logger
+
 from imgcolorshine.gpu import (
     check_gpu_memory_available,
     estimate_gpu_memory_required,
     get_array_module,
 )
-from loguru import logger
 
 # Try to import CuPy
 try:
@@ -108,9 +109,7 @@ def srgb_to_linear_gpu(srgb, xp):
 
 def linear_to_srgb_gpu(linear, xp):
     """GPU version of linear to sRGB conversion."""
-    return xp.where(
-        linear <= 0.0031308, linear * 12.92, 1.055 * (linear ** (1.0 / 2.4)) - 0.055
-    )
+    return xp.where(linear <= 0.0031308, linear * 12.92, 1.055 * (linear ** (1.0 / 2.4)) - 0.055)
 
 
 def batch_srgb_to_oklab_gpu(rgb_image, xp=None):
@@ -373,9 +372,7 @@ def process_image_gpu(
     has_memory, free_mb, total_mb = check_gpu_memory_available(required_mb)
 
     if not has_memory:
-        logger.warning(
-            f"Insufficient GPU memory: need {required_mb:.1f}MB, have {free_mb:.1f}MB"
-        )
+        logger.warning(f"Insufficient GPU memory: need {required_mb:.1f}MB, have {free_mb:.1f}MB")
         return None
 
     xp = get_array_module(use_gpu=True)
@@ -389,15 +386,11 @@ def process_image_gpu(
 
         # Also convert attractors to OKLCH
         attr_lab_gpu = xp.asarray(attractors_lab, dtype=xp.float32)
-        attr_lch = batch_oklab_to_oklch_gpu(attr_lab_gpu.reshape(-1, 1, 3), xp).reshape(
-            -1, 3
-        )
+        attr_lch = batch_oklab_to_oklch_gpu(attr_lab_gpu.reshape(-1, 1, 3), xp).reshape(-1, 3)
 
         # Transform
         flags = xp.array([enable_luminance, enable_saturation, enable_hue])
-        transformed_lab = transform_pixels_gpu(
-            oklab, oklch, attractors_lab, attr_lch, tolerances, strengths, flags, xp
-        )
+        transformed_lab = transform_pixels_gpu(oklab, oklch, attractors_lab, attr_lch, tolerances, strengths, flags, xp)
 
         # Gamut mapping in OKLCH space
         batch_oklab_to_oklch_gpu(transformed_lab, xp)

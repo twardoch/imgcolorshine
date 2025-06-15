@@ -25,9 +25,7 @@ def setup_logging(verbose: bool = False):
     """Configure loguru logging based on verbosity."""
     logger.remove()
     if verbose:
-        logger.add(
-            sys.stderr, level="DEBUG", format="{time:HH:mm:ss} | {level} | {message}"
-        )
+        logger.add(sys.stderr, level="DEBUG", format="{time:HH:mm:ss} | {level} | {message}")
     else:
         logger.add(sys.stderr, level="INFO", format="{message}")
 
@@ -121,9 +119,7 @@ def process_image(
     for attr_str in attractors:
         color, tolerance, strength = parse_attractor(attr_str)
         parsed_attractors.append((color, tolerance, strength))
-        logger.debug(
-            f"Attractor: color={color}, tolerance={tolerance}, strength={strength}"
-        )
+        logger.debug(f"Attractor: color={color}, tolerance={tolerance}, strength={strength}")
 
     # Set output path
     if output_image is None:
@@ -142,9 +138,7 @@ def process_image(
     for color_str, tolerance, strength in parsed_attractors:
         attractor = engine.create_attractor(color_str, tolerance, strength)
         attractor_objects.append(attractor)
-        logger.info(
-            f"Created attractor: {color_str} (tolerance={tolerance}, strength={strength})"
-        )
+        logger.info(f"Created attractor: {color_str} (tolerance={tolerance}, strength={strength})")
 
     # Load image
     logger.info(f"Loading image: {input_path}")
@@ -156,6 +150,7 @@ def process_image(
         try:
             logger.info(f"Building {lut_size}³ color LUT...")
             import numpy as np
+
             from imgcolorshine.kernel import transform_pixel_fused
             from imgcolorshine.lut import ColorLUT
 
@@ -170,15 +165,9 @@ def process_image(
 
             # Build LUT using fused kernel
             def transform_func(rgb, attr_lab, tol, str_vals, l, s, h):
-                return np.array(
-                    transform_pixel_fused(
-                        rgb[0], rgb[1], rgb[2], attr_lab, tol, str_vals, l, s, h
-                    )
-                )
+                return np.array(transform_pixel_fused(rgb[0], rgb[1], rgb[2], attr_lab, tol, str_vals, l, s, h))
 
-            lut.build_lut(
-                transform_func, attractors_lab, tolerances, strengths, channels
-            )
+            lut.build_lut(transform_func, attractors_lab, tolerances, strengths, channels)
 
             # Apply LUT
             logger.info("Applying LUT transformation...")
@@ -186,9 +175,7 @@ def process_image(
             logger.info("LUT processing successful")
 
         except Exception as e:
-            logger.warning(
-                f"LUT processing failed: {e}, falling back to standard processing"
-            )
+            logger.warning(f"LUT processing failed: {e}, falling back to standard processing")
             transformed = None
 
     # Try GPU transformation if LUT failed or disabled
@@ -199,6 +186,7 @@ def process_image(
             if GPU_AVAILABLE:
                 logger.info("Attempting GPU acceleration...")
                 import numpy as np
+
                 from imgcolorshine.trans_gpu import process_image_gpu
 
                 # Prepare attractor data

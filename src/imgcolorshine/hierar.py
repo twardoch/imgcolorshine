@@ -24,9 +24,7 @@ from imgcolorshine.trans_numba import batch_srgb_to_oklab
 
 
 @numba.njit(cache=True, parallel=True)
-def compute_perceptual_distance_mask(
-    fine_lab: np.ndarray, coarse_lab: np.ndarray, threshold: float
-) -> np.ndarray:
+def compute_perceptual_distance_mask(fine_lab: np.ndarray, coarse_lab: np.ndarray, threshold: float) -> np.ndarray:
     """
     Numba-optimized perceptual difference mask computation.
 
@@ -175,9 +173,7 @@ class HierarchicalProcessor:
             )
         )
 
-        logger.debug(
-            f"Built pyramid with {len(levels)} levels: {[l.shape for l in levels]}"
-        )
+        logger.debug(f"Built pyramid with {len(levels)} levels: {[l.shape for l in levels]}")
         return levels
 
     @staticmethod
@@ -231,9 +227,7 @@ class HierarchicalProcessor:
         # Use Numba-optimized function for mask computation
         return compute_perceptual_distance_mask(fine_lab, coarse_lab, oklab_threshold)
 
-    def detect_gradient_regions(
-        self, image: np.ndarray, gradient_threshold: float
-    ) -> np.ndarray:
+    def detect_gradient_regions(self, image: np.ndarray, gradient_threshold: float) -> np.ndarray:
         """
         Detect regions with high color gradients using Numba-optimized Sobel operators.
 
@@ -306,9 +300,7 @@ class HierarchicalProcessor:
         logger.info(f"Processing coarsest level: {coarsest.shape}")
 
         # Transform the coarsest level
-        result = transform_func(
-            coarsest.image, attractors, tolerances, strengths, channels
-        )
+        result = transform_func(coarsest.image, attractors, tolerances, strengths, channels)
 
         # Statistics tracking
         total_pixels_refined = 0
@@ -326,15 +318,11 @@ class HierarchicalProcessor:
             upsampled = cv2.resize(result, (w, h), interpolation=cv2.INTER_LINEAR)
 
             # Compute refinement mask
-            diff_mask = self.compute_difference_mask(
-                level.image, upsampled, self.difference_threshold
-            )
+            diff_mask = self.compute_difference_mask(level.image, upsampled, self.difference_threshold)
 
             # Add gradient regions if enabled
             if self.use_adaptive_subdivision:
-                gradient_mask = self.detect_gradient_regions(
-                    level.image, self.gradient_threshold
-                )
+                gradient_mask = self.detect_gradient_regions(level.image, self.gradient_threshold)
                 refinement_mask = diff_mask | gradient_mask
             else:
                 refinement_mask = diff_mask
@@ -345,18 +333,14 @@ class HierarchicalProcessor:
 
             # Process only masked pixels if any need refinement
             if num_refined > 0:
-                logger.debug(
-                    f"Refining {num_refined} pixels ({num_refined / refinement_mask.size * 100:.1f}%)"
-                )
+                logger.debug(f"Refining {num_refined} pixels ({num_refined / refinement_mask.size * 100:.1f}%)")
 
                 # For efficient processing, we need to handle masked transformation
                 # This is a simplified approach - in production, we'd optimize this
                 refined_result = upsampled.copy()
 
                 # Transform the entire level (optimization opportunity here)
-                transformed_level = transform_func(
-                    level.image, attractors, tolerances, strengths, channels
-                )
+                transformed_level = transform_func(level.image, attractors, tolerances, strengths, channels)
 
                 # Apply only to masked pixels
                 refined_result[refinement_mask] = transformed_level[refinement_mask]
@@ -370,9 +354,7 @@ class HierarchicalProcessor:
         # Log statistics
         if total_pixels > 0:
             refinement_ratio = total_pixels_refined / total_pixels
-            logger.info(
-                f"Hierarchical processing complete: refined {refinement_ratio * 100:.1f}% of pixels"
-            )
+            logger.info(f"Hierarchical processing complete: refined {refinement_ratio * 100:.1f}% of pixels")
 
         return result
 
@@ -408,9 +390,7 @@ class HierarchicalProcessor:
 
         # If image is small enough, process without tiling
         if h <= tile_size * 2 and w <= tile_size * 2:
-            return self.process_hierarchical(
-                image, transform_func, attractors, tolerances, strengths, channels
-            )
+            return self.process_hierarchical(image, transform_func, attractors, tolerances, strengths, channels)
 
         logger.info(f"Processing large image ({h}x{w}) with tiled fast_hierar approach")
 

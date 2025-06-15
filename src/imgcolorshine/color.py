@@ -110,9 +110,7 @@ class OKLCHEngine:
             msg = f"Invalid color specification: {color_str}"
             raise ValueError(msg) from e
 
-    def create_attractor(
-        self, color_str: str, tolerance: float, strength: float
-    ) -> Attractor:
+    def create_attractor(self, color_str: str, tolerance: float, strength: float) -> Attractor:
         """Create an attractor from color string and parameters.
 
         Parses the color string and converts to OKLCH space for
@@ -142,18 +140,14 @@ class OKLCHEngine:
         """
         return np.sqrt(np.sum((color1 - color2) ** 2))
 
-    def oklch_to_oklab(
-        self, l: float, c: float, h: float
-    ) -> tuple[float, float, float]:  # noqa: E741
+    def oklch_to_oklab(self, l: float, c: float, h: float) -> tuple[float, float, float]:
         """Convert OKLCH to Oklab coordinates."""
         h_rad = np.deg2rad(h)
         a = c * np.cos(h_rad)
         b = c * np.sin(h_rad)
         return l, a, b
 
-    def oklab_to_oklch(
-        self, l: float, a: float, b: float
-    ) -> tuple[float, float, float]:  # noqa: E741
+    def oklab_to_oklch(self, l: float, a: float, b: float) -> tuple[float, float, float]:
         """Convert Oklab to OKLCH coordinates.
 
         Used by transform.py for color space conversions.
@@ -206,9 +200,7 @@ class OKLCHEngine:
 
     def srgb_to_linear(self, srgb: np.ndarray) -> np.ndarray:
         """Apply inverse gamma correction."""
-        return np.where(
-            srgb <= 0.04045, srgb / 12.92, np.power((srgb + 0.055) / 1.055, 2.4)
-        )
+        return np.where(srgb <= 0.04045, srgb / 12.92, np.power((srgb + 0.055) / 1.055, 2.4))
 
     def linear_to_srgb(self, linear: np.ndarray) -> np.ndarray:
         """Apply gamma correction."""
@@ -218,9 +210,7 @@ class OKLCHEngine:
             1.055 * np.power(linear, 1 / 2.4) - 0.055,
         )
 
-    def gamut_map_oklch(
-        self, l: float, c: float, h: float
-    ) -> tuple[float, float, float]:  # noqa: E741
+    def gamut_map_oklch(self, l: float, c: float, h: float) -> tuple[float, float, float]:
         """
         CSS Color Module 4 compliant gamut mapping.
 

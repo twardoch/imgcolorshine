@@ -40,9 +40,7 @@ class TestToleranceCalculation:
             tolerances = np.array([tolerance])
             strengths = np.array([100])
 
-            weights = calculate_weights(
-                pixel_lab, attractors_lab, tolerances, strengths
-            )
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
 
             # For identical colors, weight should equal strength/100
             expected_weight = 1.0  # strength=100, distance=0
@@ -73,18 +71,12 @@ class TestToleranceCalculation:
             tolerances = np.array([tolerance])
             strengths = np.array([100])
 
-            weights = calculate_weights(
-                pixel_lab, attractors_lab, tolerances, strengths
-            )
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
 
             if should_affect:
-                assert weights[0] > 0, (
-                    f"Expected non-zero weight for distance={distance}, tolerance={tolerance}"
-                )
+                assert weights[0] > 0, f"Expected non-zero weight for distance={distance}, tolerance={tolerance}"
             else:
-                assert weights[0] == 0, (
-                    f"Expected zero weight for distance={distance}, tolerance={tolerance}"
-                )
+                assert weights[0] == 0, f"Expected zero weight for distance={distance}, tolerance={tolerance}"
 
     def test_strength_scaling(self):
         """Test that strength correctly scales the weight."""
@@ -95,9 +87,7 @@ class TestToleranceCalculation:
         # Test different strength values
         for strength in [0, 25, 50, 75, 100]:
             strengths = np.array([strength])
-            weights = calculate_weights(
-                pixel_lab, attractors_lab, tolerances, strengths
-            )
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
 
             # For identical colors, weight should equal strength/100
             expected_weight = strength / 100.0
@@ -119,16 +109,12 @@ class TestToleranceCalculation:
             0.0,
         ]  # Raised cosine values
 
-        for d_norm, expected_falloff in zip(
-            test_distances, expected_falloffs, strict=True
-        ):
+        for d_norm, expected_falloff in zip(test_distances, expected_falloffs, strict=True):
             # Create attractor at distance that gives desired d_norm
             distance = d_norm * MAX_DELTA_E
             attractors_lab = np.array([[0.5, distance, 0.0]])
 
-            weights = calculate_weights(
-                pixel_lab, attractors_lab, tolerances, strengths
-            )
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
 
             # Weight should be strength * falloff
             expected_weight = expected_falloff
@@ -187,9 +173,7 @@ class TestToleranceCalculation:
             tolerances = np.array([min_tolerance])
             strengths = np.array([100])
 
-            weights = calculate_weights(
-                pixel_lab, attractors_lab, tolerances, strengths
-            )
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
 
             # Should have some influence at min_tolerance
             assert weights[0] > 0, (
@@ -202,21 +186,15 @@ class TestToleranceCalculation:
         attractors_lab = np.array([[0.5, 1.0, 0.0]])
 
         # Test tolerance = 0
-        weights = calculate_weights(
-            pixel_lab, attractors_lab, np.array([0]), np.array([100])
-        )
+        weights = calculate_weights(pixel_lab, attractors_lab, np.array([0]), np.array([100]))
         assert weights[0] == 0.0
 
         # Test strength = 0
-        weights = calculate_weights(
-            pixel_lab, attractors_lab, np.array([100]), np.array([0])
-        )
+        weights = calculate_weights(pixel_lab, attractors_lab, np.array([100]), np.array([0]))
         assert weights[0] == 0.0
 
         # Test very small but non-zero values
-        weights = calculate_weights(
-            pixel_lab, attractors_lab, np.array([0.1]), np.array([0.1])
-        )
+        weights = calculate_weights(pixel_lab, attractors_lab, np.array([0.1]), np.array([0.1]))
         assert weights[0] >= 0.0
 
 

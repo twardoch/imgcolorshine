@@ -38,9 +38,7 @@ class ColorLUT:
             cache_dir: Directory for caching LUTs (default: ~/.cache/imgcolorshine)
         """
         self.size = size
-        self.cache_dir = (
-            Path(cache_dir) if cache_dir else Path.home() / ".cache" / "imgcolorshine"
-        )
+        self.cache_dir = Path(cache_dir) if cache_dir else Path.home() / ".cache" / "imgcolorshine"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Pre-allocate LUT array
@@ -100,9 +98,7 @@ class ColorLUT:
         except Exception as e:
             logger.warning(f"Failed to save cache: {e}")
 
-    def build_lut(
-        self, transform_func, attractors_lab, tolerances, strengths, channels
-    ):
+    def build_lut(self, transform_func, attractors_lab, tolerances, strengths, channels):
         """
         Build the 3D LUT by sampling the transformation function.
 
@@ -279,6 +275,10 @@ def create_identity_lut(size=65):
     return lut
 
 
+# Import at module level for Numba compatibility
+from imgcolorshine.kernel import transform_pixel_fused
+
+
 @numba.njit(cache=True)
 def transform_pixel_for_lut(
     rgb,
@@ -294,8 +294,6 @@ def transform_pixel_for_lut(
 
     This is a wrapper around the fused kernel that handles the single pixel case.
     """
-    from imgcolorshine.kernel import transform_pixel_fused
-
     # Transform and return
     r_out, g_out, b_out = transform_pixel_fused(
         rgb[0],

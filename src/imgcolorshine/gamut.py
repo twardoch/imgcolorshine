@@ -29,9 +29,7 @@ from imgcolorshine.trans_numba import (
 
 
 @numba.njit(cache=True)
-def binary_search_chroma(
-    l: float, c: float, h: float, epsilon: float = 0.0001
-) -> float:
+def binary_search_chroma(l: float, c: float, h: float, epsilon: float = 0.0001) -> float:
     """
     Numba-optimized binary search for maximum in-gamut chroma.
 
@@ -80,9 +78,7 @@ def binary_search_chroma(
 
 
 @numba.njit(parallel=True, cache=True)
-def batch_map_oklch_numba(
-    colors_flat: np.ndarray, epsilon: float = 0.0001
-) -> np.ndarray:
+def batch_map_oklch_numba(colors_flat: np.ndarray, epsilon: float = 0.0001) -> np.ndarray:
     """
     Numba-optimized batch gamut mapping for OKLCH colors.
 
@@ -134,9 +130,7 @@ class GamutMapper:
         """Check if a color is within the target gamut."""
         return color.in_gamut(self.target_space)
 
-    def map_oklch_to_gamut(
-        self, l: float, c: float, h: float
-    ) -> tuple[float, float, float]:
+    def map_oklch_to_gamut(self, l: float, c: float, h: float) -> tuple[float, float, float]:
         """
         CSS Color Module 4 gamut mapping algorithm with Numba optimization.
 
@@ -190,15 +184,11 @@ class GamutMapper:
         # Use the last valid chroma value
         final_c = c_min
 
-        logger.debug(
-            f"Gamut mapped: C={c:.4f} → {final_c:.4f} (iterations: {iterations})"
-        )
+        logger.debug(f"Gamut mapped: C={c:.4f} → {final_c:.4f} (iterations: {iterations})")
 
         return l, final_c, h
 
-    def map_oklab_to_gamut(
-        self, l: float, a: float, b: float
-    ) -> tuple[float, float, float]:
+    def map_oklab_to_gamut(self, l: float, a: float, b: float) -> tuple[float, float, float]:
         """
         Map Oklab color to gamut by converting to OKLCH first.
 
@@ -227,9 +217,7 @@ class GamutMapper:
 
         return l_mapped, a_mapped, b_mapped
 
-    def map_rgb_to_gamut(
-        self, r: float, g: float, b: float
-    ) -> tuple[float, float, float]:
+    def map_rgb_to_gamut(self, r: float, g: float, b: float) -> tuple[float, float, float]:
         """
         Simple RGB gamut mapping by clamping.
 
@@ -310,9 +298,7 @@ class GamutStats(TypedDict):
     percentage_in_gamut: float
 
 
-def create_gamut_boundary_lut(
-    hue_steps: int = 360, lightness_steps: int = 100
-) -> np.ndarray:
+def create_gamut_boundary_lut(hue_steps: int = 360, lightness_steps: int = 100) -> np.ndarray:
     """
     Create a lookup table for maximum chroma at each chroma/lightness.
 

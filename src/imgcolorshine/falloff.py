@@ -155,9 +155,7 @@ def visualize_falloff(falloff_type: FalloffType, samples: int = 100) -> np.ndarr
     return np.column_stack([distances, values])
 
 
-def precompute_falloff_lut(
-    falloff_type: FalloffType = FalloffType.COSINE, resolution: int = 1024
-) -> np.ndarray:
+def precompute_falloff_lut(falloff_type: FalloffType = FalloffType.COSINE, resolution: int = 1024) -> np.ndarray:
     """
     Precompute a lookup table for fast falloff calculations.
 

@@ -70,17 +70,11 @@ def test_falloff_gaussian_mid_value():
 def test_calculate_falloff(falloff_type_enum, falloff_type_int, d_norm, expected_func):
     """"""
     # Test direct call with integer type
-    assert np.isclose(
-        calculate_falloff(d_norm, falloff_type_int), expected_func(d_norm)
-    )
+    assert np.isclose(calculate_falloff(d_norm, falloff_type_int), expected_func(d_norm))
     # Test that default (no type given or invalid type) is cosine
     if falloff_type_enum == FalloffType.COSINE:
-        assert np.isclose(
-            calculate_falloff(d_norm), expected_func(d_norm)
-        )  # Default call
-        assert np.isclose(
-            calculate_falloff(d_norm, 99), expected_func(d_norm)
-        )  # Invalid type
+        assert np.isclose(calculate_falloff(d_norm), expected_func(d_norm))  # Default call
+        assert np.isclose(calculate_falloff(d_norm, 99), expected_func(d_norm))  # Invalid type
 
 
 # Test get_falloff_function
@@ -159,9 +153,7 @@ def test_apply_falloff_lut():
     # Test exact points
     assert np.isclose(apply_falloff_lut(0.0, lut), 1.0)
     assert np.isclose(apply_falloff_lut(1.0, lut), 0.0)
-    assert np.isclose(
-        apply_falloff_lut(0.5, lut), 0.5
-    )  # (lut[5]*(1-0) + lut[6]*0) -> lut[5] = 0.5
+    assert np.isclose(apply_falloff_lut(0.5, lut), 0.5)  # (lut[5]*(1-0) + lut[6]*0) -> lut[5] = 0.5
 
     # Test interpolated points
     # d_norm = 0.25 -> idx_float = 0.25 * 10 = 2.5. idx = 2, frac = 0.5
@@ -192,9 +184,7 @@ def test_apply_falloff_lut_cosine():
     )  # Looser tolerance for LUT
 
     d_norm_test_2 = 0.666
-    assert np.isclose(
-        apply_falloff_lut(d_norm_test_2, lut), falloff_cosine(d_norm_test_2), atol=1e-3
-    )
+    assert np.isclose(apply_falloff_lut(d_norm_test_2, lut), falloff_cosine(d_norm_test_2), atol=1e-3)
 
 
 def test_calculate_falloff_invalid_integer_type():

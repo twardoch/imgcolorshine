@@ -60,9 +60,7 @@ class ImageProcessor:
         """
         self.tile_size = tile_size
         self.use_opencv = HAS_OPENCV
-        logger.debug(
-            f"ImageProcessor initialized (OpenCV: {self.use_opencv}, tile_size: {tile_size})"
-        )
+        logger.debug(f"ImageProcessor initialized (OpenCV: {self.use_opencv}, tile_size: {tile_size})")
 
     def load_image(self, path: str | Path) -> np.ndarray:
         """
@@ -94,9 +92,7 @@ class ImageProcessor:
             return self._load_opencv(path)
         return self._load_pil(path)
 
-    def save_image(
-        self, image: np.ndarray, path: str | Path, quality: int = 95
-    ) -> None:
+    def save_image(self, image: np.ndarray, path: str | Path, quality: int = 95) -> None:
         """
         Save an image to file.
 
@@ -242,9 +238,7 @@ class ImageProcessor:
 
         return int(total_mb)
 
-    def should_use_tiling(
-        self, width: int, height: int, max_memory_mb: int = 2048
-    ) -> bool:
+    def should_use_tiling(self, width: int, height: int, max_memory_mb: int = 2048) -> bool:
         """
         Determine if image should be processed in tiles.
 

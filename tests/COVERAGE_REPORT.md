@@ -2,7 +2,7 @@
 
 Generated: 2025-06-15
 
-## Overall Coverage: 19%
+## Overall Coverage: 43% ✅ (Improved from 19%!)
 
 ### Modules with NO Coverage (0%)
 - **`__main__.py`** - Entry point (low priority)
@@ -14,35 +14,36 @@ Generated: 2025-06-15
 - **`trans_gpu.py`** - GPU transforms (low priority)
 
 ### Modules with Poor Coverage (<20%)
-- **`colorshine.py`** - 19% ⚠️ **HIGH PRIORITY** (main interface)
-- **`gamut.py`** - 12% (now has Numba optimization)
-- **`io.py`** - 16% ⚠️ **HIGH PRIORITY** (critical functionality)
 - **`transform.py`** - 18% ⚠️ **HIGH PRIORITY** (core logic)
 - **`utils.py`** - 8% ⚠️ **HIGH PRIORITY** (utilities)
 
 ### Modules with Moderate Coverage (20-70%)
-- **`color.py`** - 54% (needs improvement)
-- **`falloff.py`** - 33% (needs improvement)
-- **`spatial.py`** - 36% (improved with Numba)
-- **`trans_numba.py`** - 23% (needs improvement)
-- **`hierar.py`** - 55% (improved with Numba)
+- **`colorshine.py`** - 49% (improved from 19%!)
+- **`color.py`** - 100% ✅ (fully covered!)
+- **`falloff.py`** - 51% (improved from 33%)
+- **`io.py`** - 53% (improved from 16%)
+- **`spatial.py`** - 36%
+- **`trans_numba.py`** - 24% (needs improvement)
 
 ### Modules with Good Coverage (>70%)
 - **`__init__.py`** - 100% ✅
+- **`color.py`** - 100% ✅ (fully covered!)
+- **`cli.py`** - 86% ✅ (improved from 0%!)
+- **`gamut.py`** - 76% ✅ (improved from 12%!)
+- **`gpu.py`** - 97% ✅ (improved from 0%!)
+- **`hierar.py`** - 77% ✅ (improved from 55%)
 
 ## Priority Areas for Testing
 
 ### 1. Critical Missing Tests (Immediate Priority)
-- **CLI Interface** (`cli.py`): Command parsing, argument validation, error handling
-- **Main Interface** (`colorshine.py`): The `shine()` function and attractor parsing
-- **I/O Operations** (`io.py`): Image loading/saving, format support, error handling
-- **Core Transform** (`transform.py`): Transformation logic, edge cases
-- **Kernel Operations** (`kernel.py`): Fused transformation accuracy
+- **Core Transform** (`transform.py` - 18%): Transformation logic, edge cases
+- **Kernel Operations** (`kernel.py` - 0%): Fused transformation accuracy
+- **Utilities** (`utils.py` - 8%): Helper functions, validation
 
-### 2. Important Missing Tests (High Priority)
-- **Utilities** (`utils.py`): Helper functions, validation, error handling
-- **Gamut Mapping** (`gamut.py`): Numba-optimized paths, edge cases
-- **Color Operations** (`color.py`): Attractor parsing, color conversions
+### 2. Test Improvement Needed (Medium Priority) 
+- **Main Interface** (`colorshine.py` - 49%): More edge cases and error handling
+- **I/O Operations** (`io.py` - 53%): Additional format tests and error cases
+- **Falloff Functions** (`falloff.py` - 51%): Edge cases and accuracy tests
 
 ### 3. Performance Tests (Medium Priority)
 - **GPU Acceleration** (`gpu.py`, `trans_gpu.py`): GPU availability, fallback
@@ -51,20 +52,21 @@ Generated: 2025-06-15
 
 ## Specific Missing Test Cases
 
-### CLI Tests (`cli.py`)
-- [ ] Basic command parsing
-- [ ] Multiple attractors parsing
-- [ ] Channel flag handling (--luminance, --saturation, --hue)
-- [ ] Optimization flag handling (--gpu, --lut_size, --hierarchical)
-- [ ] Error handling for invalid inputs
-- [ ] Output path generation
+### CLI Tests (`cli.py`) - ✅ 86% Coverage!
+- [x] Basic command parsing - Implemented
+- [x] Multiple attractors parsing - Implemented
+- [x] Channel flag handling - Test skeleton exists
+- [x] Optimization flag handling - Test skeleton exists
+- [ ] Error handling for invalid inputs - TODO
+- [ ] Complete test implementations for skeletons
 
-### Main Interface Tests (`colorshine.py`)
-- [ ] `shine()` function with various parameters
-- [ ] Attractor string parsing
+### Main Interface Tests (`colorshine.py`) - 49% Coverage
+- [x] `shine()` function basic test skeleton exists
+- [x] Attractor string parsing test skeleton exists
 - [ ] Integration with different backends (GPU, LUT, CPU)
 - [ ] Memory management for large images
 - [ ] Error handling and validation
+- [ ] Complete test implementations
 
 ### I/O Tests (`io.py`)
 - [ ] Load/save cycle preserving data

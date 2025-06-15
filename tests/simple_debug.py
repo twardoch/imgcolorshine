@@ -27,12 +27,8 @@ def debug_algorithm():
     blue_oklab = blue_color.convert("oklab")
     blue_oklch = blue_color.convert("oklch")
 
-    attractor_lab = np.array(
-        [blue_oklab["lightness"], blue_oklab["a"], blue_oklab["b"]]
-    )
-    attractor_lch = np.array(
-        [blue_oklch["lightness"], blue_oklch["chroma"], blue_oklch["chroma"]]
-    )
+    attractor_lab = np.array([blue_oklab["lightness"], blue_oklab["a"], blue_oklab["b"]])
+    attractor_lch = np.array([blue_oklch["lightness"], blue_oklch["chroma"], blue_oklch["chroma"]])
 
     # Calculate distance and weight
     delta_e = np.sqrt(np.sum((pixel_lab - attractor_lab) ** 2))

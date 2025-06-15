@@ -6,6 +6,7 @@ Tests the primary user-facing functions in colorshine module.
 """
 
 import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -63,80 +64,144 @@ class TestMainInterface:
         # Test with simple filename
         input_path = Path("image.png")
         output_path = generate_output_path(input_path)
-        assert "image" in str(output_path)
-        assert output_path.suffix == ".png"
+        assert str(output_path) == "image_colorshine.png"
 
         # Test with path
         input_path = Path("/path/to/image.jpg")
         output_path = generate_output_path(input_path)
-        assert "image" in str(output_path)
-        assert output_path.suffix == ".jpg"
+        assert str(output_path) == "/path/to/image_colorshine.jpg"
 
-    @patch("imgcolorshine.io.ImageProcessor")
-    def test_process_image_basic(self, mock_io):
+    def test_process_image_basic(self):
         """Test basic image processing."""
-        # Setup mock
-        test_image = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
-        mock_processor = Mock()
-        mock_processor.load_image.return_value = test_image
-        mock_processor.save_image.return_value = None
-        mock_io.return_value = mock_processor
+        with (
+            patch("imgcolorshine.colorshine.ImageProcessor") as mock_processor_class,
+            patch("imgcolorshine.colorshine.OKLCHEngine") as mock_engine_class,
+            patch("imgcolorshine.colorshine.ColorTransformer") as mock_transformer_class,
+            patch("imgcolorshine.colorshine.logger"),
+        ):
+            # Setup mocks
+            mock_processor = Mock()
+            mock_processor_class.return_value = mock_processor
+            test_image = np.random.rand(100, 100, 3).astype(np.float32)
+            mock_processor.load_image.return_value = test_image
 
-        # Process image
-        output = process_image("test.png", ("red;50;75",))
+            mock_engine = Mock()
+            mock_engine_class.return_value = mock_engine
 
-        # Verify
-        assert output is not None
-        mock_processor.load_image.assert_called_once()
-        mock_processor.save_image.assert_called_once()
+            mock_transformer = Mock()
+            mock_transformer_class.return_value = mock_transformer
+            mock_transformer.process_with_attractors.return_value = test_image
 
-    @patch("imgcolorshine.io.ImageProcessor")
-    def test_process_image_multiple_attractors(self, mock_io):
+            # Create a temporary file for output
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                output_path = tmp.name
+
+            # Process image
+            process_image("test.png", ("red;50;75",), output_image=output_path)
+
+            # Verify calls
+            mock_processor.load_image.assert_called_once_with("test.png")
+            mock_processor.save_image.assert_called_once()
+
+            # Cleanup
+            Path(output_path).unlink(missing_ok=True)
+
+    def test_process_image_multiple_attractors(self):
         """Test processing with multiple attractors."""
-        # Setup mock
-        test_image = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
-        mock_processor = Mock()
-        mock_processor.load_image.return_value = test_image
-        mock_processor.save_image.return_value = None
-        mock_io.return_value = mock_processor
+        with (
+            patch("imgcolorshine.colorshine.ImageProcessor") as mock_processor_class,
+            patch("imgcolorshine.colorshine.OKLCHEngine") as mock_engine_class,
+            patch("imgcolorshine.colorshine.ColorTransformer") as mock_transformer_class,
+            patch("imgcolorshine.colorshine.logger"),
+        ):
+            # Setup mocks
+            mock_processor = Mock()
+            mock_processor_class.return_value = mock_processor
+            test_image = np.random.rand(100, 100, 3).astype(np.float32)
+            mock_processor.load_image.return_value = test_image
 
-        # Process with multiple attractors
-        attractors = ("red;50;75", "blue;30;60", "#00ff00;40;80")
-        output = process_image("test.png", attractors)
+            mock_engine = Mock()
+            mock_engine_class.return_value = mock_engine
 
-        assert output is not None
+            mock_transformer = Mock()
+            mock_transformer_class.return_value = mock_transformer
+            mock_transformer.process_with_attractors.return_value = test_image
 
-    @patch("imgcolorshine.io.ImageProcessor")
-    def test_process_image_channel_control(self, mock_io):
-        """Test channel-specific processing."""
-        # Setup mock
-        test_image = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
-        mock_processor = Mock()
-        mock_processor.load_image.return_value = test_image
-        mock_processor.save_image.return_value = None
-        mock_io.return_value = mock_processor
+            # Create a temporary file for output
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                output_path = tmp.name
 
-        # Test with only hue enabled
-        output = process_image(
-            "test.png", ("green;60;90",), luminance=False, saturation=False, hue=True
-        )
+            # Process with multiple attractors
+            attractors = ("red;50;75", "blue;30;60", "green;40;50")
+            process_image("test.png", attractors, output_image=output_path)
 
-        assert output is not None
+            # Verify that OKLCHEngine was called to create 3 attractors
+            assert mock_engine.create_attractor.call_count == 3
 
-    @patch("imgcolorshine.io.ImageProcessor")
-    def test_process_image_custom_output(self, mock_io):
-        """Test custom output path."""
-        # Setup mock
-        test_image = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
-        mock_processor = Mock()
-        mock_processor.load_image.return_value = test_image
-        mock_processor.save_image.return_value = None
-        mock_io.return_value = mock_processor
+            # Cleanup
+            Path(output_path).unlink(missing_ok=True)
 
-        # Process with custom output
-        process_image("test.png", ("red;50;75",), output_image="custom_output.png")
+    def test_process_image_channel_control(self):
+        """Test channel-specific transformations."""
+        with (
+            patch("imgcolorshine.colorshine.ImageProcessor") as mock_processor_class,
+            patch("imgcolorshine.colorshine.OKLCHEngine") as mock_engine_class,
+            patch("imgcolorshine.colorshine.ColorTransformer") as mock_transformer_class,
+            patch("imgcolorshine.colorshine.logger"),
+        ):
+            # Setup mocks
+            mock_processor = Mock()
+            mock_processor_class.return_value = mock_processor
+            test_image = np.random.rand(100, 100, 3).astype(np.float32)
+            mock_processor.load_image.return_value = test_image
 
-        # Verify custom path was used
-        save_call = mock_processor.save_image.call_args
-        output_path = save_call[0][1]
-        assert str(output_path) == "custom_output.png"
+            mock_engine = Mock()
+            mock_engine_class.return_value = mock_engine
+
+            mock_transformer = Mock()
+            mock_transformer_class.return_value = mock_transformer
+            mock_transformer.process_with_attractors.return_value = test_image
+
+            # Test with specific channel settings
+            process_image(
+                "test.png",
+                ("red;50;75",),
+                luminance=True,
+                saturation=False,
+                chroma=True,
+            )
+
+            # Verify ColorTransformer was created with correct settings
+            mock_transformer_class.assert_called_once()
+            call_kwargs = mock_transformer_class.call_args[1]
+            assert call_kwargs["transform_lightness"] is True
+            assert call_kwargs["transform_chroma"] is True
+
+    def test_process_image_custom_output(self):
+        """Test custom output path specification."""
+        with (
+            patch("imgcolorshine.colorshine.ImageProcessor") as mock_processor_class,
+            patch("imgcolorshine.colorshine.OKLCHEngine") as mock_engine_class,
+            patch("imgcolorshine.colorshine.ColorTransformer") as mock_transformer_class,
+            patch("imgcolorshine.colorshine.logger"),
+        ):
+            # Setup mocks
+            mock_processor = Mock()
+            mock_processor_class.return_value = mock_processor
+            test_image = np.random.rand(100, 100, 3).astype(np.float32)
+            mock_processor.load_image.return_value = test_image
+
+            mock_engine = Mock()
+            mock_engine_class.return_value = mock_engine
+
+            mock_transformer = Mock()
+            mock_transformer_class.return_value = mock_transformer
+            mock_transformer.process_with_attractors.return_value = test_image
+
+            # Process with custom output
+            custom_output = "/tmp/custom_output.png"
+            process_image("test.png", ("red;50;75",), output_image=custom_output)
+
+            # Verify save was called with custom path
+            save_call = mock_processor.save_image.call_args
+            assert str(save_call[0][1]) == custom_output
