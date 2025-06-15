@@ -272,11 +272,11 @@ class ColorTransformer:
         # Report dimensions in width×height order to match common conventions
         h, w = image.shape[:2]
         logger.info(f"Transforming {w}×{h} image with {len(attractors)} attractors")
-        
+
         # Log attractor details
         for i, attractor in enumerate(attractors):
             logger.debug(
-                f"  Attractor {i+1}: color=OKLCH({attractor.oklch_values[0]:.2f}, "
+                f"  Attractor {i + 1}: color=OKLCH({attractor.oklch_values[0]:.2f}, "
                 f"{attractor.oklch_values[1]:.3f}, {attractor.oklch_values[2]:.1f}°), "
                 f"tolerance={attractor.tolerance}, strength={attractor.strength}"
             )
@@ -289,7 +289,7 @@ class ColorTransformer:
                 flags.get("hue", True),
             ]
         )
-        
+
         # Log enabled channels
         enabled_channels = []
         if flags.get("luminance", True):

@@ -17,7 +17,7 @@ echo "================================================"
 
 # Example: Basic single attractor - warm red tones
 echo "Basic blue attractors"
-for a in 10 90; do for b in 10 90; do for c in blue yellow; do
+for a in 60 99; do for b in 60 99; do for c in blue yellow; do
     echo "$c;$a;$b"
     imgcolorshine shine louis.jpg "$c;$a;$b" \
         --luminance=False --saturation=False \

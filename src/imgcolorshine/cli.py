@@ -11,7 +11,6 @@ Simple CLI class that delegates to the main processing logic.
 """
 
 import fire
-from loguru import logger
 
 from imgcolorshine.imgcolorshine import process_image
 
@@ -24,9 +23,9 @@ class ImgColorShineCLI:
         input_image: str,
         *attractors: str,
         output_image: str | None = None,
-        luminance: bool = True,
-        saturation: bool = True,
-        hue: bool = True,
+        luminance: bool = False,
+        saturation: bool = False,
+        chroma: bool = True,
         verbose: bool = False,
         tile_size: int = 1024,
     ) -> None:
@@ -39,7 +38,7 @@ class ImgColorShineCLI:
             output_image: Output path (auto-generated if not provided)
             luminance: Transform lightness channel
             saturation: Transform chroma (saturation) channel
-            hue: Transform hue channel
+            chroma: Transform chroma channel
             verbose: Enable verbose logging
             tile_size: Tile size for processing large images
 
@@ -56,7 +55,7 @@ class ImgColorShineCLI:
             output_image=output_image,
             luminance=luminance,
             saturation=saturation,
-            hue=hue,
+            hue=chroma,
             verbose=verbose,
             tile_size=tile_size,
         )

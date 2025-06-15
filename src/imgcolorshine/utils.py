@@ -95,7 +95,9 @@ def process_large_image(
                 progress_callback(progress)
 
             if processed_tiles % 10 == 0 or processed_tiles == total_tiles:
-                logger.info(f"Processing tiles: {processed_tiles}/{total_tiles} ({processed_tiles/total_tiles*100:.1f}%)")
+                logger.info(
+                    f"Processing tiles: {processed_tiles}/{total_tiles} ({processed_tiles / total_tiles * 100:.1f}%)"
+                )
 
     return result
 

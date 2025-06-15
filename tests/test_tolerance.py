@@ -54,14 +54,14 @@ class TestToleranceCalculation:
         # Test different distances
         test_cases = [
             # (distance, tolerance, should_affect)
-            (0.49, 20, True),   # 0.49 < 20 * 2.5 / 100 = 0.5
-            (0.5, 21, True),    # 0.5 < 21 * 2.5 / 100 = 0.525
+            (0.49, 20, True),  # 0.49 < 20 * 2.5 / 100 = 0.5
+            (0.5, 21, True),  # 0.5 < 21 * 2.5 / 100 = 0.525
             (0.51, 20, False),  # 0.51 > 20 * 2.5 / 100 = 0.5
-            (0.99, 40, True),   # 0.99 < 40 * 2.5 / 100 = 1.0
-            (1.0, 41, True),    # 1.0 < 41 * 2.5 / 100 = 1.025
+            (0.99, 40, True),  # 0.99 < 40 * 2.5 / 100 = 1.0
+            (1.0, 41, True),  # 1.0 < 41 * 2.5 / 100 = 1.025
             (1.01, 40, False),  # 1.01 > 40 * 2.5 / 100 = 1.0
-            (1.99, 80, True),   # 1.99 < 80 * 2.5 / 100 = 2.0
-            (2.0, 81, True),    # 2.0 < 81 * 2.5 / 100 = 2.025
+            (1.99, 80, True),  # 1.99 < 80 * 2.5 / 100 = 2.0
+            (2.0, 81, True),  # 2.0 < 81 * 2.5 / 100 = 2.025
             (2.01, 80, False),  # 2.01 > 80 * 2.5 / 100 = 2.0
         ]
 
@@ -119,11 +119,13 @@ class TestToleranceCalculation:
         pixel_lab = np.array([0.5, 0.0, 0.0])
 
         # Create three attractors at different distances
-        attractors_lab = np.array([
-            [0.5, 0.0, 0.0],   # Same color
-            [0.5, 0.5, 0.0],   # Medium distance
-            [0.5, 2.0, 0.0],   # Far distance
-        ])
+        attractors_lab = np.array(
+            [
+                [0.5, 0.0, 0.0],  # Same color
+                [0.5, 0.5, 0.0],  # Medium distance
+                [0.5, 2.0, 0.0],  # Far distance
+            ]
+        )
 
         tolerances = np.array([100, 50, 30])
         strengths = np.array([100, 80, 60])
@@ -168,8 +170,9 @@ class TestToleranceCalculation:
             weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
 
             # Should have some influence at min_tolerance
-            assert weights[0] > 0, (f"Expected {color1_str} to be influenced by {color2_str} "
-                                   f"at tolerance={min_tolerance}")
+            assert weights[0] > 0, (
+                f"Expected {color1_str} to be influenced by {color2_str} at tolerance={min_tolerance}"
+            )
 
     def test_edge_cases(self):
         """Test edge cases and boundary conditions."""

@@ -75,6 +75,7 @@ testdata/
 tests/
   conftest.py
   test_package.py
+  test_tolerance.py
 .cursorindexingignore
 .gitignore
 .pre-commit-config.yaml
@@ -5106,525 +5107,203 @@ def create_gamut_boundary_lut(hue_steps: int = 360, lightness_steps: int = 100) 
     return lut
 </file>
 
-<file path="src/imgcolorshine/image_io.py">
+<file path="tests/test_tolerance.py">
 #!/usr/bin/env -S uv run -s
 # /// script
-# dependencies = ["numpy", "loguru", "opencv-python", "pillow"]
+# dependencies = ["pytest", "numpy", "coloraide", "loguru"]
 # ///
-# this_file: src/imgcolorshine/image_io.py
+# this_file: tests/test_tolerance.py
 
 """
-High-performance image I/O with OpenCV and PIL fallback.
+Unit tests for tolerance calculation and color transformation logic.
 
-Provides efficient image loading and saving with automatic format detection,
-memory estimation for large images, and tiling support. OpenCV is preferred
-for performance, with PIL as a fallback.
-
+These tests verify that the linear tolerance mapping works correctly
+and produces expected results for known color distances.
 """
-
-from pathlib import Path
 
 import numpy as np
-from loguru import logger
+import pytest
 
-# Try to import OpenCV first (faster), fall back to PIL
-try:
-    import cv2
-
-    HAS_OPENCV = True
-    logger.debug("Using OpenCV for image I/O")
-except ImportError:
-    HAS_OPENCV = False
-    logger.warning("OpenCV not available, falling back to PIL")
-
-from PIL import Image
+from imgcolorshine.color_engine import OKLCHEngine
+from imgcolorshine.transforms import MAX_DELTA_E, calculate_weights
 
 
-class ImageProcessor:
-    """Handles image loading and saving with optimal performance.
+class TestToleranceCalculation:
+    """Test suite for tolerance-based weight calculations."""
 
-    Provides high-performance image I/O with OpenCV (preferred) or PIL fallback.
-    Includes memory estimation and tiling support for large images. Used throughout
-    the application for all image file operations.
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.engine = OKLCHEngine()
 
-    Used in:
-    - old/imgcolorshine/imgcolorshine/__init__.py
-    - old/imgcolorshine/imgcolorshine/transforms.py
-    - old/imgcolorshine/imgcolorshine/utils.py
-    - old/imgcolorshine/imgcolorshine_main.py
-    - old/imgcolorshine/test_imgcolorshine.py
-    - src/imgcolorshine/__init__.py
-    - src/imgcolorshine/imgcolorshine.py
-    - src/imgcolorshine/transforms.py
-    - src/imgcolorshine/utils.py
-    """
+    def test_max_delta_e_value(self):
+        """Verify MAX_DELTA_E is set to expected value."""
+        assert MAX_DELTA_E == 2.5
 
-    def __init__(self, tile_size: int = 1024):
-        """
-        Initialize the image processor.
+    def test_linear_tolerance_mapping(self):
+        """Test that tolerance maps linearly to delta_e_max."""
+        # Create a dummy pixel and attractor
+        pixel_lab = np.array([0.5, 0.0, 0.0])
+        attractors_lab = np.array([[0.5, 0.0, 0.0]])  # Same color
 
-        Args:
-            tile_size: Size of tiles for processing large images
+        # Test various tolerance values (skip 0 to avoid division by zero in the algorithm)
+        for tolerance in [1, 25, 50, 75, 100]:
+            tolerances = np.array([tolerance])
+            strengths = np.array([100])
 
-        """
-        self.tile_size = tile_size
-        self.use_opencv = HAS_OPENCV
-        logger.debug(f"ImageProcessor initialized (OpenCV: {self.use_opencv}, tile_size: {tile_size})")
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
 
-    def load_image(self, path: str | Path) -> np.ndarray:
-        """
-        Load an image from file.
+            # For identical colors, weight should equal strength/100
+            expected_weight = 1.0  # strength=100, distance=0
+            assert np.isclose(weights[0], expected_weight, rtol=1e-5)
 
-        Args:
-            path: Path to the image file
+    def test_tolerance_radius_effect(self):
+        """Test that tolerance correctly controls the radius of influence."""
+        # Create colors with known distances
+        pixel_lab = np.array([0.5, 0.0, 0.0])
 
-        Returns:
-            Image as numpy array with shape (H, W, 3) and values in [0, 1]
+        # Test different distances
+        test_cases = [
+            # (distance, tolerance, should_affect)
+            (0.49, 20, True),  # 0.49 < 20 * 2.5 / 100 = 0.5
+            (0.5, 21, True),  # 0.5 < 21 * 2.5 / 100 = 0.525
+            (0.51, 20, False),  # 0.51 > 20 * 2.5 / 100 = 0.5
+            (0.99, 40, True),  # 0.99 < 40 * 2.5 / 100 = 1.0
+            (1.0, 41, True),  # 1.0 < 41 * 2.5 / 100 = 1.025
+            (1.01, 40, False),  # 1.01 > 40 * 2.5 / 100 = 1.0
+            (1.99, 80, True),  # 1.99 < 80 * 2.5 / 100 = 2.0
+            (2.0, 81, True),  # 2.0 < 81 * 2.5 / 100 = 2.025
+            (2.01, 80, False),  # 2.01 > 80 * 2.5 / 100 = 2.0
+        ]
 
-        Used by utils.py and main CLI for loading input images.
+        for distance, tolerance, should_affect in test_cases:
+            # Create attractor at specified distance
+            attractors_lab = np.array([[0.5, distance, 0.0]])
+            tolerances = np.array([tolerance])
+            strengths = np.array([100])
 
-        Used in:
-        - old/imgcolorshine/imgcolorshine/utils.py
-        - old/imgcolorshine/imgcolorshine_main.py
-        - src/imgcolorshine/imgcolorshine.py
-        - src/imgcolorshine/utils.py
-        """
-        path = Path(path)
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
 
-        if not path.exists():
-            msg = f"Image not found: {path}"
-            raise FileNotFoundError(msg)
+            if should_affect:
+                assert weights[0] > 0, f"Expected non-zero weight for distance={distance}, tolerance={tolerance}"
+            else:
+                assert weights[0] == 0, f"Expected zero weight for distance={distance}, tolerance={tolerance}"
 
-        logger.info(f"Loading image: {path}")
+    def test_strength_scaling(self):
+        """Test that strength correctly scales the weight."""
+        pixel_lab = np.array([0.5, 0.0, 0.0])
+        attractors_lab = np.array([[0.5, 0.0, 0.0]])  # Same color
+        tolerances = np.array([100])
 
-        if self.use_opencv:
-            return self._load_opencv(path)
-        return self._load_pil(path)
+        # Test different strength values
+        for strength in [0, 25, 50, 75, 100]:
+            strengths = np.array([strength])
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
 
-    def save_image(self, image: np.ndarray, path: str | Path, quality: int = 95) -> None:
-        """
-        Save an image to file.
+            # For identical colors, weight should equal strength/100
+            expected_weight = strength / 100.0
+            assert np.isclose(weights[0], expected_weight, rtol=1e-5)
 
-        Args:
-            image: Image array with values in [0, 1]
-            path: Output path
-            quality: JPEG quality (1-100) or PNG compression (0-9)
+    def test_falloff_function(self):
+        """Test the raised cosine falloff function behavior."""
+        pixel_lab = np.array([0.5, 0.0, 0.0])
+        tolerances = np.array([100])
+        strengths = np.array([100])
 
-        Used by utils.py and main CLI for saving output images.
+        # Test falloff at different normalized distances
+        test_distances = [0.0, 0.25, 0.5, 0.75, 1.0]
+        expected_falloffs = [1.0, 0.8536, 0.5, 0.1464, 0.0]  # Raised cosine values
 
-        Used in:
-        - old/imgcolorshine/imgcolorshine/utils.py
-        - old/imgcolorshine/imgcolorshine_main.py
-        - old/imgcolorshine/test_imgcolorshine.py
-        - src/imgcolorshine/imgcolorshine.py
-        - src/imgcolorshine/utils.py
-        """
-        path = Path(path)
+        for d_norm, expected_falloff in zip(test_distances, expected_falloffs, strict=True):
+            # Create attractor at distance that gives desired d_norm
+            distance = d_norm * MAX_DELTA_E
+            attractors_lab = np.array([[0.5, distance, 0.0]])
 
-        # Ensure output directory exists
-        path.parent.mkdir(parents=True, exist_ok=True)
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
 
-        logger.info(f"Saving image: {path}")
+            # Weight should be strength * falloff
+            expected_weight = expected_falloff
+            assert np.isclose(weights[0], expected_weight, rtol=1e-3)
 
-        if self.use_opencv:
-            self._save_opencv(image, path, quality)
-        else:
-            self._save_pil(image, path, quality)
+    def test_multiple_attractors(self):
+        """Test weight calculation with multiple attractors."""
+        pixel_lab = np.array([0.5, 0.0, 0.0])
 
-    def _load_opencv(self, path: Path) -> np.ndarray:
-        """Load image using OpenCV for better performance."""
-        # OpenCV loads as BGR, we need RGB
-        img = cv2.imread(str(path), cv2.IMREAD_COLOR)
+        # Create three attractors at different distances
+        attractors_lab = np.array(
+            [
+                [0.5, 0.0, 0.0],  # Same color
+                [0.5, 0.5, 0.0],  # Medium distance
+                [0.5, 2.0, 0.0],  # Far distance
+            ]
+        )
 
-        if img is None:
-            msg = f"Failed to load image: {path}"
-            raise ValueError(msg)
+        tolerances = np.array([100, 50, 30])
+        strengths = np.array([100, 80, 60])
 
-        # Convert BGR to RGB
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
 
-        # Convert to float [0, 1]
-        img = img.astype(np.float32) / 255.0
+        # First attractor: same color, should have full weight
+        assert np.isclose(weights[0], 1.0, rtol=1e-5)
 
-        h, w = img.shape[:2]
-        logger.debug(f"Loaded {w}×{h} image with OpenCV")
+        # Second attractor: should have partial weight
+        assert 0 < weights[1] < 0.8
 
-        return img
+        # Third attractor: outside tolerance, should have zero weight
+        assert weights[2] == 0.0
 
-    def _load_pil(self, path: Path) -> np.ndarray:
-        """Load image using PIL as fallback."""
-        with Image.open(path) as img:
-            # Convert to RGB if necessary
-            if img.mode != "RGB":
-                logger.debug(f"Converting from {img.mode} to RGB")
-                img = img.convert("RGB")
+    def test_known_color_pairs(self):
+        """Test with real color pairs and known perceptual distances."""
+        # Test cases with approximate known distances
+        test_cases = [
+            # (color1, color2, approx_distance, tolerance_needed)
+            ("red", "darkred", 0.3, 15),
+            ("red", "orange", 0.4, 20),
+            ("red", "yellow", 0.8, 35),
+            ("red", "green", 1.2, 50),
+            ("red", "blue", 1.5, 65),
+            ("white", "black", 1.0, 45),
+            ("gray", "darkgray", 0.25, 12),
+        ]
 
-            # Convert to numpy array
-            arr = np.array(img, dtype=np.float32) / 255.0
+        for color1_str, color2_str, _, min_tolerance in test_cases:
+            # Convert colors to Oklab
+            color1 = self.engine.parse_color(color1_str).convert("oklab")
+            color2 = self.engine.parse_color(color2_str).convert("oklab")
 
-            h, w = arr.shape[:2]
-            logger.debug(f"Loaded {w}×{h} image with PIL")
+            pixel_lab = np.array([color1["lightness"], color1["a"], color1["b"]])
+            attractors_lab = np.array([[color2["lightness"], color2["a"], color2["b"]]])
 
-            return arr
+            # Test that min_tolerance allows influence
+            tolerances = np.array([min_tolerance])
+            strengths = np.array([100])
 
-    def _save_opencv(self, image: np.ndarray, path: Path, quality: int) -> None:
-        """Save image using OpenCV for better performance."""
-        # Ensure values are in [0, 1]
-        image = np.clip(image, 0, 1)
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
 
-        # Convert to uint8
-        img_uint8 = (image * 255).astype(np.uint8)
-
-        # Convert RGB to BGR for OpenCV
-        img_bgr = cv2.cvtColor(img_uint8, cv2.COLOR_RGB2BGR)
-
-        # Set compression parameters based on format
-        ext = path.suffix.lower()
-        if ext in [".jpg", ".jpeg"]:
-            params = [cv2.IMWRITE_JPEG_QUALITY, quality]
-        elif ext == ".png":
-            # PNG compression level (0-9, where 9 is max compression)
-            compression = int((100 - quality) / 11)
-            params = [cv2.IMWRITE_PNG_COMPRESSION, compression]
-        else:
-            params = []
-
-        success = cv2.imwrite(str(path), img_bgr, params)
-
-        if not success:
-            msg = f"Failed to save image: {path}"
-            raise OSError(msg)
-
-        logger.debug(f"Saved image with OpenCV (quality: {quality})")
-
-    def _save_pil(self, image: np.ndarray, path: Path, quality: int) -> None:
-        """Save image using PIL as fallback."""
-        # Ensure values are in [0, 1]
-        image = np.clip(image, 0, 1)
-
-        # Convert to uint8
-        img_uint8 = (image * 255).astype(np.uint8)
-
-        # Create PIL Image
-        pil_img = Image.fromarray(img_uint8, mode="RGB")
-
-        # Set save parameters based on format
-        ext = path.suffix.lower()
-        save_kwargs = {}
-
-        if ext in [".jpg", ".jpeg"]:
-            save_kwargs["quality"] = quality
-            save_kwargs["optimize"] = True
-        elif ext == ".png":
-            # PNG compression level
-            save_kwargs["compress_level"] = int((100 - quality) / 11)
-
-        pil_img.save(path, **save_kwargs)
-
-        logger.debug(f"Saved image with PIL (quality: {quality})")
-
-    def estimate_memory_usage(self, width: int, height: int) -> int:
-        """
-        Estimate memory usage for processing an image.
-
-        Returns:
-            Estimated memory usage in MB
-
-        """
-        # Each pixel: 3 channels × 4 bytes (float32) × 2 (input + output)
-        pixels = width * height
-        bytes_per_pixel = 3 * 4 * 2
-
-        # Add overhead for intermediate calculations (attractors, etc.)
-        overhead_factor = 1.5
-
-        total_bytes = pixels * bytes_per_pixel * overhead_factor
-        total_mb = total_bytes / (1024 * 1024)
-
-        return int(total_mb)
-
-    def should_use_tiling(self, width: int, height: int, max_memory_mb: int = 2048) -> bool:
-        """
-        Determine if image should be processed in tiles.
-
-        Args:
-            width: Image width
-            height: Image height
-            max_memory_mb: Maximum memory to use
-
-        Returns:
-            True if tiling should be used
-
-        Used by transforms.py to decide on processing strategy.
-
-        Used in:
-        - old/imgcolorshine/imgcolorshine/transforms.py
-        - src/imgcolorshine/transforms.py
-        """
-        estimated_mb = self.estimate_memory_usage(width, height)
-        should_tile = estimated_mb > max_memory_mb
-
-        if should_tile:
-            logger.info(
-                f"Large image ({width}×{height}), using tiled processing "
-                f"(estimated {estimated_mb}MB > {max_memory_mb}MB limit)"
+            # Should have some influence at min_tolerance
+            assert weights[0] > 0, (
+                f"Expected {color1_str} to be influenced by {color2_str} at tolerance={min_tolerance}"
             )
 
-        return should_tile
-</file>
+    def test_edge_cases(self):
+        """Test edge cases and boundary conditions."""
+        pixel_lab = np.array([0.5, 0.0, 0.0])
+        attractors_lab = np.array([[0.5, 1.0, 0.0]])
 
-<file path="src/imgcolorshine/utils.py">
-#!/usr/bin/env -S uv run -s
-# /// script
-# dependencies = ["numpy", "loguru"]
-# ///
-# this_file: src/imgcolorshine/utils.py
+        # Test tolerance = 0
+        weights = calculate_weights(pixel_lab, attractors_lab, np.array([0]), np.array([100]))
+        assert weights[0] == 0.0
 
-"""
-Utility functions for memory management and image processing.
+        # Test strength = 0
+        weights = calculate_weights(pixel_lab, attractors_lab, np.array([100]), np.array([0]))
+        assert weights[0] == 0.0
 
-Provides helper functions for tiled processing of large images,
-memory estimation, validation, and batch operations. Essential
-for handling images that exceed available memory.
+        # Test very small but non-zero values
+        weights = calculate_weights(pixel_lab, attractors_lab, np.array([0.1]), np.array([0.1]))
+        assert weights[0] >= 0.0
 
-"""
 
-from collections.abc import Callable
-
-import numpy as np
-from loguru import logger
-
-
-def process_large_image(
-    image: np.ndarray,
-    transform_func: Callable[[np.ndarray], np.ndarray],
-    tile_size: int = 1024,
-    overlap: int = 32,
-    progress_callback: Callable[[float], None] | None = None,
-) -> np.ndarray:
-    """
-    Process a large image in tiles to manage memory usage.
-
-    Args:
-        image: Input image array
-        transform_func: Function to apply to each tile
-        tile_size: Size of each tile
-        overlap: Overlap between tiles to avoid edge artifacts
-        progress_callback: Optional callback for progress updates
-
-    Returns:
-        Processed image
-
-    Used by transforms.py for processing images that exceed memory limits.
-
-    Used in:
-    - old/imgcolorshine/imgcolorshine/__init__.py
-    - old/imgcolorshine/imgcolorshine/transforms.py
-    - src/imgcolorshine/transforms.py
-    """
-    h, w = image.shape[:2]
-    result = np.zeros_like(image)
-
-    # Calculate number of tiles
-    tiles_y = (h + tile_size - 1) // tile_size
-    tiles_x = (w + tile_size - 1) // tile_size
-    total_tiles = tiles_y * tiles_x
-    processed_tiles = 0
-
-    logger.info(f"Processing image in {tiles_x}×{tiles_y} tiles (size: {tile_size}×{tile_size})")
-
-    for ty in range(tiles_y):
-        for tx in range(tiles_x):
-            # Calculate tile boundaries with overlap
-            y_start = ty * tile_size
-            y_end = min((ty + 1) * tile_size + overlap, h)
-            x_start = tx * tile_size
-            x_end = min((tx + 1) * tile_size + overlap, w)
-
-            # Extract tile
-            tile = image[y_start:y_end, x_start:x_end]
-
-            # Process tile
-            processed_tile = transform_func(tile)
-
-            # Calculate the region to copy (without overlap)
-            copy_y_start = 0 if ty == 0 else overlap // 2
-            copy_y_end = processed_tile.shape[0] if ty == tiles_y - 1 else -overlap // 2
-            copy_x_start = 0 if tx == 0 else overlap // 2
-            copy_x_end = processed_tile.shape[1] if tx == tiles_x - 1 else -overlap // 2
-
-            # Calculate destination coordinates
-            dest_y_start = y_start if ty == 0 else y_start + overlap // 2
-            dest_y_end = y_end if ty == tiles_y - 1 else y_end - overlap // 2
-            dest_x_start = x_start if tx == 0 else x_start + overlap // 2
-            dest_x_end = x_end if tx == tiles_x - 1 else x_end - overlap // 2
-
-            # Copy processed tile to result
-            result[dest_y_start:dest_y_end, dest_x_start:dest_x_end] = processed_tile[
-                copy_y_start:copy_y_end, copy_x_start:copy_x_end
-            ]
-
-            # Update progress
-            processed_tiles += 1
-            if progress_callback:
-                progress = processed_tiles / total_tiles
-                progress_callback(progress)
-
-            logger.debug(f"Processed tile ({tx}, {ty}) - {processed_tiles}/{total_tiles}")
-
-    return result
-
-
-def estimate_optimal_tile_size(image_shape: tuple, available_memory_mb: int = 2048, bytes_per_pixel: int = 12) -> int:
-    """
-    Estimate optimal tile size based on available memory.
-
-    Args:
-        image_shape: Shape of the image (H, W, C)
-        available_memory_mb: Available memory in MB
-        bytes_per_pixel: Estimated bytes per pixel for processing
-
-    Returns:
-        Optimal tile size
-
-    """
-    # Convert to bytes
-    available_bytes = available_memory_mb * 1024 * 1024
-
-    # Account for overhead (input, output, intermediate)
-    overhead_factor = 3.0
-    usable_bytes = available_bytes / overhead_factor
-
-    # Calculate pixels that fit in memory
-    pixels_in_memory = usable_bytes / bytes_per_pixel
-
-    # Find square tile size
-    tile_size = int(np.sqrt(pixels_in_memory))
-
-    # Round to nearest power of 2 for efficiency
-    tile_size = 2 ** int(np.log2(tile_size))
-
-    # Clamp to reasonable range
-    tile_size = max(256, min(tile_size, 4096))
-
-    logger.debug(f"Optimal tile size: {tile_size}×{tile_size} (for {available_memory_mb}MB memory)")
-
-    return tile_size
-
-
-def create_progress_bar(total_steps: int, description: str = "Processing"):
-    """
-    Create a simple progress tracking context.
-
-    This is a placeholder for integration with rich.progress or tqdm.
-
-    """
-
-    class SimpleProgress:
-        """"""
-
-        def __init__(self, total: int, desc: str):
-            """"""
-            self.total = total
-            self.current = 0
-            self.desc = desc
-
-        def update(self, n: int = 1):
-            """"""
-            self.current += n
-            percent = (self.current / self.total) * 100
-            logger.info(f"{self.desc}: {percent:.1f}%")
-
-        def __enter__(self):
-            """"""
-            return self
-
-        def __exit__(self, *args):
-            """"""
-
-    return SimpleProgress(total_steps, description)
-
-
-def validate_image(image: np.ndarray) -> None:
-    """
-    Validate image array format and values.
-
-    Args:
-        image: Image array to validate
-
-    Raises:
-        ValueError: If image is invalid
-
-    Used in:
-    - src/imgcolorshine/__init__.py
-    """
-    if image.ndim != 3:
-        msg = f"Image must be 3D (H, W, C), got shape {image.shape}"
-        raise ValueError(msg)
-
-    if image.shape[2] != 3:
-        msg = f"Image must have 3 channels (RGB), got {image.shape[2]}"
-        raise ValueError(msg)
-
-    if image.dtype not in (np.float32, np.float64):
-        msg = f"Image must be float32 or float64, got {image.dtype}"
-        raise ValueError(msg)
-
-    if np.any(image < 0) or np.any(image > 1):
-        msg = "Image values must be in range [0, 1]"
-        raise ValueError(msg)
-
-
-def clamp_to_gamut(colors: np.ndarray) -> np.ndarray:
-    """
-    Clamp colors to valid sRGB gamut.
-
-    Args:
-        colors: Array of colors in sRGB space
-
-    Returns:
-        Clamped colors
-
-    """
-    return np.clip(colors, 0, 1)
-
-
-def batch_process_images(image_paths: list, output_dir: str, transform_func: Callable, **kwargs) -> None:
-    """
-    Process multiple images in batch.
-
-    Args:
-        image_paths: List of input image paths
-        output_dir: Directory for output images
-        transform_func: Transformation function
-        **kwargs: Additional arguments for transform_func
-
-    Used in:
-    - src/imgcolorshine/__init__.py
-    """
-    from pathlib import Path
-
-    from imgcolorshine.image_io import ImageProcessor
-
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    processor = ImageProcessor()
-
-    for i, image_path in enumerate(image_paths):
-        logger.info(f"Processing image {i + 1}/{len(image_paths)}: {image_path}")
-
-        # Load image
-        image = processor.load_image(image_path)
-
-        # Transform
-        result = transform_func(image, **kwargs)
-
-        # Save with same filename
-        output_path = output_dir / Path(image_path).name
-        processor.save_image(result, output_path)
-
-        logger.info(f"Saved: {output_path}")
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
 </file>
 
 <file path=".cursorindexingignore">
@@ -6655,6 +6334,558 @@ class OKLCHEngine:
         return np.array(rgb_list).reshape(height, width, 3)
 </file>
 
+<file path="src/imgcolorshine/image_io.py">
+#!/usr/bin/env -S uv run -s
+# /// script
+# dependencies = ["numpy", "loguru", "opencv-python", "pillow"]
+# ///
+# this_file: src/imgcolorshine/image_io.py
+
+"""
+High-performance image I/O with OpenCV and PIL fallback.
+
+Provides efficient image loading and saving with automatic format detection,
+memory estimation for large images, and tiling support. OpenCV is preferred
+for performance, with PIL as a fallback.
+
+"""
+
+from pathlib import Path
+
+import numpy as np
+from loguru import logger
+
+# Try to import OpenCV first (faster), fall back to PIL
+try:
+    import cv2
+
+    HAS_OPENCV = True
+    logger.debug("Using OpenCV for image I/O")
+except ImportError:
+    HAS_OPENCV = False
+    logger.warning("OpenCV not available, falling back to PIL")
+
+from PIL import Image
+
+
+class ImageProcessor:
+    """Handles image loading and saving with optimal performance.
+
+    Provides high-performance image I/O with OpenCV (preferred) or PIL fallback.
+    Includes memory estimation and tiling support for large images. Used throughout
+    the application for all image file operations.
+
+    Used in:
+    - old/imgcolorshine/imgcolorshine/__init__.py
+    - old/imgcolorshine/imgcolorshine/transforms.py
+    - old/imgcolorshine/imgcolorshine/utils.py
+    - old/imgcolorshine/imgcolorshine_main.py
+    - old/imgcolorshine/test_imgcolorshine.py
+    - src/imgcolorshine/__init__.py
+    - src/imgcolorshine/imgcolorshine.py
+    - src/imgcolorshine/transforms.py
+    - src/imgcolorshine/utils.py
+    """
+
+    def __init__(self, tile_size: int = 1024):
+        """
+        Initialize the image processor.
+
+        Args:
+            tile_size: Size of tiles for processing large images
+
+        """
+        self.tile_size = tile_size
+        self.use_opencv = HAS_OPENCV
+        logger.debug(f"ImageProcessor initialized (OpenCV: {self.use_opencv}, tile_size: {tile_size})")
+
+    def load_image(self, path: str | Path) -> np.ndarray:
+        """
+        Load an image from file.
+
+        Args:
+            path: Path to the image file
+
+        Returns:
+            Image as numpy array with shape (H, W, 3) and values in [0, 1]
+
+        Used by utils.py and main CLI for loading input images.
+
+        Used in:
+        - old/imgcolorshine/imgcolorshine/utils.py
+        - old/imgcolorshine/imgcolorshine_main.py
+        - src/imgcolorshine/imgcolorshine.py
+        - src/imgcolorshine/utils.py
+        """
+        path = Path(path)
+
+        if not path.exists():
+            msg = f"Image not found: {path}"
+            raise FileNotFoundError(msg)
+
+        logger.info(f"Loading image: {path}")
+
+        if self.use_opencv:
+            return self._load_opencv(path)
+        return self._load_pil(path)
+
+    def save_image(self, image: np.ndarray, path: str | Path, quality: int = 95) -> None:
+        """
+        Save an image to file.
+
+        Args:
+            image: Image array with values in [0, 1]
+            path: Output path
+            quality: JPEG quality (1-100) or PNG compression (0-9)
+
+        Used by utils.py and main CLI for saving output images.
+
+        Used in:
+        - old/imgcolorshine/imgcolorshine/utils.py
+        - old/imgcolorshine/imgcolorshine_main.py
+        - old/imgcolorshine/test_imgcolorshine.py
+        - src/imgcolorshine/imgcolorshine.py
+        - src/imgcolorshine/utils.py
+        """
+        path = Path(path)
+
+        # Ensure output directory exists
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"Saving image: {path}")
+
+        if self.use_opencv:
+            self._save_opencv(image, path, quality)
+        else:
+            self._save_pil(image, path, quality)
+
+    def _load_opencv(self, path: Path) -> np.ndarray:
+        """Load image using OpenCV for better performance."""
+        # OpenCV loads as BGR, we need RGB
+        img = cv2.imread(str(path), cv2.IMREAD_COLOR)
+
+        if img is None:
+            msg = f"Failed to load image: {path}"
+            raise ValueError(msg)
+
+        # Convert BGR to RGB
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        # Convert to float [0, 1]
+        img = img.astype(np.float32) / 255.0
+
+        h, w = img.shape[:2]
+        size_mb = (h * w * 3 * 4) / (1024 * 1024)  # Float32 size in MB
+        logger.debug(f"Loaded {w}×{h} image with OpenCV ({size_mb:.1f} MB in memory)")
+
+        return img
+
+    def _load_pil(self, path: Path) -> np.ndarray:
+        """Load image using PIL as fallback."""
+        with Image.open(path) as img:
+            # Convert to RGB if necessary
+            if img.mode != "RGB":
+                logger.debug(f"Converting from {img.mode} to RGB")
+                img = img.convert("RGB")
+
+            # Convert to numpy array
+            arr = np.array(img, dtype=np.float32) / 255.0
+
+            h, w = arr.shape[:2]
+            size_mb = (h * w * 3 * 4) / (1024 * 1024)  # Float32 size in MB
+            logger.debug(f"Loaded {w}×{h} image with PIL ({size_mb:.1f} MB in memory)")
+
+            return arr
+
+    def _save_opencv(self, image: np.ndarray, path: Path, quality: int) -> None:
+        """Save image using OpenCV for better performance."""
+        # Ensure values are in [0, 1]
+        image = np.clip(image, 0, 1)
+
+        # Convert to uint8
+        img_uint8 = (image * 255).astype(np.uint8)
+
+        # Convert RGB to BGR for OpenCV
+        img_bgr = cv2.cvtColor(img_uint8, cv2.COLOR_RGB2BGR)
+
+        # Set compression parameters based on format
+        ext = path.suffix.lower()
+        if ext in [".jpg", ".jpeg"]:
+            params = [cv2.IMWRITE_JPEG_QUALITY, quality]
+        elif ext == ".png":
+            # PNG compression level (0-9, where 9 is max compression)
+            compression = int((100 - quality) / 11)
+            params = [cv2.IMWRITE_PNG_COMPRESSION, compression]
+        else:
+            params = []
+
+        success = cv2.imwrite(str(path), img_bgr, params)
+
+        if not success:
+            msg = f"Failed to save image: {path}"
+            raise OSError(msg)
+
+        logger.debug(f"Saved image with OpenCV (quality: {quality})")
+
+    def _save_pil(self, image: np.ndarray, path: Path, quality: int) -> None:
+        """Save image using PIL as fallback."""
+        # Ensure values are in [0, 1]
+        image = np.clip(image, 0, 1)
+
+        # Convert to uint8
+        img_uint8 = (image * 255).astype(np.uint8)
+
+        # Create PIL Image
+        pil_img = Image.fromarray(img_uint8, mode="RGB")
+
+        # Set save parameters based on format
+        ext = path.suffix.lower()
+        save_kwargs = {}
+
+        if ext in [".jpg", ".jpeg"]:
+            save_kwargs["quality"] = quality
+            save_kwargs["optimize"] = True
+        elif ext == ".png":
+            # PNG compression level
+            save_kwargs["compress_level"] = int((100 - quality) / 11)
+
+        pil_img.save(path, **save_kwargs)
+
+        logger.debug(f"Saved image with PIL (quality: {quality})")
+
+    def estimate_memory_usage(self, width: int, height: int) -> int:
+        """
+        Estimate memory usage for processing an image.
+
+        Returns:
+            Estimated memory usage in MB
+
+        """
+        # Each pixel: 3 channels × 4 bytes (float32) × 2 (input + output)
+        pixels = width * height
+        bytes_per_pixel = 3 * 4 * 2
+
+        # Add overhead for intermediate calculations (attractors, etc.)
+        overhead_factor = 1.5
+
+        total_bytes = pixels * bytes_per_pixel * overhead_factor
+        total_mb = total_bytes / (1024 * 1024)
+
+        return int(total_mb)
+
+    def should_use_tiling(self, width: int, height: int, max_memory_mb: int = 2048) -> bool:
+        """
+        Determine if image should be processed in tiles.
+
+        Args:
+            width: Image width
+            height: Image height
+            max_memory_mb: Maximum memory to use
+
+        Returns:
+            True if tiling should be used
+
+        Used by transforms.py to decide on processing strategy.
+
+        Used in:
+        - old/imgcolorshine/imgcolorshine/transforms.py
+        - src/imgcolorshine/transforms.py
+        """
+        estimated_mb = self.estimate_memory_usage(width, height)
+        should_tile = estimated_mb > max_memory_mb
+
+        if should_tile:
+            logger.info(
+                f"Large image ({width}×{height}), using tiled processing "
+                f"(estimated {estimated_mb}MB > {max_memory_mb}MB limit)"
+            )
+
+        return should_tile
+</file>
+
+<file path="src/imgcolorshine/utils.py">
+#!/usr/bin/env -S uv run -s
+# /// script
+# dependencies = ["numpy", "loguru"]
+# ///
+# this_file: src/imgcolorshine/utils.py
+
+"""
+Utility functions for memory management and image processing.
+
+Provides helper functions for tiled processing of large images,
+memory estimation, validation, and batch operations. Essential
+for handling images that exceed available memory.
+
+"""
+
+from collections.abc import Callable
+
+import numpy as np
+from loguru import logger
+
+
+def process_large_image(
+    image: np.ndarray,
+    transform_func: Callable[[np.ndarray], np.ndarray],
+    tile_size: int = 1024,
+    overlap: int = 32,
+    progress_callback: Callable[[float], None] | None = None,
+) -> np.ndarray:
+    """
+    Process a large image in tiles to manage memory usage.
+
+    Args:
+        image: Input image array
+        transform_func: Function to apply to each tile
+        tile_size: Size of each tile
+        overlap: Overlap between tiles to avoid edge artifacts
+        progress_callback: Optional callback for progress updates
+
+    Returns:
+        Processed image
+
+    Used by transforms.py for processing images that exceed memory limits.
+
+    Used in:
+    - old/imgcolorshine/imgcolorshine/__init__.py
+    - old/imgcolorshine/imgcolorshine/transforms.py
+    - src/imgcolorshine/transforms.py
+    """
+    h, w = image.shape[:2]
+    result = np.zeros_like(image)
+
+    # Calculate number of tiles
+    tiles_y = (h + tile_size - 1) // tile_size
+    tiles_x = (w + tile_size - 1) // tile_size
+    total_tiles = tiles_y * tiles_x
+    processed_tiles = 0
+
+    logger.info(f"Processing image in {tiles_x}×{tiles_y} tiles (size: {tile_size}×{tile_size})")
+
+    for ty in range(tiles_y):
+        for tx in range(tiles_x):
+            # Calculate tile boundaries with overlap
+            y_start = ty * tile_size
+            y_end = min((ty + 1) * tile_size + overlap, h)
+            x_start = tx * tile_size
+            x_end = min((tx + 1) * tile_size + overlap, w)
+
+            # Extract tile
+            tile = image[y_start:y_end, x_start:x_end]
+
+            # Process tile
+            processed_tile = transform_func(tile)
+
+            # Calculate the region to copy (without overlap)
+            copy_y_start = 0 if ty == 0 else overlap // 2
+            copy_y_end = processed_tile.shape[0] if ty == tiles_y - 1 else -overlap // 2
+            copy_x_start = 0 if tx == 0 else overlap // 2
+            copy_x_end = processed_tile.shape[1] if tx == tiles_x - 1 else -overlap // 2
+
+            # Calculate destination coordinates
+            dest_y_start = y_start if ty == 0 else y_start + overlap // 2
+            dest_y_end = y_end if ty == tiles_y - 1 else y_end - overlap // 2
+            dest_x_start = x_start if tx == 0 else x_start + overlap // 2
+            dest_x_end = x_end if tx == tiles_x - 1 else x_end - overlap // 2
+
+            # Copy processed tile to result
+            result[dest_y_start:dest_y_end, dest_x_start:dest_x_end] = processed_tile[
+                copy_y_start:copy_y_end, copy_x_start:copy_x_end
+            ]
+
+            # Update progress
+            processed_tiles += 1
+            if progress_callback:
+                progress = processed_tiles / total_tiles
+                progress_callback(progress)
+
+            if processed_tiles % 10 == 0 or processed_tiles == total_tiles:
+                logger.info(
+                    f"Processing tiles: {processed_tiles}/{total_tiles} ({processed_tiles / total_tiles * 100:.1f}%)"
+                )
+
+    return result
+
+
+def estimate_optimal_tile_size(image_shape: tuple, available_memory_mb: int = 2048, bytes_per_pixel: int = 12) -> int:
+    """
+    Estimate optimal tile size based on available memory.
+
+    Args:
+        image_shape: Shape of the image (H, W, C)
+        available_memory_mb: Available memory in MB
+        bytes_per_pixel: Estimated bytes per pixel for processing
+
+    Returns:
+        Optimal tile size
+
+    """
+    # Convert to bytes
+    available_bytes = available_memory_mb * 1024 * 1024
+
+    # Account for overhead (input, output, intermediate)
+    overhead_factor = 3.0
+    usable_bytes = available_bytes / overhead_factor
+
+    # Calculate pixels that fit in memory
+    pixels_in_memory = usable_bytes / bytes_per_pixel
+
+    # Find square tile size
+    tile_size = int(np.sqrt(pixels_in_memory))
+
+    # Round to nearest power of 2 for efficiency
+    tile_size = 2 ** int(np.log2(tile_size))
+
+    # Clamp to reasonable range
+    tile_size = max(256, min(tile_size, 4096))
+
+    logger.debug(f"Optimal tile size: {tile_size}×{tile_size} (for {available_memory_mb}MB memory)")
+
+    return tile_size
+
+
+def create_progress_bar(total_steps: int, description: str = "Processing"):
+    """
+    Create a simple progress tracking context.
+
+    This is a placeholder for integration with rich.progress or tqdm.
+
+    """
+
+    class SimpleProgress:
+        """"""
+
+        def __init__(self, total: int, desc: str):
+            """"""
+            self.total = total
+            self.current = 0
+            self.desc = desc
+
+        def update(self, n: int = 1):
+            """"""
+            self.current += n
+            percent = (self.current / self.total) * 100
+            logger.info(f"{self.desc}: {percent:.1f}%")
+
+        def __enter__(self):
+            """"""
+            return self
+
+        def __exit__(self, *args):
+            """"""
+
+    return SimpleProgress(total_steps, description)
+
+
+def validate_image(image: np.ndarray) -> None:
+    """
+    Validate image array format and values.
+
+    Args:
+        image: Image array to validate
+
+    Raises:
+        ValueError: If image is invalid
+
+    Used in:
+    - src/imgcolorshine/__init__.py
+    """
+    if image.ndim != 3:
+        msg = f"Image must be 3D (H, W, C), got shape {image.shape}"
+        raise ValueError(msg)
+
+    if image.shape[2] != 3:
+        msg = f"Image must have 3 channels (RGB), got {image.shape[2]}"
+        raise ValueError(msg)
+
+    if image.dtype not in (np.float32, np.float64):
+        msg = f"Image must be float32 or float64, got {image.dtype}"
+        raise ValueError(msg)
+
+    if np.any(image < 0) or np.any(image > 1):
+        msg = "Image values must be in range [0, 1]"
+        raise ValueError(msg)
+
+
+def clamp_to_gamut(colors: np.ndarray) -> np.ndarray:
+    """
+    Clamp colors to valid sRGB gamut.
+
+    Args:
+        colors: Array of colors in sRGB space
+
+    Returns:
+        Clamped colors
+
+    """
+    return np.clip(colors, 0, 1)
+
+
+def batch_process_images(image_paths: list, output_dir: str, transform_func: Callable, **kwargs) -> None:
+    """
+    Process multiple images in batch.
+
+    Args:
+        image_paths: List of input image paths
+        output_dir: Directory for output images
+        transform_func: Transformation function
+        **kwargs: Additional arguments for transform_func
+
+    Used in:
+    - src/imgcolorshine/__init__.py
+    """
+    from pathlib import Path
+
+    from imgcolorshine.image_io import ImageProcessor
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    processor = ImageProcessor()
+
+    for i, image_path in enumerate(image_paths):
+        logger.info(f"Processing image {i + 1}/{len(image_paths)}: {image_path}")
+
+        # Load image
+        image = processor.load_image(image_path)
+
+        # Transform
+        result = transform_func(image, **kwargs)
+
+        # Save with same filename
+        output_path = output_dir / Path(image_path).name
+        processor.save_image(result, output_path)
+
+        logger.info(f"Saved: {output_path}")
+</file>
+
+<file path="tests/test_package.py">
+"""Test suite for imgcolorshine."""
+
+
+def test_version():
+    """Verify package exposes version."""
+    import imgcolorshine
+
+    assert imgcolorshine.__version__
+</file>
+
+<file path="cleanup.sh">
+#!/usr/bin/env bash
+
+rm -rf dist/imgcolorshine*.*
+uv build
+
+python -m uzpy run -e src
+fd -e py -x autoflake -i {}
+fd -e py -x pyupgrade --py311-plus {}
+fd -e py -x ruff check --output-format=github --fix --unsafe-fixes {}
+fd -e py -x ruff format --respect-gitignore --target-version py311 {}
+repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules -o llms.txt .
+python -m pytest
+</file>
+
 <file path="src/imgcolorshine/imgcolorshine.py">
 #!/usr/bin/env -S uv run -s
 # /// script
@@ -6775,6 +7006,7 @@ def process_image(
     for color_str, tolerance, strength in parsed_attractors:
         attractor = engine.create_attractor(color_str, tolerance, strength)
         attractor_objects.append(attractor)
+        logger.info(f"Created attractor: {color_str} (tolerance={tolerance}, strength={strength})")
 
     # Load image
     logger.info(f"Loading image: {input_path}")
@@ -6790,358 +7022,6 @@ def process_image(
     processor.save_image(transformed, output_path)
 
     logger.info(f"Processing complete: {input_path} → {output_path}")
-</file>
-
-<file path="src/imgcolorshine/transforms.py">
-#!/usr/bin/env -S uv run -s
-# /// script
-# dependencies = ["numpy", "numba", "loguru"]
-# ///
-# this_file: src/imgcolorshine/transforms.py
-
-"""
-High-performance color transformation algorithms using NumPy and Numba.
-
-Implements the core color transformation logic with JIT compilation for
-optimal performance. Handles multi-attractor blending and channel-specific
-transformations in the OKLCH color space.
-
-"""
-
-from collections.abc import Callable
-
-import numba
-import numpy as np
-from loguru import logger
-
-from imgcolorshine.color_engine import Attractor, OKLCHEngine
-from imgcolorshine.utils import process_large_image
-
-
-@numba.njit
-def calculate_delta_e_fast(pixel_lab: np.ndarray, attractor_lab: np.ndarray) -> float:
-    """
-    Fast Euclidean distance calculation in Oklab space.
-
-    Args:
-        pixel_lab: [L, a, b] values
-        attractor_lab: [L, a, b] values
-
-    Returns:
-        Perceptual distance
-
-    """
-    return np.sqrt(
-        (pixel_lab[0] - attractor_lab[0]) ** 2
-        + (pixel_lab[1] - attractor_lab[1]) ** 2
-        + (pixel_lab[2] - attractor_lab[2]) ** 2
-    )
-
-
-@numba.njit
-def calculate_weights(
-    pixel_lab: np.ndarray,
-    attractors_lab: np.ndarray,
-    tolerances: np.ndarray,
-    strengths: np.ndarray,
-) -> np.ndarray:
-    """
-    Calculate attraction weights for all attractors.
-
-    Returns:
-        Array of weights for each attractor
-
-    """
-    num_attractors = len(attractors_lab)
-    weights = np.zeros(num_attractors)
-
-    for i in range(num_attractors):
-        # Calculate perceptual distance
-        delta_e = calculate_delta_e_fast(pixel_lab, attractors_lab[i])
-
-        # Map tolerance (0-100) to max distance
-        delta_e_max = 1.0 * (tolerances[i] / 100.0) ** 2
-
-        # Check if within tolerance
-        if delta_e <= delta_e_max:
-            # Calculate normalized distance
-            d_norm = delta_e / delta_e_max
-
-            # Apply falloff function (raised cosine)
-            attraction_factor = 0.5 * (np.cos(d_norm * np.pi) + 1.0)
-
-            # Calculate final weight
-            weights[i] = (strengths[i] / 100.0) * attraction_factor
-
-    return weights
-
-
-@numba.njit
-def blend_colors(
-    pixel_lab: np.ndarray,
-    pixel_lch: np.ndarray,
-    attractors_lab: np.ndarray,
-    attractors_lch: np.ndarray,
-    weights: np.ndarray,
-    flags: np.ndarray,
-) -> np.ndarray:
-    """
-    Blend pixel color with attractors based on weights and channel flags.
-
-    Args:
-        pixel_lab: Original pixel in Oklab [L, a, b]
-        pixel_lch: Original pixel in OKLCH [L, C, H]
-        attractors_lab: Attractor colors in Oklab
-        attractors_lch: Attractor colors in OKLCH
-        weights: Weight for each attractor
-        flags: Boolean array [luminance, saturation, hue]
-
-    Returns:
-        Blended color in Oklab space
-
-    """
-    total_weight = np.sum(weights)
-
-    if total_weight == 0:
-        return pixel_lab
-
-    # Determine source weight
-    if total_weight > 1.0:
-        # Normalize weights
-        weights = weights / total_weight
-        src_weight = 0.0
-    else:
-        src_weight = 1.0 - total_weight
-
-    # Start with original values
-    final_l = pixel_lch[0]
-    final_c = pixel_lch[1]
-    final_h = pixel_lch[2]
-
-    # Blend each enabled channel
-    if flags[0]:  # Luminance
-        final_l = src_weight * pixel_lch[0]
-        for i in range(len(weights)):
-            if weights[i] > 0:
-                final_l += weights[i] * attractors_lch[i][0]
-
-    if flags[1]:  # Saturation (Chroma)
-        final_c = src_weight * pixel_lch[1]
-        for i in range(len(weights)):
-            if weights[i] > 0:
-                final_c += weights[i] * attractors_lch[i][1]
-
-    if flags[2]:  # Hue
-        # Use circular mean for hue
-        sin_sum = src_weight * np.sin(np.deg2rad(pixel_lch[2]))
-        cos_sum = src_weight * np.cos(np.deg2rad(pixel_lch[2]))
-
-        for i in range(len(weights)):
-            if weights[i] > 0:
-                h_rad = np.deg2rad(attractors_lch[i][2])
-                sin_sum += weights[i] * np.sin(h_rad)
-                cos_sum += weights[i] * np.cos(h_rad)
-
-        final_h = np.rad2deg(np.arctan2(sin_sum, cos_sum))
-        if final_h < 0:
-            final_h += 360
-
-    # Convert back to Oklab
-    h_rad = np.deg2rad(final_h)
-    final_a = final_c * np.cos(h_rad)
-    final_b = final_c * np.sin(h_rad)
-
-    return np.array([final_l, final_a, final_b])
-
-
-@numba.njit(parallel=True)
-def transform_pixels(
-    pixels_lab: np.ndarray,
-    pixels_lch: np.ndarray,
-    attractors_lab: np.ndarray,
-    attractors_lch: np.ndarray,
-    tolerances: np.ndarray,
-    strengths: np.ndarray,
-    flags: np.ndarray,
-) -> np.ndarray:
-    """
-    Transform all pixels using Numba parallel processing.
-
-    Args:
-        pixels_lab: Image in Oklab space (H, W, 3)
-        pixels_lch: Image in OKLCH space (H, W, 3)
-        attractors_lab: Attractor colors in Oklab
-        attractors_lch: Attractor colors in OKLCH
-        tolerances: Tolerance values for each attractor
-        strengths: Strength values for each attractor
-        flags: Boolean array [luminance, saturation, hue]
-
-    Returns:
-        Transformed image in Oklab space
-
-    """
-    h, w = pixels_lab.shape[:2]
-    result = np.empty_like(pixels_lab)
-
-    for y in numba.prange(h):
-        for x in range(w):
-            pixel_lab = pixels_lab[y, x]
-            pixel_lch = pixels_lch[y, x]
-
-            # Calculate weights for all attractors
-            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
-
-            # Blend colors
-            result[y, x] = blend_colors(pixel_lab, pixel_lch, attractors_lab, attractors_lch, weights, flags)
-
-    return result
-
-
-class ColorTransformer:
-    """High-level color transformation interface.
-
-    Manages the transformation pipeline from RGB input to RGB output,
-    handling color space conversions, tiling for large images, and
-    progress tracking. Used by the main CLI for applying transformations.
-
-    Used in:
-    - old/imgcolorshine/imgcolorshine/__init__.py
-    - old/imgcolorshine/imgcolorshine_main.py
-    - old/imgcolorshine/test_imgcolorshine.py
-    - src/imgcolorshine/__init__.py
-    - src/imgcolorshine/imgcolorshine.py
-    """
-
-    def __init__(self, engine: OKLCHEngine):
-        """
-        Initialize the color transformer.
-
-        Args:
-            engine: OKLCH color engine instance
-
-        """
-        self.engine = engine
-        logger.debug("Initialized ColorTransformer")
-
-    def transform_image(
-        self,
-        image: np.ndarray,
-        attractors: list[Attractor],
-        flags: dict[str, bool],
-        progress_callback: Callable[[float], None] | None = None,
-    ) -> np.ndarray:
-        """
-        Transform an entire image using color attractors.
-
-        Args:
-            image: Input image (H, W, 3) in sRGB [0, 1]
-            attractors: List of color attractors
-            flags: Channel flags {'luminance': bool, 'saturation': bool, 'hue': bool}
-            progress_callback: Optional callback for progress updates
-
-        Returns:
-            Transformed image in sRGB [0, 1]
-
-        Used in:
-        - old/imgcolorshine/imgcolorshine_main.py
-        - old/imgcolorshine/test_imgcolorshine.py
-        - src/imgcolorshine/imgcolorshine.py
-        """
-        # Report dimensions in width×height order to match common conventions
-        h, w = image.shape[:2]
-        logger.info(f"Transforming {w}×{h} image with {len(attractors)} attractors")
-
-        # Convert flags to numpy array
-        flags_array = np.array(
-            [
-                flags.get("luminance", True),
-                flags.get("saturation", True),
-                flags.get("hue", True),
-            ]
-        )
-
-        # Prepare attractor data for Numba
-        attractors_lab = np.array([a.oklab_values for a in attractors])
-        attractors_lch = np.array([a.oklch_values for a in attractors])
-        tolerances = np.array([a.tolerance for a in attractors])
-        strengths = np.array([a.strength for a in attractors])
-
-        # Check if we should use tiling
-        from imgcolorshine.image_io import ImageProcessor
-
-        processor = ImageProcessor()
-
-        if processor.should_use_tiling(w, h):
-            # Process in tiles for large images
-            def transform_tile(tile):
-                return self._transform_tile(
-                    tile,
-                    attractors_lab,
-                    attractors_lch,
-                    tolerances,
-                    strengths,
-                    flags_array,
-                )
-
-            result = process_large_image(
-                image,
-                transform_tile,
-                tile_size=processor.tile_size,
-                progress_callback=progress_callback,
-            )
-        else:
-            # Process entire image at once
-            result = self._transform_tile(
-                image,
-                attractors_lab,
-                attractors_lch,
-                tolerances,
-                strengths,
-                flags_array,
-            )
-
-            if progress_callback:
-                progress_callback(1.0)
-
-        logger.info("Transformation complete")
-        return result
-
-    def _transform_tile(
-        self,
-        tile: np.ndarray,
-        attractors_lab: np.ndarray,
-        attractors_lch: np.ndarray,
-        tolerances: np.ndarray,
-        strengths: np.ndarray,
-        flags: np.ndarray,
-    ) -> np.ndarray:
-        """Transform a single tile of the image."""
-        # Convert to Oklab
-        tile_lab = self.engine.batch_rgb_to_oklab(tile)
-
-        # Also need OKLCH for channel-specific operations
-        tile_lch = np.zeros_like(tile_lab)
-        for y in range(tile_lab.shape[0]):
-            for x in range(tile_lab.shape[1]):
-                l, a, b = tile_lab[y, x]
-                tile_lch[y, x] = self.engine.oklab_to_oklch(l, a, b)
-
-        # Apply transformation
-        transformed_lab = transform_pixels(
-            tile_lab,
-            tile_lch,
-            attractors_lab,
-            attractors_lch,
-            tolerances,
-            strengths,
-            flags,
-        )
-
-        # Convert back to RGB
-        result = self.engine.batch_oklab_to_rgb(transformed_lab)
-
-        # Ensure values are in valid range
-        return np.clip(result, 0, 1)
 </file>
 
 <file path="testdata/example.sh">
@@ -7164,12 +7044,12 @@ echo "================================================"
 
 # Example: Basic single attractor - warm red tones
 echo "Basic blue attractors"
-for a in 20 40 60 80; do for b in 20 30 60 80; do
-    echo "blue;$a;$b"
-    imgcolorshine shine louis.jpg "blue;$a;$b" \
+for a in 10 90; do for b in 10 90; do for c in blue yellow; do
+    echo "$c;$a;$b"
+    imgcolorshine shine louis.jpg "$c;$a;$b" \
         --luminance=False --saturation=False \
-        --output_image=output/louis-blue-$a-$b.jpg
-done; done
+        --output_image=output/louis-$c-$a-$b.jpg
+done; done; done
 
 # Optional: Create a comparison montage using ImageMagick if available
 if command -v montage &>/dev/null; then
@@ -7180,170 +7060,6 @@ if command -v montage &>/dev/null; then
         output/montage-comparison.jpg
     echo "Montage created: output/montage-comparison.jpg"
 fi
-</file>
-
-<file path="tests/test_package.py">
-"""Test suite for imgcolorshine."""
-
-
-def test_version():
-    """Verify package exposes version."""
-    import imgcolorshine
-
-    assert imgcolorshine.__version__
-</file>
-
-<file path="cleanup.sh">
-#!/usr/bin/env bash
-
-rm -rf dist/imgcolorshine*.*
-uv build
-
-python -m uzpy run -e src
-fd -e py -x autoflake -i {}
-fd -e py -x pyupgrade --py311-plus {}
-fd -e py -x ruff check --output-format=github --fix --unsafe-fixes {}
-fd -e py -x ruff format --respect-gitignore --target-version py311 {}
-repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules -o llms.txt .
-python -m pytest
-</file>
-
-<file path="README.md">
-# imgcolorshine
-
-Transform image colors using OKLCH color attractors - a physics-inspired tool that operates in perceptually uniform color space.
-
-## Overview
-
-`imgcolorshine` applies a gravitational-inspired color transformation where specified "attractor" colors pull the image's colors toward them. The tool works in the OKLCH color space, ensuring perceptually uniform and natural-looking results.
-
-## Features
-
-- **Perceptually Uniform**: Operations in OKLCH color space for intuitive results
-- **Flexible Color Input**: Supports all CSS color formats (hex, rgb, hsl, oklch, named colors)
-- **Selective Channel Control**: Transform lightness, saturation, and/or hue independently
-- **Multiple Attractors**: Blend influences from multiple color targets
-- **High Performance**: Optimized with NumPy and Numba for fast processing
-- **Memory Efficient**: Automatic tiling for large images
-- **Professional Quality**: CSS Color Module 4 compliant gamut mapping
-
-## Installation
-
-```bash
-# Install from PyPI
-pip install imgcolorshine
-
-# Or install from source
-git clone https://github.com/twardoch/imgcolorshine.git
-cd imgcolorshine
-pip install -e .
-```
-
-## Usage
-
-### Basic Example
-
-Transform an image to be more red:
-
-```bash
-imgcolorshine shine photo.jpg "red;50;75"
-```
-
-### Command Syntax
-
-```bash
-imgcolorshine shine INPUT_IMAGE ATTRACTOR1 [ATTRACTOR2 ...] [OPTIONS]
-```
-
-Each attractor has the format: `"color;tolerance;strength"`
-
-- **color**: Any CSS color (e.g., "red", "#ff0000", "oklch(70% 0.2 120)")
-- **tolerance**: 0-100 (radius of influence - how far the color reaches)
-- **strength**: 0-100 (transformation intensity - how much colors are pulled)
-
-### Options
-
-- `--output_image PATH`: Output image file (auto-generated if not specified)
-- `--luminance BOOL`: Enable/disable lightness transformation (default: True)
-- `--saturation BOOL`: Enable/disable chroma transformation (default: True)
-- `--hue BOOL`: Enable/disable hue transformation (default: True)
-- `--verbose BOOL`: Enable verbose logging (default: False)
-- `--tile_size INT`: Tile size for large images (default: 1024)
-
-### Examples
-
-**Warm sunset effect:**
-```bash
-imgcolorshine shine landscape.png \
-  "oklch(80% 0.2 60);40;60" \
-  "#ff6b35;30;80" \
-  --output_image=sunset.png
-```
-
-**Shift only hues toward green:**
-```bash
-imgcolorshine shine portrait.jpg "green;60;90" \
-  --luminance=False --saturation=False
-```
-
-**Multiple color influences:**
-```bash
-imgcolorshine shine photo.jpg \
-  "oklch(70% 0.15 120);50;70" \
-  "hsl(220 100% 50%);25;50" \
-  "#ff00ff;30;40"
-```
-
-
-## How It Works
-
-1. **Color Space**: All operations happen in OKLCH space for perceptual uniformity
-2. **Attraction Model**: Each attractor color exerts influence based on:
-   - **Distance**: How similar a pixel's color is to the attractor
-   - **Tolerance**: Maximum distance at which influence occurs
-   - **Strength**: Maximum transformation amount
-3. **Falloff**: Smooth raised-cosine curve for natural transitions
-4. **Blending**: Multiple attractors blend using normalized weighted averaging
-5. **Gamut Mapping**: Out-of-bounds colors are mapped back to displayable range
-
-## Understanding Parameters
-
-### Tolerance (0-100)
-- **Low values (0-20)**: Only very similar colors are affected
-- **Medium values (30-60)**: Moderate range of colors transformed
-- **High values (70-100)**: Wide range of colors influenced
-
-### Strength (0-100)
-- **Low values (0-30)**: Subtle color shifts
-- **Medium values (40-70)**: Noticeable but natural transformations
-- **High values (80-100)**: Strong color replacement
-
-## Performance
-
-- Processes a 1920×1080 image in ~2-5 seconds
-- Automatic tiling for images larger than 2GB memory usage
-- GPU acceleration available with CuPy (10-100x speedup)
-
-## Technical Details
-
-- **Color Engine**: ColorAide for accurate OKLCH operations
-- **Image I/O**: OpenCV (4x faster than PIL for PNG)
-- **Computation**: NumPy + Numba JIT compilation
-- **Gamut Mapping**: CSS Color Module 4 algorithm
-- **Falloff Function**: Raised cosine for smooth transitions
-
-## Development
-
-This project follows a structured approach focusing on code quality, documentation, and maintainable development practices.
-
-## License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
-## Credits
-
-- Created by Adam Twardoch
-- Developed with Antropic software
 </file>
 
 <file path="tests/conftest.py">
@@ -7854,6 +7570,552 @@ ban-relative-imports = 'all'
     'S101',
     'TID252',
 ]
+</file>
+
+<file path="README.md">
+# imgcolorshine
+
+Transform image colors using OKLCH color attractors - a physics-inspired tool that operates in perceptually uniform color space.
+
+## Overview
+
+`imgcolorshine` applies a gravitational-inspired color transformation where specified "attractor" colors pull the image's colors toward them. The tool works in the OKLCH color space, ensuring perceptually uniform and natural-looking results.
+
+## Features
+
+- **Perceptually Uniform**: Operations in OKLCH color space for intuitive results
+- **Flexible Color Input**: Supports all CSS color formats (hex, rgb, hsl, oklch, named colors)
+- **Selective Channel Control**: Transform lightness, saturation, and/or hue independently
+- **Multiple Attractors**: Blend influences from multiple color targets
+- **High Performance**: Optimized with NumPy and Numba for fast processing
+- **Memory Efficient**: Automatic tiling for large images
+- **Professional Quality**: CSS Color Module 4 compliant gamut mapping
+
+## Installation
+
+```bash
+# Install from PyPI
+pip install imgcolorshine
+
+# Or install from source
+git clone https://github.com/twardoch/imgcolorshine.git
+cd imgcolorshine
+pip install -e .
+```
+
+## Usage
+
+### Basic Example
+
+Transform an image to be more red:
+
+```bash
+imgcolorshine shine photo.jpg "red;50;75"
+```
+
+### Command Syntax
+
+```bash
+imgcolorshine shine INPUT_IMAGE ATTRACTOR1 [ATTRACTOR2 ...] [OPTIONS]
+```
+
+Each attractor has the format: `"color;tolerance;strength"`
+
+- **color**: Any CSS color (e.g., "red", "#ff0000", "oklch(70% 0.2 120)")
+- **tolerance**: 0-100 (radius of influence - how far the color reaches)
+- **strength**: 0-100 (transformation intensity - how much colors are pulled)
+
+### Options
+
+- `--output_image PATH`: Output image file (auto-generated if not specified)
+- `--luminance BOOL`: Enable/disable lightness transformation (default: True)
+- `--saturation BOOL`: Enable/disable chroma transformation (default: True)
+- `--hue BOOL`: Enable/disable hue transformation (default: True)
+- `--verbose BOOL`: Enable verbose logging (default: False)
+- `--tile_size INT`: Tile size for large images (default: 1024)
+
+### Examples
+
+**Warm sunset effect:**
+```bash
+imgcolorshine shine landscape.png \
+  "oklch(80% 0.2 60);40;60" \
+  "#ff6b35;30;80" \
+  --output_image=sunset.png
+```
+
+**Shift only hues toward green:**
+```bash
+imgcolorshine shine portrait.jpg "green;60;90" \
+  --luminance=False --saturation=False
+```
+
+**Multiple color influences:**
+```bash
+imgcolorshine shine photo.jpg \
+  "oklch(70% 0.15 120);50;70" \
+  "hsl(220 100% 50%);25;50" \
+  "#ff00ff;30;40"
+```
+
+
+## How It Works
+
+### The Attraction Model: "Pull" vs "Replace"
+
+`imgcolorshine` uses a **"pull" model**, not a "replace" model. This means:
+
+- Colors are **gradually pulled** toward attractors, not replaced entirely
+- A `strength` of 100 provides maximum pull, but only pixels exactly matching the attractor color will be fully transformed
+- The effect diminishes with distance from the attractor color
+- This creates natural, smooth transitions rather than harsh color replacements
+
+### The Transformation Process
+
+1. **Color Space**: All operations happen in OKLCH space for perceptual uniformity
+2. **Attraction Model**: Each attractor color exerts influence based on:
+   - **Distance**: Perceptual distance between pixel and attractor colors (ΔE in Oklab)
+   - **Tolerance**: Maximum distance at which influence occurs (0-100 maps linearly to 0-2.5 ΔE)
+   - **Strength**: Maximum transformation amount at zero distance
+3. **Falloff**: Smooth raised-cosine curve ensures natural transitions
+4. **Blending**: Multiple attractors blend using normalized weighted averaging
+5. **Gamut Mapping**: Out-of-bounds colors are mapped back to displayable range
+
+## Understanding Parameters
+
+### Tolerance (0-100)
+Controls the **radius of influence** - how far from the attractor color a pixel can be and still be affected:
+- **Low values (0-20)**: Only very similar colors are affected
+- **Medium values (30-60)**: Moderate range of colors transformed  
+- **High values (70-100)**: Wide range of colors influenced
+- **100**: Maximum range, affects colors up to ΔE = 2.5 (very broad influence)
+
+### Strength (0-100)
+Controls the **intensity of the pull** - how strongly colors are pulled toward the attractor:
+- **Low values (0-30)**: Subtle color shifts, original color dominates
+- **Medium values (40-70)**: Noticeable but natural transformations
+- **High values (80-100)**: Strong pull toward attractor (not full replacement)
+- **100**: Maximum pull, but still respects distance-based falloff
+
+### Important Note on Hue-Only Transformations
+When using `--luminance=False --saturation=False`, only the hue channel is modified. This means:
+- Grayscale pixels (low saturation) show little to no change
+- The effect is most visible on already-saturated colors
+- To see stronger effects on all pixels, enable all channels
+
+## Performance
+
+- Processes a 1920×1080 image in ~2-5 seconds
+- Automatic tiling for images larger than 2GB memory usage
+- GPU acceleration available with CuPy (10-100x speedup)
+
+## Technical Details
+
+- **Color Engine**: ColorAide for accurate OKLCH operations
+- **Image I/O**: OpenCV (4x faster than PIL for PNG)
+- **Computation**: NumPy + Numba JIT compilation
+- **Gamut Mapping**: CSS Color Module 4 algorithm
+- **Falloff Function**: Raised cosine for smooth transitions
+
+## Development
+
+This project follows a structured approach focusing on code quality, documentation, and maintainable development practices.
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## Credits
+
+- Created by Adam Twardoch
+- Developed with Antropic software
+</file>
+
+<file path="src/imgcolorshine/transforms.py">
+#!/usr/bin/env -S uv run -s
+# /// script
+# dependencies = ["numpy", "numba", "loguru"]
+# ///
+# this_file: src/imgcolorshine/transforms.py
+
+"""
+High-performance color transformation algorithms using NumPy and Numba.
+
+Implements the core color transformation logic with JIT compilation for
+optimal performance. Handles multi-attractor blending and channel-specific
+transformations in the OKLCH color space.
+
+"""
+
+from collections.abc import Callable
+
+import numba
+import numpy as np
+from loguru import logger
+
+from imgcolorshine.color_engine import Attractor, OKLCHEngine
+from imgcolorshine.utils import process_large_image
+
+
+@numba.njit
+def calculate_delta_e_fast(pixel_lab: np.ndarray, attractor_lab: np.ndarray) -> float:
+    """
+    Fast Euclidean distance calculation in Oklab space.
+
+    Args:
+        pixel_lab: [L, a, b] values
+        attractor_lab: [L, a, b] values
+
+    Returns:
+        Perceptual distance
+
+    """
+    return np.sqrt(
+        (pixel_lab[0] - attractor_lab[0]) ** 2
+        + (pixel_lab[1] - attractor_lab[1]) ** 2
+        + (pixel_lab[2] - attractor_lab[2]) ** 2
+    )
+
+
+# Maximum perceptual distance for tolerance=100
+# This represents a large but reasonable distance in Oklab space
+MAX_DELTA_E = 2.5
+
+
+@numba.njit
+def calculate_weights(
+    pixel_lab: np.ndarray,
+    attractors_lab: np.ndarray,
+    tolerances: np.ndarray,
+    strengths: np.ndarray,
+) -> np.ndarray:
+    """
+    Calculate attraction weights for all attractors.
+
+    This function calculates how much each attractor influences a pixel based on:
+    - The perceptual distance between the pixel and attractor colors
+    - The tolerance setting (radius of influence)
+    - The strength setting (maximum transformation amount)
+
+    The tolerance is linearly mapped to perceptual distance, fixing the previous
+    quadratic mapping that made the tool unintuitive. With linear mapping:
+    - tolerance=100 affects colors up to MAX_DELTA_E distance
+    - tolerance=50 affects colors up to MAX_DELTA_E/2 distance
+    - etc.
+
+    Returns:
+        Array of weights for each attractor
+
+    """
+    num_attractors = len(attractors_lab)
+    weights = np.zeros(num_attractors)
+
+    for i in range(num_attractors):
+        # Calculate perceptual distance
+        delta_e = calculate_delta_e_fast(pixel_lab, attractors_lab[i])
+
+        # Map tolerance (0-100) to max distance with LINEAR mapping
+        # This is the critical fix - was previously: delta_e_max = 1.0 * (tolerances[i] / 100.0) ** 2
+        delta_e_max = MAX_DELTA_E * (tolerances[i] / 100.0)
+
+        # Check if within tolerance
+        if delta_e <= delta_e_max:
+            # Calculate normalized distance
+            d_norm = delta_e / delta_e_max
+
+            # Apply falloff function (raised cosine)
+            attraction_factor = 0.5 * (np.cos(d_norm * np.pi) + 1.0)
+
+            # Calculate final weight
+            weights[i] = (strengths[i] / 100.0) * attraction_factor
+
+    return weights
+
+
+@numba.njit
+def blend_colors(
+    pixel_lab: np.ndarray,
+    pixel_lch: np.ndarray,
+    attractors_lab: np.ndarray,
+    attractors_lch: np.ndarray,
+    weights: np.ndarray,
+    flags: np.ndarray,
+) -> np.ndarray:
+    """
+    Blend pixel color with attractors based on weights and channel flags.
+
+    Args:
+        pixel_lab: Original pixel in Oklab [L, a, b]
+        pixel_lch: Original pixel in OKLCH [L, C, H]
+        attractors_lab: Attractor colors in Oklab
+        attractors_lch: Attractor colors in OKLCH
+        weights: Weight for each attractor
+        flags: Boolean array [luminance, saturation, hue]
+
+    Returns:
+        Blended color in Oklab space
+
+    """
+    total_weight = np.sum(weights)
+
+    if total_weight == 0:
+        return pixel_lab
+
+    # Determine source weight
+    if total_weight > 1.0:
+        # Normalize weights
+        weights = weights / total_weight
+        src_weight = 0.0
+    else:
+        src_weight = 1.0 - total_weight
+
+    # Start with original values
+    final_l = pixel_lch[0]
+    final_c = pixel_lch[1]
+    final_h = pixel_lch[2]
+
+    # Blend each enabled channel
+    if flags[0]:  # Luminance
+        final_l = src_weight * pixel_lch[0]
+        for i in range(len(weights)):
+            if weights[i] > 0:
+                final_l += weights[i] * attractors_lch[i][0]
+
+    if flags[1]:  # Saturation (Chroma)
+        final_c = src_weight * pixel_lch[1]
+        for i in range(len(weights)):
+            if weights[i] > 0:
+                final_c += weights[i] * attractors_lch[i][1]
+
+    if flags[2]:  # Hue
+        # Use circular mean for hue
+        sin_sum = src_weight * np.sin(np.deg2rad(pixel_lch[2]))
+        cos_sum = src_weight * np.cos(np.deg2rad(pixel_lch[2]))
+
+        for i in range(len(weights)):
+            if weights[i] > 0:
+                h_rad = np.deg2rad(attractors_lch[i][2])
+                sin_sum += weights[i] * np.sin(h_rad)
+                cos_sum += weights[i] * np.cos(h_rad)
+
+        final_h = np.rad2deg(np.arctan2(sin_sum, cos_sum))
+        if final_h < 0:
+            final_h += 360
+
+    # Convert back to Oklab
+    h_rad = np.deg2rad(final_h)
+    final_a = final_c * np.cos(h_rad)
+    final_b = final_c * np.sin(h_rad)
+
+    return np.array([final_l, final_a, final_b])
+
+
+@numba.njit(parallel=True)
+def transform_pixels(
+    pixels_lab: np.ndarray,
+    pixels_lch: np.ndarray,
+    attractors_lab: np.ndarray,
+    attractors_lch: np.ndarray,
+    tolerances: np.ndarray,
+    strengths: np.ndarray,
+    flags: np.ndarray,
+) -> np.ndarray:
+    """
+    Transform all pixels using Numba parallel processing.
+
+    Args:
+        pixels_lab: Image in Oklab space (H, W, 3)
+        pixels_lch: Image in OKLCH space (H, W, 3)
+        attractors_lab: Attractor colors in Oklab
+        attractors_lch: Attractor colors in OKLCH
+        tolerances: Tolerance values for each attractor
+        strengths: Strength values for each attractor
+        flags: Boolean array [luminance, saturation, hue]
+
+    Returns:
+        Transformed image in Oklab space
+
+    """
+    h, w = pixels_lab.shape[:2]
+    result = np.empty_like(pixels_lab)
+
+    for y in numba.prange(h):
+        for x in range(w):
+            pixel_lab = pixels_lab[y, x]
+            pixel_lch = pixels_lch[y, x]
+
+            # Calculate weights for all attractors
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
+
+            # Blend colors
+            result[y, x] = blend_colors(pixel_lab, pixel_lch, attractors_lab, attractors_lch, weights, flags)
+
+    return result
+
+
+class ColorTransformer:
+    """High-level color transformation interface.
+
+    Manages the transformation pipeline from RGB input to RGB output,
+    handling color space conversions, tiling for large images, and
+    progress tracking. Used by the main CLI for applying transformations.
+
+    Used in:
+    - old/imgcolorshine/imgcolorshine/__init__.py
+    - old/imgcolorshine/imgcolorshine_main.py
+    - old/imgcolorshine/test_imgcolorshine.py
+    - src/imgcolorshine/__init__.py
+    - src/imgcolorshine/imgcolorshine.py
+    """
+
+    def __init__(self, engine: OKLCHEngine):
+        """
+        Initialize the color transformer.
+
+        Args:
+            engine: OKLCH color engine instance
+
+        """
+        self.engine = engine
+        logger.debug("Initialized ColorTransformer")
+
+    def transform_image(
+        self,
+        image: np.ndarray,
+        attractors: list[Attractor],
+        flags: dict[str, bool],
+        progress_callback: Callable[[float], None] | None = None,
+    ) -> np.ndarray:
+        """
+        Transform an entire image using color attractors.
+
+        Args:
+            image: Input image (H, W, 3) in sRGB [0, 1]
+            attractors: List of color attractors
+            flags: Channel flags {'luminance': bool, 'saturation': bool, 'hue': bool}
+            progress_callback: Optional callback for progress updates
+
+        Returns:
+            Transformed image in sRGB [0, 1]
+
+        Used in:
+        - old/imgcolorshine/imgcolorshine_main.py
+        - old/imgcolorshine/test_imgcolorshine.py
+        - src/imgcolorshine/imgcolorshine.py
+        """
+        # Report dimensions in width×height order to match common conventions
+        h, w = image.shape[:2]
+        logger.info(f"Transforming {w}×{h} image with {len(attractors)} attractors")
+
+        # Log attractor details
+        for i, attractor in enumerate(attractors):
+            logger.debug(
+                f"  Attractor {i + 1}: color=OKLCH({attractor.oklch_values[0]:.2f}, "
+                f"{attractor.oklch_values[1]:.3f}, {attractor.oklch_values[2]:.1f}°), "
+                f"tolerance={attractor.tolerance}, strength={attractor.strength}"
+            )
+
+        # Convert flags to numpy array
+        flags_array = np.array(
+            [
+                flags.get("luminance", True),
+                flags.get("saturation", True),
+                flags.get("hue", True),
+            ]
+        )
+
+        # Log enabled channels
+        enabled_channels = []
+        if flags.get("luminance", True):
+            enabled_channels.append("luminance")
+        if flags.get("saturation", True):
+            enabled_channels.append("saturation")
+        if flags.get("hue", True):
+            enabled_channels.append("hue")
+        logger.debug(f"Enabled channels: {', '.join(enabled_channels)}")
+
+        # Prepare attractor data for Numba
+        attractors_lab = np.array([a.oklab_values for a in attractors])
+        attractors_lch = np.array([a.oklch_values for a in attractors])
+        tolerances = np.array([a.tolerance for a in attractors])
+        strengths = np.array([a.strength for a in attractors])
+
+        # Check if we should use tiling
+        from imgcolorshine.image_io import ImageProcessor
+
+        processor = ImageProcessor()
+
+        if processor.should_use_tiling(w, h):
+            # Process in tiles for large images
+            def transform_tile(tile):
+                return self._transform_tile(
+                    tile,
+                    attractors_lab,
+                    attractors_lch,
+                    tolerances,
+                    strengths,
+                    flags_array,
+                )
+
+            result = process_large_image(
+                image,
+                transform_tile,
+                tile_size=processor.tile_size,
+                progress_callback=progress_callback,
+            )
+        else:
+            # Process entire image at once
+            result = self._transform_tile(
+                image,
+                attractors_lab,
+                attractors_lch,
+                tolerances,
+                strengths,
+                flags_array,
+            )
+
+            if progress_callback:
+                progress_callback(1.0)
+
+        logger.info("Transformation complete")
+        return result
+
+    def _transform_tile(
+        self,
+        tile: np.ndarray,
+        attractors_lab: np.ndarray,
+        attractors_lch: np.ndarray,
+        tolerances: np.ndarray,
+        strengths: np.ndarray,
+        flags: np.ndarray,
+    ) -> np.ndarray:
+        """Transform a single tile of the image."""
+        # Convert to Oklab
+        tile_lab = self.engine.batch_rgb_to_oklab(tile)
+
+        # Also need OKLCH for channel-specific operations
+        tile_lch = np.zeros_like(tile_lab)
+        for y in range(tile_lab.shape[0]):
+            for x in range(tile_lab.shape[1]):
+                l, a, b = tile_lab[y, x]
+                tile_lch[y, x] = self.engine.oklab_to_oklch(l, a, b)
+
+        # Apply transformation
+        transformed_lab = transform_pixels(
+            tile_lab,
+            tile_lch,
+            attractors_lab,
+            attractors_lch,
+            tolerances,
+            strengths,
+            flags,
+        )
+
+        # Convert back to RGB
+        result = self.engine.batch_oklab_to_rgb(transformed_lab)
+
+        # Ensure values are in valid range
+        return np.clip(result, 0, 1)
 </file>
 
 <file path="TODO.md">
