@@ -36,8 +36,6 @@ def build_mypyc_extensions() -> list[Any] | None:
     modules_to_compile = [
         "imgcolorshine.color",
         "imgcolorshine.transform",
-        "imgcolorshine.io",
-        "imgcolorshine.falloff",
     ]
     
     # Convert module names to file paths

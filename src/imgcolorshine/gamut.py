@@ -12,6 +12,7 @@ to the displayable range while preserving perceptual attributes. Uses
 binary search to find the maximum chroma that fits within gamut.
 
 """
+from typing import TypedDict
 
 import numba
 import numpy as np
@@ -261,7 +262,7 @@ class GamutMapper:
 
         return mapped_colors.reshape(shape)
 
-    def analyze_gamut_coverage(self, colors: np.ndarray) -> dict:
+    def analyze_gamut_coverage(self, colors: np.ndarray) -> "GamutStats":
         """
         Analyze how many colors are out of gamut.
 
@@ -289,6 +290,13 @@ class GamutMapper:
             "out_of_gamut": out_of_gamut,
             "percentage_in_gamut": percentage_in,
         }
+
+
+class GamutStats(TypedDict):
+    total: int
+    in_gamut: int
+    out_of_gamut: int
+    percentage_in_gamut: float
 
 
 def create_gamut_boundary_lut(hue_steps: int = 360, lightness_steps: int = 100) -> np.ndarray:

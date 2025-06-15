@@ -308,7 +308,7 @@ class ColorTransformer:
         strengths = np.array([a.strength for a in attractors])
 
         # Check if we should use tiling
-        from colorshine.image_io import ImageProcessor
+        from imgcolorshine.io import ImageProcessor
 
         processor = ImageProcessor()
 

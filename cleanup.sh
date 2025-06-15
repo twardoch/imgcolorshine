@@ -33,8 +33,8 @@ echo "find . -name *.py -exec python -m uv run ruff format --respect-gitignore -
 for p in src tests; do find "$p" -name "*.py" -exec python -m uv run ruff format --respect-gitignore --target-version py311 {} +; done
 echo "python -m uv run ty check"
 python -m uv run ty check
-echo "PYTHONPATH=src python -m mypy -p imgcolorshine"
-PYTHONPATH=src python -m mypy -p imgcolorshine
+echo "python -m uv run mypy --config-file pyproject.toml src/imgcolorshine tests"
+python -m uv run mypy --config-file pyproject.toml src/imgcolorshine tests
 if command -v npx >/dev/null 2>&1; then
     echo "npx repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules,docs -o llms.txt ."
     npx repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules,docs -o llms.txt .
