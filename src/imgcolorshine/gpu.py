@@ -21,12 +21,13 @@ cp = None  # Ensure cp is always defined globally
 
 # Try to import GPU libraries
 try:
-    import cupy as cp
+    import cupy
+    cp = cupy  # Assign to the global variable
 
-    CUPY_AVAILABLE = cp.cuda.is_available()
+    CUPY_AVAILABLE = cupy.cuda.is_available()
     if CUPY_AVAILABLE:
         GPU_AVAILABLE = True
-        logger.info(f"CuPy available with CUDA {cp.cuda.runtime.runtimeGetVersion()}")
+        logger.info(f"CuPy available with CUDA {cupy.cuda.runtime.runtimeGetVersion()}")
 except ImportError:
     logger.debug("CuPy not installed")
 except Exception as e:

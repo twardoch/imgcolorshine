@@ -166,7 +166,7 @@ def process_image(
         transformed = (transformed_normalized * 255.0).astype(np.uint8)
     else:
         logger.info("Using percentile-based tolerance model.")
-        transformed: np.ndarray[Any, Any] = transformer.transform_image(
+        transformed = transformer.transform_image(
             image,
             attractor_objects,
             {"luminance": luminance, "saturation": saturation, "hue": hue},

@@ -10,7 +10,7 @@ Fire-based CLI interface for imgcolorshine.
 Simple CLI class that delegates to the main processing logic.
 """
 
-import fire  # type: ignore[import-untyped]
+import fire  # type: ignore[import-not-found,import-untyped]
 
 from imgcolorshine.colorshine import process_image
 

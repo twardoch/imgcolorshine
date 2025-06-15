@@ -89,8 +89,8 @@ imgcolorshine = 'imgcolorshine.cli:main'
 requires = [
     'hatchling>=1.27.0',
     'hatch-vcs>=0.4.0',
-    'mypy>=1.15.0',
-    'hatch-mypyc>=0.16.0',
+    # 'mypy>=1.15.0',  # Temporarily disabled
+    # 'hatch-mypyc>=0.16.0',  # Temporarily disabled
 ]
 build-backend = 'hatchling.build'
 [tool.hatch.build]
@@ -109,18 +109,19 @@ reproducible = true
 [tool.hatch.build.hooks.vcs]
 version-file = 'src/imgcolorshine/__version__.py'
 
-[tool.hatch.build.hooks.mypyc]
-dependencies = ["hatch-mypyc"]
-# Only include modules with pure Python/NumPy/ColorAide logic.
-# Numba-heavy files should be excluded as MyPyc can't compile them.
-files = [
-    "src/imgcolorshine/colorshine.py",
-    "src/imgcolorshine/engine.py",
-    "src/imgcolorshine/gamut.py",
-    "src/imgcolorshine/io.py",
-    "src/imgcolorshine/utils.py",
-    "src/imgcolorshine/falloff.py",
-]
+# Temporarily disabled due to missing type stubs in build environment
+# [tool.hatch.build.hooks.mypyc]
+# dependencies = ["hatch-mypyc"]
+# # Only include modules with pure Python/NumPy/ColorAide logic.
+# # Numba-heavy files should be excluded as MyPyc can't compile them.
+# files = [
+#     "src/imgcolorshine/colorshine.py",
+#     "src/imgcolorshine/engine.py",
+#     "src/imgcolorshine/gamut.py",
+#     "src/imgcolorshine/io.py",
+#     "src/imgcolorshine/utils.py",
+#     "src/imgcolorshine/falloff.py",
+# ]
 
 [tool.hatch.version]
 source = 'vcs'

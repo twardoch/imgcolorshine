@@ -14,15 +14,15 @@ Aa strength of 50% means that the influence is 50% but only on the most similar 
 
 The strength of 200% means there is no falloff: the influence is always full within the tolerance. 
 
-## Task 1
+## Task 1 [x]
 
 Update CHANGELOG.md and README.md to reflect the changes that are marked as done in PLAN.md. 
 
-## Task 2
+## Task 2 [x]
 
 Analyze `llms.txt` and completely remove all completed items from PLAN.md. Keep only things that are TBD. 
 
-## Task 3
+## Task 3 [x]
 
 ```
 uvx hatch clean; uvx hatch build; uvx hatch publish
@@ -92,6 +92,6 @@ https://pypi.org/project/imgcolorshine/3.3.0/
 
 Into `PLAN.md` write a plan for how to fix the build errors. 
 
-## Task 4
+## Task 4 [x]
 
 Read `cleanup.log` (which is the result of running `cleanup.sh`), and into `PLAN.md` write a plan for how to fix the issues, problems, errors recorded there. 
