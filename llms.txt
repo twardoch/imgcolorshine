@@ -1597,9 +1597,90 @@ binary search to find the maximum chroma that fits within gamut.
 
 """
 
+import numba
 import numpy as np
 from coloraide import Color
 from loguru import logger
+
+# Import Numba-optimized functions from trans_numba
+from imgcolorshine.trans_numba import (
+    batch_gamut_map_oklch,
+    gamut_map_oklch_single,
+    is_in_gamut_srgb,
+    oklab_to_srgb_single,
+    oklch_to_oklab_single,
+)
+
+
+@numba.njit(cache=True)
+def binary_search_chroma(l: float, c: float, h: float, epsilon: float = 0.0001) -> float:
+    """
+    Numba-optimized binary search for maximum in-gamut chroma.
+
+    Finds the maximum chroma value that keeps the color within sRGB gamut
+    using binary search. This is the core of the CSS Color Module 4 gamut
+    mapping algorithm.
+
+    Args:
+        l: Lightness (0-1)
+        c: Initial chroma value
+        h: Hue in degrees (0-360)
+        epsilon: Convergence threshold
+
+    Returns:
+        Maximum chroma that fits within gamut
+    """
+    # Quick check if already in gamut
+    oklch = np.array([l, c, h], dtype=np.float32)
+    oklab = oklch_to_oklab_single(oklch)
+    rgb = oklab_to_srgb_single(oklab)
+
+    if is_in_gamut_srgb(rgb):
+        return c
+
+    # Binary search for maximum valid chroma
+    c_min, c_max = 0.0, c
+
+    for _ in range(20):  # Max iterations
+        if c_max - c_min <= epsilon:
+            break
+
+        c_mid = (c_min + c_max) / 2.0
+        test_oklch = np.array([l, c_mid, h], dtype=np.float32)
+        test_oklab = oklch_to_oklab_single(test_oklch)
+        test_rgb = oklab_to_srgb_single(test_oklab)
+
+        if is_in_gamut_srgb(test_rgb):
+            c_min = c_mid
+        else:
+            c_max = c_mid
+
+    return c_min
+
+
+@numba.njit(parallel=True, cache=True)
+def batch_map_oklch_numba(colors_flat: np.ndarray, epsilon: float = 0.0001) -> np.ndarray:
+    """
+    Numba-optimized batch gamut mapping for OKLCH colors.
+
+    Processes multiple colors in parallel for maximum performance.
+
+    Args:
+        colors_flat: Flattened array of OKLCH colors (N, 3)
+        epsilon: Convergence threshold for binary search
+
+    Returns:
+        Gamut-mapped OKLCH colors (N, 3)
+    """
+    n_colors = colors_flat.shape[0]
+    mapped_colors = np.empty_like(colors_flat)
+
+    for i in numba.prange(n_colors):
+        l, c, h = colors_flat[i]
+        c_mapped = binary_search_chroma(l, c, h, epsilon)
+        mapped_colors[i] = np.array([l, c_mapped, h], dtype=colors_flat.dtype)
+
+    return mapped_colors
 
 
 class GamutMapper:
@@ -1632,10 +1713,11 @@ class GamutMapper:
 
     def map_oklch_to_gamut(self, l: float, c: float, h: float) -> tuple[float, float, float]:
         """
-        CSS Color Module 4 gamut mapping algorithm.
+        CSS Color Module 4 gamut mapping algorithm with Numba optimization.
 
-        Reduces chroma while preserving lightness and chroma until
-        the color fits within the target gamut.
+        Reduces chroma while preserving lightness and hue until
+        the color fits within the target gamut. Uses Numba-optimized
+        binary search for better performance when available.
 
         Args:
             l: Lightness (0-1)
@@ -1648,6 +1730,13 @@ class GamutMapper:
         Used in:
         - old/imgcolorshine/test_imgcolorshine.py
         """
+        # Use Numba-optimized version for sRGB gamut mapping
+        if self.target_space == "srgb":
+            final_c = binary_search_chroma(l, c, h, self.epsilon)
+            logger.debug(f"Gamut mapped (Numba): C={c:.4f} → {final_c:.4f}")
+            return l, final_c, h
+
+        # Fall back to ColorAide for other color spaces
         # Create color object
         color = Color("oklch", [l, c, h])
 
@@ -1726,7 +1815,10 @@ class GamutMapper:
 
     def batch_map_oklch(self, colors: np.ndarray) -> np.ndarray:
         """
-        Map multiple OKLCH colors to gamut.
+        Map multiple OKLCH colors to gamut with Numba optimization.
+
+        Uses parallel processing for sRGB gamut mapping, falling back
+        to sequential processing for other color spaces.
 
         Args:
             colors: Array of shape (..., 3) with OKLCH values
@@ -1736,9 +1828,15 @@ class GamutMapper:
 
         """
         shape = colors.shape
-        flat_colors = colors.reshape(-1, 3)
-        mapped_colors = np.zeros_like(flat_colors)
+        flat_colors = colors.reshape(-1, 3).astype(np.float32)
 
+        # Use Numba-optimized parallel version for sRGB
+        if self.target_space == "srgb":
+            mapped_colors = batch_map_oklch_numba(flat_colors, self.epsilon)
+            return mapped_colors.reshape(shape)
+
+        # Fall back to sequential processing for other color spaces
+        mapped_colors = np.zeros_like(flat_colors)
         for i, (l, c, h) in enumerate(flat_colors):
             mapped_colors[i] = self.map_oklch_to_gamut(l, c, h)
 
@@ -2096,368 +2194,6 @@ def get_memory_pool(backend="auto"):
     if _memory_pool is None:
         _memory_pool = GPUMemoryPool(backend)
     return _memory_pool
-</file>
-
-<file path="src/imgcolorshine/hierar.py">
-#!/usr/bin/env -S uv run -s
-# /// script
-# dependencies = ["numpy", "opencv-python", "loguru", "numba"]
-# ///
-# this_file: src/imgcolorshine/fast_hierar.py
-
-"""
-Hierarchical multi-resolution image processing for imgcolorshine.
-
-Implements a coarse-to-fine processing strategy that reduces computation
-by processing low-resolution versions first and only refining pixels that
-differ significantly from the coarse approximation.
-"""
-
-from collections.abc import Callable
-from dataclasses import dataclass
-
-import cv2
-import numba
-import numpy as np
-from loguru import logger
-
-
-@dataclass
-class PyramidLevel:
-    """Represents one level in the image pyramid."""
-
-    image: np.ndarray
-    scale: float
-    shape: tuple[int, int]
-    level: int
-
-
-class HierarchicalProcessor:
-    """Multi-resolution image processing with adaptive refinement."""
-
-    def __init__(
-        self,
-        min_size: int = 64,
-        difference_threshold: float = 0.1,
-        pyramid_factor: float = 0.5,
-        use_adaptive_subdivision: bool = True,
-        gradient_threshold: float = 0.05,
-    ):
-        """
-        Initialize fast_hierar processor.
-
-        Args:
-            min_size: Minimum dimension for coarsest pyramid level
-            difference_threshold: Threshold for refinement in perceptual units
-            pyramid_factor: Downsampling factor between pyramid levels
-            use_adaptive_subdivision: Enable gradient-based subdivision
-            gradient_threshold: Threshold for detecting high-gradient regions
-        """
-        self.min_size = min_size
-        self.difference_threshold = difference_threshold
-        self.pyramid_factor = pyramid_factor
-        self.use_adaptive_subdivision = use_adaptive_subdivision
-        self.gradient_threshold = gradient_threshold
-        self.pyramid_levels: list[PyramidLevel] = []
-
-    def build_pyramid(self, image: np.ndarray) -> list[PyramidLevel]:
-        """
-        Build Gaussian pyramid from input image.
-
-        Uses cv2.pyrDown for proper Gaussian filtering and downsampling.
-
-        Args:
-            image: Input image in RGB format
-
-        Returns:
-            List of pyramid levels from fine to coarse
-        """
-        levels = []
-        current = image.copy()
-        level = 0
-
-        # Build pyramid until we reach minimum size
-        while min(current.shape[:2]) > self.min_size:
-            levels.append(
-                PyramidLevel(
-                    image=current.copy(),
-                    scale=self.pyramid_factor**level,
-                    shape=current.shape[:2],
-                    level=level,
-                )
-            )
-
-            # Downsample for next level
-            current = cv2.pyrDown(current)
-            level += 1
-
-        # Add final coarsest level
-        levels.append(
-            PyramidLevel(
-                image=current,
-                scale=self.pyramid_factor**level,
-                shape=current.shape[:2],
-                level=level,
-            )
-        )
-
-        logger.debug(f"Built pyramid with {len(levels)} levels: {[l.shape for l in levels]}")
-        return levels
-
-    @staticmethod
-    @numba.njit
-    def _compute_perceptual_distance(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
-        """
-        Compute perceptual distance between two Lab images.
-
-        Args:
-            lab1: First image in Lab space (H, W, 3)
-            lab2: Second image in Lab space (H, W, 3)
-
-        Returns:
-            Distance map (H, W)
-        """
-        # Simple Euclidean distance in Lab space
-        # For better accuracy, could use CIEDE2000 but it's more complex
-        diff = lab1 - lab2
-        return np.sqrt(diff[:, :, 0] ** 2 + diff[:, :, 1] ** 2 + diff[:, :, 2] ** 2)
-
-    def compute_difference_mask(
-        self, fine_level: np.ndarray, coarse_upsampled: np.ndarray, threshold: float
-    ) -> np.ndarray:
-        """
-        Create mask of pixels that need refinement.
-
-        Compares fine level with upsampled coarse result to identify
-        pixels that differ significantly and need reprocessing.
-
-        Args:
-            fine_level: Fine resolution image (RGB)
-            coarse_upsampled: Upsampled coarse result (RGB)
-            threshold: Perceptual distance threshold
-
-        Returns:
-            Boolean mask where True indicates pixels needing refinement
-        """
-        # For now, use simple RGB distance
-        # In production, should convert to Lab/OKLCH for perceptual accuracy
-        diff = np.abs(fine_level.astype(np.float32) - coarse_upsampled.astype(np.float32))
-        distance = np.sqrt(np.sum(diff**2, axis=2))
-
-        # Normalize by max possible distance (sqrt(3) for RGB)
-        normalized_distance = distance / (255.0 * np.sqrt(3))
-
-        # Create binary mask
-        return normalized_distance > threshold
-
-    def detect_gradient_regions(self, image: np.ndarray, gradient_threshold: float) -> np.ndarray:
-        """
-        Detect regions with high color gradients.
-
-        Uses Sobel edge detection to find areas with rapid color changes
-        that benefit from fine-resolution processing.
-
-        Args:
-            image: Input image (RGB)
-            gradient_threshold: Threshold for gradient magnitude
-
-        Returns:
-            Boolean mask of high-gradient regions
-        """
-        # Convert to grayscale for edge detection
-        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-
-        # Calculate gradients
-        grad_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
-        grad_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
-
-        # Gradient magnitude
-        gradient_magnitude = np.sqrt(grad_x**2 + grad_y**2)
-
-        # Normalize
-        gradient_magnitude = gradient_magnitude / gradient_magnitude.max()
-
-        # Create mask
-        gradient_mask = gradient_magnitude > gradient_threshold
-
-        # Dilate to ensure coverage of edge regions
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        gradient_mask = cv2.dilate(gradient_mask.astype(np.uint8), kernel)
-
-        return gradient_mask.astype(bool)
-
-    def process_hierarchical(
-        self,
-        image: np.ndarray,
-        transform_func: Callable,
-        attractors: np.ndarray,
-        tolerances: np.ndarray,
-        strengths: np.ndarray,
-        channels: list[bool],
-    ) -> np.ndarray:
-        """
-        Process image hierarchically from coarse to fine resolution.
-
-        Main algorithm that implements the multi-resolution processing strategy.
-        Starts with coarsest level and progressively refines the result.
-
-        Args:
-            image: Input image (RGB format, 0-255 range)
-            transform_func: Function to transform pixels
-            attractors: Attractor colors in Lab space
-            tolerances: Tolerance values for each attractor
-            strengths: Strength values for each attractor
-            channels: Boolean flags for L, C, H channels
-
-        Returns:
-            Transformed image in RGB format
-        """
-        # Build image pyramid
-        pyramid = self.build_pyramid(image)
-
-        if len(pyramid) == 1:
-            # Image too small for pyramid, process directly
-            logger.debug("Image too small for pyramid, processing directly")
-            return transform_func(image, attractors, tolerances, strengths, channels)
-
-        # Process coarsest level completely
-        coarsest = pyramid[-1]
-        logger.info(f"Processing coarsest level: {coarsest.shape}")
-
-        # Transform the coarsest level
-        result = transform_func(coarsest.image, attractors, tolerances, strengths, channels)
-
-        # Statistics tracking
-        total_pixels_refined = 0
-        total_pixels = 0
-
-        # Process from coarse to fine
-        for i in range(len(pyramid) - 2, -1, -1):
-            level = pyramid[i]
-            h, w = level.shape[:2]
-            total_pixels += h * w
-
-            logger.debug(f"Processing pyramid level {i}: {level.shape}")
-
-            # Upsample previous result to current resolution
-            upsampled = cv2.resize(result, (w, h), interpolation=cv2.INTER_LINEAR)
-
-            # Compute refinement mask
-            diff_mask = self.compute_difference_mask(level.image, upsampled, self.difference_threshold)
-
-            # Add gradient regions if enabled
-            if self.use_adaptive_subdivision:
-                gradient_mask = self.detect_gradient_regions(level.image, self.gradient_threshold)
-                refinement_mask = diff_mask | gradient_mask
-            else:
-                refinement_mask = diff_mask
-
-            # Count refined pixels
-            num_refined = np.sum(refinement_mask)
-            total_pixels_refined += num_refined
-
-            # Process only masked pixels if any need refinement
-            if num_refined > 0:
-                logger.debug(f"Refining {num_refined} pixels ({num_refined / refinement_mask.size * 100:.1f}%)")
-
-                # For efficient processing, we need to handle masked transformation
-                # This is a simplified approach - in production, we'd optimize this
-                refined_result = upsampled.copy()
-
-                # Transform the entire level (optimization opportunity here)
-                transformed_level = transform_func(level.image, attractors, tolerances, strengths, channels)
-
-                # Apply only to masked pixels
-                refined_result[refinement_mask] = transformed_level[refinement_mask]
-
-                result = refined_result
-            else:
-                # No refinement needed, use upsampled result
-                logger.debug("No refinement needed at this level")
-                result = upsampled
-
-        # Log statistics
-        if total_pixels > 0:
-            refinement_ratio = total_pixels_refined / total_pixels
-            logger.info(f"Hierarchical processing complete: refined {refinement_ratio * 100:.1f}% of pixels")
-
-        return result
-
-    def process_hierarchical_tiled(
-        self,
-        image: np.ndarray,
-        transform_func: Callable,
-        attractors: np.ndarray,
-        tolerances: np.ndarray,
-        strengths: np.ndarray,
-        channels: list[bool],
-        tile_size: int = 512,
-    ) -> np.ndarray:
-        """
-        Hierarchical processing with tiling for very large images.
-
-        Combines fast_hierar processing with tile-based memory management
-        for processing images that don't fit in memory.
-
-        Args:
-            image: Input image
-            transform_func: Transformation function
-            attractors: Attractor colors
-            tolerances: Tolerance values
-            strengths: Strength values
-            channels: Channel flags
-            tile_size: Size of tiles for processing
-
-        Returns:
-            Transformed image
-        """
-        h, w = image.shape[:2]
-
-        # If image is small enough, process without tiling
-        if h <= tile_size * 2 and w <= tile_size * 2:
-            return self.process_hierarchical(image, transform_func, attractors, tolerances, strengths, channels)
-
-        logger.info(f"Processing large image ({h}x{w}) with tiled fast_hierar approach")
-
-        # Create output array
-        result = np.zeros_like(image)
-
-        # Process in tiles with overlap
-        overlap = tile_size // 4  # 25% overlap
-
-        for y in range(0, h, tile_size - overlap):
-            for x in range(0, w, tile_size - overlap):
-                # Calculate tile boundaries with padding
-                y1 = max(0, y - overlap // 2)
-                y2 = min(h, y + tile_size + overlap // 2)
-                x1 = max(0, x - overlap // 2)
-                x2 = min(w, x + tile_size + overlap // 2)
-
-                logger.debug(f"Processing tile [{y1}:{y2}, {x1}:{x2}]")
-
-                # Extract tile
-                tile = image[y1:y2, x1:x2]
-
-                # Process tile hierarchically
-                processed_tile = self.process_hierarchical(
-                    tile, transform_func, attractors, tolerances, strengths, channels
-                )
-
-                # Blend into result (simple approach - could use feathering)
-                # Take center region without overlap
-                ty1 = overlap // 2 if y > 0 else 0
-                ty2 = processed_tile.shape[0] - (overlap // 2 if y2 < h else 0)
-                tx1 = overlap // 2 if x > 0 else 0
-                tx2 = processed_tile.shape[1] - (overlap // 2 if x2 < w else 0)
-
-                ry1 = y1 + ty1
-                ry2 = y1 + ty2
-                rx1 = x1 + tx1
-                rx2 = x1 + tx2
-
-                result[ry1:ry2, rx1:rx2] = processed_tile[ty1:ty2, tx1:tx2]
-
-        return result
 </file>
 
 <file path="src/imgcolorshine/io.py">
@@ -3347,6 +3083,80 @@ from loguru import logger
 from scipy.spatial import KDTree
 
 
+@numba.njit(cache=True, parallel=True)
+def compute_influence_mask_direct(pixels_flat: np.ndarray, centers: np.ndarray, radii: np.ndarray) -> np.ndarray:
+    """
+    Numba-optimized direct computation of influence mask.
+
+    Computes which pixels fall within any attractor's influence radius
+    using parallel processing for maximum performance.
+
+    Args:
+        pixels_flat: Flattened pixel array in Oklab space (N, 3)
+        centers: Attractor centers in Oklab space (M, 3)
+        radii: Influence radii for each attractor (M,)
+
+    Returns:
+        Boolean mask (N,) where True indicates influenced pixels
+    """
+    n_pixels = pixels_flat.shape[0]
+    n_attractors = centers.shape[0]
+    mask = np.zeros(n_pixels, dtype=np.bool_)
+
+    # Process pixels in parallel
+    for i in numba.prange(n_pixels):
+        pixel = pixels_flat[i]
+
+        # Check against each attractor
+        for j in range(n_attractors):
+            # Compute Euclidean distance in Oklab space
+            dx = pixel[0] - centers[j, 0]
+            dy = pixel[1] - centers[j, 1]
+            dz = pixel[2] - centers[j, 2]
+            distance = np.sqrt(dx * dx + dy * dy + dz * dz)
+
+            # Check if within influence radius
+            if distance <= radii[j]:
+                mask[i] = True
+                break  # No need to check other attractors
+
+    return mask
+
+
+@numba.njit(cache=True)
+def find_pixel_attractors(pixel: np.ndarray, centers: np.ndarray, radii: np.ndarray, indices: np.ndarray) -> np.ndarray:
+    """
+    Numba-optimized function to find attractors influencing a pixel.
+
+    Args:
+        pixel: Single pixel in Oklab space (3,)
+        centers: Attractor centers in Oklab space (M, 3)
+        radii: Influence radii for each attractor (M,)
+        indices: Attractor indices (M,)
+
+    Returns:
+        Array of attractor indices that influence this pixel
+    """
+    n_attractors = centers.shape[0]
+    influencing = []
+
+    for j in range(n_attractors):
+        # Compute Euclidean distance in Oklab space
+        dx = pixel[0] - centers[j, 0]
+        dy = pixel[1] - centers[j, 1]
+        dz = pixel[2] - centers[j, 2]
+        distance = np.sqrt(dx * dx + dy * dy + dz * dz)
+
+        # Check if within influence radius
+        if distance <= radii[j]:
+            influencing.append(indices[j])
+
+    # Convert to numpy array
+    if influencing:
+        return np.array(influencing, dtype=np.int32)
+    return np.empty(0, dtype=np.int32)
+
+
 @dataclass
 class InfluenceRegion:
     """Represents an attractor's region of influence in color space."""
@@ -3474,29 +3284,34 @@ class SpatialAccelerator:
 
     def _get_mask_direct(self, pixels_flat: np.ndarray) -> np.ndarray:
         """
-        Direct method to compute influence mask.
+        Direct method to compute influence mask using Numba optimization.
 
-        More efficient for small numbers of attractors.
+        More efficient for small numbers of attractors. Uses parallel
+        processing to compute distances for all pixels simultaneously.
 
         Args:
-            pixels_flat: Flattened pixel array (N, 3)
+            pixels_flat: Flattened pixel array in Oklab space (N, 3)
 
         Returns:
             Boolean mask (N,)
         """
-        mask = np.zeros(len(pixels_flat), dtype=bool)
+        if not self.influence_regions:
+            return np.zeros(len(pixels_flat), dtype=bool)
 
-        for region in self.influence_regions:
-            # Compute distances to this attractor
-            distances = np.linalg.norm(pixels_flat - region.center, axis=1)
-            # Mark pixels within radius
-            mask |= distances <= region.radius
+        # Prepare data for Numba function
+        len(self.influence_regions)
+        centers = np.array([region.center for region in self.influence_regions], dtype=np.float32)
+        radii = np.array([region.radius for region in self.influence_regions], dtype=np.float32)
 
-        return mask
+        # Use Numba-optimized function for parallel computation
+        return compute_influence_mask_direct(pixels_flat.astype(np.float32), centers, radii)
 
     def query_pixel_attractors(self, pixel_oklab: np.ndarray) -> list[int]:
         """
-        Find which attractors influence a specific pixel.
+        Find which attractors influence a specific pixel using Numba optimization.
+
+        Uses optimized distance computation to quickly identify all attractors
+        that have influence over the given pixel color.
 
         Args:
             pixel_oklab: Single pixel color in Oklab space (3,)
@@ -3504,14 +3319,19 @@ class SpatialAccelerator:
         Returns:
             List of attractor indices that influence this pixel
         """
-        influencing_attractors = []
+        if not self.influence_regions:
+            return []
 
-        for region in self.influence_regions:
-            distance = np.linalg.norm(pixel_oklab - region.center)
-            if distance <= region.radius:
-                influencing_attractors.append(region.attractor_idx)
+        # Prepare data for Numba function
+        len(self.influence_regions)
+        centers = np.array([region.center for region in self.influence_regions], dtype=np.float32)
+        radii = np.array([region.radius for region in self.influence_regions], dtype=np.float32)
+        indices = np.array([region.attractor_idx for region in self.influence_regions], dtype=np.int32)
 
-        return influencing_attractors
+        # Use Numba-optimized function
+        result = find_pixel_attractors(pixel_oklab.astype(np.float32), centers, radii, indices)
+
+        return result.tolist()
 
     @staticmethod
     @numba.njit
@@ -4614,6 +4434,444 @@ def process_with_optimizations(
     return transformed
 </file>
 
+<file path="src/imgcolorshine/hierar.py">
+#!/usr/bin/env -S uv run -s
+# /// script
+# dependencies = ["numpy", "opencv-python", "loguru", "numba"]
+# ///
+# this_file: src/imgcolorshine/fast_hierar.py
+
+"""
+Hierarchical multi-resolution image processing for imgcolorshine.
+
+Implements a coarse-to-fine processing strategy that reduces computation
+by processing low-resolution versions first and only refining pixels that
+differ significantly from the coarse approximation.
+"""
+
+from collections.abc import Callable
+from dataclasses import dataclass
+
+import cv2
+import numba
+import numpy as np
+from loguru import logger
+
+from imgcolorshine.trans_numba import batch_srgb_to_oklab
+
+
+@numba.njit(cache=True, parallel=True)
+def compute_perceptual_distance_mask(fine_lab: np.ndarray, coarse_lab: np.ndarray, threshold: float) -> np.ndarray:
+    """
+    Numba-optimized perceptual difference mask computation.
+
+    Computes perceptual distance in Oklab space and creates a mask of pixels
+    that exceed the threshold. Uses parallel processing for maximum performance.
+
+    Args:
+        fine_lab: Fine resolution image in Oklab space (H, W, 3)
+        coarse_lab: Upsampled coarse result in Oklab space (H, W, 3)
+        threshold: Perceptual distance threshold (0-2.5 range)
+
+    Returns:
+        Boolean mask where True indicates pixels needing refinement
+    """
+    h, w = fine_lab.shape[:2]
+    mask = np.empty((h, w), dtype=np.bool_)
+
+    # Process pixels in parallel
+    for i in numba.prange(h):
+        for j in range(w):
+            # Perceptual distance in Oklab space (Euclidean distance)
+            dl = fine_lab[i, j, 0] - coarse_lab[i, j, 0]
+            da = fine_lab[i, j, 1] - coarse_lab[i, j, 1]
+            db = fine_lab[i, j, 2] - coarse_lab[i, j, 2]
+            distance = np.sqrt(dl * dl + da * da + db * db)
+            mask[i, j] = distance > threshold
+
+    return mask
+
+
+@numba.njit(cache=True)
+def compute_gradient_magnitude(gray: np.ndarray) -> np.ndarray:
+    """
+    Numba-optimized gradient magnitude computation using Sobel operators.
+
+    Computes gradient magnitude efficiently without using OpenCV functions.
+
+    Args:
+        gray: Grayscale image
+
+    Returns:
+        Gradient magnitude array
+    """
+    h, w = gray.shape
+    grad_mag = np.zeros((h, w), dtype=np.float32)
+
+    # Sobel kernels
+    sobel_x = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=np.float32)
+    sobel_y = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=np.float32)
+
+    # Apply Sobel operators (skip borders)
+    for i in range(1, h - 1):
+        for j in range(1, w - 1):
+            gx = 0.0
+            gy = 0.0
+
+            # Convolve with Sobel kernels
+            for ki in range(3):
+                for kj in range(3):
+                    pixel = gray[i + ki - 1, j + kj - 1]
+                    gx += pixel * sobel_x[ki, kj]
+                    gy += pixel * sobel_y[ki, kj]
+
+            # Gradient magnitude
+            grad_mag[i, j] = np.sqrt(gx * gx + gy * gy)
+
+    return grad_mag
+
+
+@dataclass
+class PyramidLevel:
+    """Represents one level in the image pyramid."""
+
+    image: np.ndarray
+    scale: float
+    shape: tuple[int, int]
+    level: int
+
+
+class HierarchicalProcessor:
+    """Multi-resolution image processing with adaptive refinement."""
+
+    def __init__(
+        self,
+        min_size: int = 64,
+        difference_threshold: float = 0.1,
+        pyramid_factor: float = 0.5,
+        use_adaptive_subdivision: bool = True,
+        gradient_threshold: float = 0.05,
+    ):
+        """
+        Initialize fast_hierar processor.
+
+        Args:
+            min_size: Minimum dimension for coarsest pyramid level
+            difference_threshold: Threshold for refinement in perceptual units
+            pyramid_factor: Downsampling factor between pyramid levels
+            use_adaptive_subdivision: Enable gradient-based subdivision
+            gradient_threshold: Threshold for detecting high-gradient regions
+        """
+        self.min_size = min_size
+        self.difference_threshold = difference_threshold
+        self.pyramid_factor = pyramid_factor
+        self.use_adaptive_subdivision = use_adaptive_subdivision
+        self.gradient_threshold = gradient_threshold
+        self.pyramid_levels: list[PyramidLevel] = []
+
+    def build_pyramid(self, image: np.ndarray) -> list[PyramidLevel]:
+        """
+        Build Gaussian pyramid from input image.
+
+        Uses cv2.pyrDown for proper Gaussian filtering and downsampling.
+
+        Args:
+            image: Input image in RGB format
+
+        Returns:
+            List of pyramid levels from fine to coarse
+        """
+        levels = []
+        current = image.copy()
+        level = 0
+
+        # Build pyramid until we reach minimum size
+        while min(current.shape[:2]) > self.min_size:
+            levels.append(
+                PyramidLevel(
+                    image=current.copy(),
+                    scale=self.pyramid_factor**level,
+                    shape=current.shape[:2],
+                    level=level,
+                )
+            )
+
+            # Downsample for next level
+            current = cv2.pyrDown(current)
+            level += 1
+
+        # Add final coarsest level
+        levels.append(
+            PyramidLevel(
+                image=current,
+                scale=self.pyramid_factor**level,
+                shape=current.shape[:2],
+                level=level,
+            )
+        )
+
+        logger.debug(f"Built pyramid with {len(levels)} levels: {[l.shape for l in levels]}")
+        return levels
+
+    @staticmethod
+    @numba.njit
+    def _compute_perceptual_distance(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
+        """
+        Compute perceptual distance between two Lab images.
+
+        Args:
+            lab1: First image in Lab space (H, W, 3)
+            lab2: Second image in Lab space (H, W, 3)
+
+        Returns:
+            Distance map (H, W)
+        """
+        # Simple Euclidean distance in Lab space
+        # For better accuracy, could use CIEDE2000 but it's more complex
+        diff = lab1 - lab2
+        return np.sqrt(diff[:, :, 0] ** 2 + diff[:, :, 1] ** 2 + diff[:, :, 2] ** 2)
+
+    def compute_difference_mask(
+        self, fine_level: np.ndarray, coarse_upsampled: np.ndarray, threshold: float
+    ) -> np.ndarray:
+        """
+        Create mask of pixels that need refinement using perceptual color distance.
+
+        Compares fine level with upsampled coarse result in Oklab color space
+        to identify pixels that differ significantly and need reprocessing.
+        This provides more accurate refinement decisions based on human perception.
+
+        Args:
+            fine_level: Fine resolution image (RGB, 0-255)
+            coarse_upsampled: Upsampled coarse result (RGB, 0-255)
+            threshold: Perceptual distance threshold (0-1 maps to 0-2.5 in Oklab)
+
+        Returns:
+            Boolean mask where True indicates pixels needing refinement
+        """
+        # Normalize RGB to 0-1 range for color space conversion
+        fine_norm = fine_level.astype(np.float32) / 255.0
+        coarse_norm = coarse_upsampled.astype(np.float32) / 255.0
+
+        # Convert to Oklab for perceptual distance calculation
+        # This is ~77-115x faster than using ColorAide
+        fine_lab = batch_srgb_to_oklab(fine_norm)
+        coarse_lab = batch_srgb_to_oklab(coarse_norm)
+
+        # Map threshold from 0-1 range to Oklab distance range (0-2.5)
+        oklab_threshold = threshold * 2.5
+
+        # Use Numba-optimized function for mask computation
+        return compute_perceptual_distance_mask(fine_lab, coarse_lab, oklab_threshold)
+
+    def detect_gradient_regions(self, image: np.ndarray, gradient_threshold: float) -> np.ndarray:
+        """
+        Detect regions with high color gradients using Numba-optimized Sobel operators.
+
+        Finds areas with rapid color changes that benefit from fine-resolution
+        processing. Uses optimized gradient computation for better performance.
+
+        Args:
+            image: Input image (RGB, 0-255)
+            gradient_threshold: Threshold for gradient magnitude (0-1)
+
+        Returns:
+            Boolean mask of high-gradient regions
+        """
+        # Convert to grayscale for edge detection
+        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY).astype(np.float32)
+
+        # Use Numba-optimized gradient computation
+        gradient_magnitude = compute_gradient_magnitude(gray)
+
+        # Normalize gradient magnitude
+        max_grad = gradient_magnitude.max()
+        if max_grad > 0:
+            gradient_magnitude = gradient_magnitude / max_grad
+
+        # Create mask
+        gradient_mask = gradient_magnitude > gradient_threshold
+
+        # Dilate to ensure coverage of edge regions
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        gradient_mask = cv2.dilate(gradient_mask.astype(np.uint8), kernel)
+
+        return gradient_mask.astype(bool)
+
+    def process_hierarchical(
+        self,
+        image: np.ndarray,
+        transform_func: Callable,
+        attractors: np.ndarray,
+        tolerances: np.ndarray,
+        strengths: np.ndarray,
+        channels: list[bool],
+    ) -> np.ndarray:
+        """
+        Process image hierarchically from coarse to fine resolution.
+
+        Main algorithm that implements the multi-resolution processing strategy.
+        Starts with coarsest level and progressively refines the result.
+
+        Args:
+            image: Input image (RGB format, 0-255 range)
+            transform_func: Function to transform pixels
+            attractors: Attractor colors in Lab space
+            tolerances: Tolerance values for each attractor
+            strengths: Strength values for each attractor
+            channels: Boolean flags for L, C, H channels
+
+        Returns:
+            Transformed image in RGB format
+        """
+        # Build image pyramid
+        pyramid = self.build_pyramid(image)
+
+        if len(pyramid) == 1:
+            # Image too small for pyramid, process directly
+            logger.debug("Image too small for pyramid, processing directly")
+            return transform_func(image, attractors, tolerances, strengths, channels)
+
+        # Process coarsest level completely
+        coarsest = pyramid[-1]
+        logger.info(f"Processing coarsest level: {coarsest.shape}")
+
+        # Transform the coarsest level
+        result = transform_func(coarsest.image, attractors, tolerances, strengths, channels)
+
+        # Statistics tracking
+        total_pixels_refined = 0
+        total_pixels = 0
+
+        # Process from coarse to fine
+        for i in range(len(pyramid) - 2, -1, -1):
+            level = pyramid[i]
+            h, w = level.shape[:2]
+            total_pixels += h * w
+
+            logger.debug(f"Processing pyramid level {i}: {level.shape}")
+
+            # Upsample previous result to current resolution
+            upsampled = cv2.resize(result, (w, h), interpolation=cv2.INTER_LINEAR)
+
+            # Compute refinement mask
+            diff_mask = self.compute_difference_mask(level.image, upsampled, self.difference_threshold)
+
+            # Add gradient regions if enabled
+            if self.use_adaptive_subdivision:
+                gradient_mask = self.detect_gradient_regions(level.image, self.gradient_threshold)
+                refinement_mask = diff_mask | gradient_mask
+            else:
+                refinement_mask = diff_mask
+
+            # Count refined pixels
+            num_refined = np.sum(refinement_mask)
+            total_pixels_refined += num_refined
+
+            # Process only masked pixels if any need refinement
+            if num_refined > 0:
+                logger.debug(f"Refining {num_refined} pixels ({num_refined / refinement_mask.size * 100:.1f}%)")
+
+                # For efficient processing, we need to handle masked transformation
+                # This is a simplified approach - in production, we'd optimize this
+                refined_result = upsampled.copy()
+
+                # Transform the entire level (optimization opportunity here)
+                transformed_level = transform_func(level.image, attractors, tolerances, strengths, channels)
+
+                # Apply only to masked pixels
+                refined_result[refinement_mask] = transformed_level[refinement_mask]
+
+                result = refined_result
+            else:
+                # No refinement needed, use upsampled result
+                logger.debug("No refinement needed at this level")
+                result = upsampled
+
+        # Log statistics
+        if total_pixels > 0:
+            refinement_ratio = total_pixels_refined / total_pixels
+            logger.info(f"Hierarchical processing complete: refined {refinement_ratio * 100:.1f}% of pixels")
+
+        return result
+
+    def process_hierarchical_tiled(
+        self,
+        image: np.ndarray,
+        transform_func: Callable,
+        attractors: np.ndarray,
+        tolerances: np.ndarray,
+        strengths: np.ndarray,
+        channels: list[bool],
+        tile_size: int = 512,
+    ) -> np.ndarray:
+        """
+        Hierarchical processing with tiling for very large images.
+
+        Combines fast_hierar processing with tile-based memory management
+        for processing images that don't fit in memory.
+
+        Args:
+            image: Input image
+            transform_func: Transformation function
+            attractors: Attractor colors
+            tolerances: Tolerance values
+            strengths: Strength values
+            channels: Channel flags
+            tile_size: Size of tiles for processing
+
+        Returns:
+            Transformed image
+        """
+        h, w = image.shape[:2]
+
+        # If image is small enough, process without tiling
+        if h <= tile_size * 2 and w <= tile_size * 2:
+            return self.process_hierarchical(image, transform_func, attractors, tolerances, strengths, channels)
+
+        logger.info(f"Processing large image ({h}x{w}) with tiled fast_hierar approach")
+
+        # Create output array
+        result = np.zeros_like(image)
+
+        # Process in tiles with overlap
+        overlap = tile_size // 4  # 25% overlap
+
+        for y in range(0, h, tile_size - overlap):
+            for x in range(0, w, tile_size - overlap):
+                # Calculate tile boundaries with padding
+                y1 = max(0, y - overlap // 2)
+                y2 = min(h, y + tile_size + overlap // 2)
+                x1 = max(0, x - overlap // 2)
+                x2 = min(w, x + tile_size + overlap // 2)
+
+                logger.debug(f"Processing tile [{y1}:{y2}, {x1}:{x2}]")
+
+                # Extract tile
+                tile = image[y1:y2, x1:x2]
+
+                # Process tile hierarchically
+                processed_tile = self.process_hierarchical(
+                    tile, transform_func, attractors, tolerances, strengths, channels
+                )
+
+                # Blend into result (simple approach - could use feathering)
+                # Take center region without overlap
+                ty1 = overlap // 2 if y > 0 else 0
+                ty2 = processed_tile.shape[0] - (overlap // 2 if y2 < h else 0)
+                tx1 = overlap // 2 if x > 0 else 0
+                tx2 = processed_tile.shape[1] - (overlap // 2 if x2 < w else 0)
+
+                ry1 = y1 + ty1
+                ry2 = y1 + ty2
+                rx1 = x1 + tx1
+                rx2 = x1 + tx2
+
+                result[ry1:ry2, rx1:rx2] = processed_tile[ty1:ty2, tx1:tx2]
+
+        return result
+</file>
+
 <file path="src/imgcolorshine/trans_gpu.py">
 #!/usr/bin/env -S uv run -s
 # /// script
@@ -5307,146 +5565,6 @@ srgb_to_oklab_batch = batch_srgb_to_oklab
 oklab_to_srgb_batch = batch_oklab_to_srgb
 </file>
 
-<file path="tests/debug_transformation.py">
-#!/usr/bin/env -S uv run -s
-# /// script
-# dependencies = ["numpy", "loguru", "coloraide", "opencv-python", "pillow", "click", "numba"]
-# ///
-# this_file: tests/debug_transformation.py
-
-"""
-Debug the actual transformation process to find why no changes are visible.
-"""
-
-# Add the src directory to path so we can import imgcolorshine modules
-import sys
-from pathlib import Path
-
-import numpy as np
-from coloraide import Color
-from loguru import logger
-
-sys.path.insert(0, str(Path(__file__).parent / "src"))
-
-from imgcolorshine.color_engine import OKLCHEngine
-from imgcolorshine.falloff import calculate_weights as falloff_calculate_weights
-from imgcolorshine.image_io import ImageProcessor
-from imgcolorshine.transforms import blend_colors, calculate_weights
-
-
-def debug_transformation():
-    """Debug the transformation process step by step."""
-
-    # Initialize components
-    engine = OKLCHEngine()
-    processor = ImageProcessor()
-
-    # Load a small sample from the test image
-    image = processor.load_image("testdata/louis.jpg")
-
-    # Extract a small sample for detailed analysis
-    sample = image[100:110, 100:110]  # 10x10 pixel sample
-
-    # Create blue attractor (same as test)
-    attractor = engine.create_attractor("blue", 80, 80)
-
-    # Convert sample to Oklab and OKLCH
-    sample_lab = engine.batch_rgb_to_oklab(sample)
-
-    sample_lch = np.zeros_like(sample_lab)
-    for y in range(sample_lab.shape[0]):
-        for x in range(sample_lab.shape[1]):
-            light, a, b = sample_lab[y, x]
-            sample_lch[y, x] = engine.oklab_to_oklch(light, a, b)
-
-    # Test weight calculation for center pixel
-    center_pixel_lab = sample_lab[5, 5]
-    center_pixel_lch = sample_lch[5, 5]
-
-    # Calculate distance and weight
-    attractor_lab = np.array(attractor.oklab_values)
-    delta_e = np.sqrt(np.sum((center_pixel_lab - attractor_lab) ** 2))
-
-    tolerance = 80
-    delta_e_max = 1.0 * (tolerance / 100.0) ** 2
-
-    if delta_e <= delta_e_max:
-        d_norm = delta_e / delta_e_max
-        attraction_factor = 0.5 * (np.cos(d_norm * np.pi) + 1.0)
-        weight = (80 / 100.0) * attraction_factor
-    else:
-        weight = 0.0
-
-    # Test blending
-    weights = np.array([weight])
-    attractors_lab = np.array([attractor.oklab_values])
-    attractors_lch = np.array([attractor.oklch_values])
-    flags = np.array([False, False, True])  # Only chroma transformation
-
-    original_lab = center_pixel_lab.copy()
-    blended_lab = blend_colors(center_pixel_lab, center_pixel_lch, attractors_lab, attractors_lch, weights, flags)
-
-    # Convert back to RGB and see the difference
-    engine.oklab_to_rgb(original_lab)
-    engine.oklab_to_rgb(blended_lab)
-
-    # Test multiple pixels to see statistics
-    affected_count = 0
-    total_weight_sum = 0
-    max_rgb_change = 0
-
-    for y in range(sample.shape[0]):
-        for x in range(sample.shape[1]):
-            pixel_lab = sample_lab[y, x]
-            pixel_lch = sample_lch[y, x]
-
-            # Calculate weight
-            weights_array = calculate_weights(pixel_lab, attractors_lab, np.array([tolerance]), np.array([80]))
-
-            if weights_array[0] > 0:
-                affected_count += 1
-                total_weight_sum += weights_array[0]
-
-                # Test the change
-                blended = blend_colors(pixel_lab, pixel_lch, attractors_lab, attractors_lch, weights_array, flags)
-
-                orig_rgb = engine.oklab_to_rgb(pixel_lab)
-                blend_rgb = engine.oklab_to_rgb(blended)
-                rgb_change = np.max(np.abs(blend_rgb - orig_rgb))
-                max_rgb_change = max(max_rgb_change, rgb_change)
-
-    sample.shape[0] * sample.shape[1]
-
-    if affected_count == 0 or max_rgb_change < 0.001 or max_rgb_change < 0.01:
-        pass
-    else:
-        pass
-
-
-def main():
-    """Debug color transformation behavior."""
-    engine = OKLCHEngine()
-
-    # Create a sample image with a gradient
-    sample = np.zeros((10, 10, 3), dtype=np.float32)
-    for y in range(10):
-        for x in range(10):
-            sample[y, x] = [0.5, 0.0, 0.0]  # Base color
-
-    # Convert to Oklab
-    sample_lab = np.zeros_like(sample)
-    sample_lch = np.zeros_like(sample)
-
-    for y in range(sample_lab.shape[0]):
-        for x in range(sample_lab.shape[1]):
-            light, a, b = sample_lab[y, x]  # Changed 'l' to 'light'
-            sample_lch[y, x] = engine.oklab_to_oklch(light, a, b)
-
-
-if __name__ == "__main__":
-    debug_transformation()
-</file>
-
 <file path="tests/test_correctness.py">
 #!/usr/bin/env -S uv run -s
 # /// script
@@ -5613,475 +5731,144 @@ if __name__ == "__main__":
     sys.exit(0 if success else 1)
 </file>
 
-<file path="src/imgcolorshine/utils.py">
-#!/usr/bin/env -S uv run -s
-# /// script
-# dependencies = ["numpy", "loguru"]
-# ///
-# this_file: src/imgcolorshine/utils.py
-
-"""
-Utility functions for memory management and image processing.
-
-Provides helper functions for tiled processing of large images,
-memory estimation, validation, and batch operations. Essential
-for handling images that exceed available memory.
-
-"""
-
-from collections.abc import Callable
-
-import numpy as np
-from loguru import logger
-
-
-def process_large_image(
-    image: np.ndarray,
-    transform_func: Callable[[np.ndarray], np.ndarray],
-    tile_size: int = 1024,
-    overlap: int = 32,
-    progress_callback: Callable[[float], None] | None = None,
-) -> np.ndarray:
-    """
-    Process a large image in tiles to manage memory usage.
-
-    Args:
-        image: Input image array
-        transform_func: Function to apply to each tile
-        tile_size: Size of each tile
-        overlap: Overlap between tiles to avoid edge artifacts
-        progress_callback: Optional callback for progress updates
-
-    Returns:
-        Processed image
-
-    Used by transform.py for processing images that exceed memory limits.
-
-    Used in:
-    - old/imgcolorshine/imgcolorshine/__init__.py
-    - old/imgcolorshine/imgcolorshine/transform.py
-    - src/imgcolorshine/transform.py
-    """
-    h, w = image.shape[:2]
-    result = np.zeros_like(image)
-
-    # Calculate number of tiles
-    tiles_y = (h + tile_size - 1) // tile_size
-    tiles_x = (w + tile_size - 1) // tile_size
-    total_tiles = tiles_y * tiles_x
-    processed_tiles = 0
-
-    logger.info(f"Processing image in {tiles_x}×{tiles_y} tiles (size: {tile_size}×{tile_size})")
-
-    for ty in range(tiles_y):
-        for tx in range(tiles_x):
-            # Calculate tile boundaries with overlap
-            y_start = ty * tile_size
-            y_end = min((ty + 1) * tile_size + overlap, h)
-            x_start = tx * tile_size
-            x_end = min((tx + 1) * tile_size + overlap, w)
-
-            # Extract tile
-            tile = image[y_start:y_end, x_start:x_end]
-
-            # Process tile
-            processed_tile = transform_func(tile)
-
-            # Calculate the region to copy (without overlap)
-            copy_y_start = 0 if ty == 0 else overlap // 2
-            copy_y_end = processed_tile.shape[0] if ty == tiles_y - 1 else -overlap // 2
-            copy_x_start = 0 if tx == 0 else overlap // 2
-            copy_x_end = processed_tile.shape[1] if tx == tiles_x - 1 else -overlap // 2
-
-            # Calculate destination coordinates
-            dest_y_start = y_start if ty == 0 else y_start + overlap // 2
-            dest_y_end = y_end if ty == tiles_y - 1 else y_end - overlap // 2
-            dest_x_start = x_start if tx == 0 else x_start + overlap // 2
-            dest_x_end = x_end if tx == tiles_x - 1 else x_end - overlap // 2
-
-            # Copy processed tile to result
-            result[dest_y_start:dest_y_end, dest_x_start:dest_x_end] = processed_tile[
-                copy_y_start:copy_y_end, copy_x_start:copy_x_end
-            ]
-
-            # Update progress
-            processed_tiles += 1
-            if progress_callback:
-                progress = processed_tiles / total_tiles
-                progress_callback(progress)
-
-            if processed_tiles % 10 == 0 or processed_tiles == total_tiles:
-                logger.info(
-                    f"Processing tiles: {processed_tiles}/{total_tiles} ({processed_tiles / total_tiles * 100:.1f}%)"
-                )
-
-    return result
-
-
-def estimate_optimal_tile_size(image_shape: tuple, available_memory_mb: int = 2048, bytes_per_pixel: int = 12) -> int:
-    """
-    Estimate optimal tile size based on available memory.
-
-    Args:
-        image_shape: Shape of the image (H, W, C)
-        available_memory_mb: Available memory in MB
-        bytes_per_pixel: Estimated bytes per pixel for processing
-
-    Returns:
-        Optimal tile size
-
-    """
-    # Convert to bytes
-    available_bytes = available_memory_mb * 1024 * 1024
-
-    # Account for overhead (input, output, intermediate)
-    overhead_factor = 3.0
-    usable_bytes = available_bytes / overhead_factor
-
-    # Calculate pixels that fit in memory
-    pixels_in_memory = usable_bytes / bytes_per_pixel
-
-    # Find square tile size
-    tile_size = int(np.sqrt(pixels_in_memory))
-
-    # Round to nearest power of 2 for efficiency
-    tile_size = 2 ** int(np.log2(tile_size))
-
-    # Clamp to reasonable range
-    tile_size = max(256, min(tile_size, 4096))
-
-    logger.debug(f"Optimal tile size: {tile_size}×{tile_size} (for {available_memory_mb}MB memory)")
-
-    return tile_size
-
-
-def create_progress_bar(total_steps: int, description: str = "Processing"):
-    """
-    Create a simple progress tracking context.
-
-    This is a placeholder for integration with rich.progress or tqdm.
-
-    """
-
-    class SimpleProgress:
-        """"""
-
-        def __init__(self, total: int, desc: str):
-            """"""
-            self.total = total
-            self.current = 0
-            self.desc = desc
-
-        def update(self, n: int = 1):
-            """"""
-            self.current += n
-            percent = (self.current / self.total) * 100
-            logger.info(f"{self.desc}: {percent:.1f}%")
-
-        def __enter__(self):
-            """"""
-            return self
-
-        def __exit__(self, *args):
-            """"""
-
-    return SimpleProgress(total_steps, description)
-
-
-def validate_image(image: np.ndarray) -> None:
-    """
-    Validate image array format and values.
-
-    Args:
-        image: Image array to validate
-
-    Raises:
-        ValueError: If image is invalid
-
-    Used in:
-    - src/imgcolorshine/__init__.py
-    """
-    # Expected image dimensions
-    EXPECTED_NDIM = 3
-    EXPECTED_CHANNELS = 3
-
-    if image.ndim != EXPECTED_NDIM:
-        msg = f"Image must be 3D (H, W, C), got shape {image.shape}"
-        raise ValueError(msg)
-
-    if image.shape[2] != EXPECTED_CHANNELS:
-        msg = f"Image must have 3 channels (RGB), got {image.shape[2]}"
-        raise ValueError(msg)
-
-    if image.dtype not in (np.float32, np.float64):
-        msg = f"Image must be float32 or float64, got {image.dtype}"
-        raise ValueError(msg)
-
-    if np.any(image < 0) or np.any(image > 1):
-        msg = "Image values must be in range [0, 1]"
-        raise ValueError(msg)
-
-
-def clamp_to_gamut(colors: np.ndarray) -> np.ndarray:
-    """
-    Clamp colors to valid sRGB gamut.
-
-    Args:
-        colors: Array of colors in sRGB space
-
-    Returns:
-        Clamped colors
-
-    """
-    return np.clip(colors, 0, 1)
-
-
-def batch_process_images(image_paths: list, output_dir: str, transform_func: Callable, **kwargs) -> None:
-    """
-    Process multiple images in batch.
-
-    Args:
-        image_paths: List of input image paths
-        output_dir: Directory for output images
-        transform_func: Transformation function
-        **kwargs: Additional arguments for transform_func
-
-    Used in:
-    - src/imgcolorshine/__init__.py
-    """
-    from pathlib import Path
-
-    from imgcolorshine.io import ImageProcessor
-
-    output_dir_path = Path(output_dir)
-    output_dir_path.mkdir(parents=True, exist_ok=True)
-
-    processor = ImageProcessor()
-
-    for i, image_path in enumerate(image_paths):
-        logger.info(f"Processing image {i + 1}/{len(image_paths)}: {image_path}")
-
-        # Load image
-        image = processor.load_image(image_path)
-
-        # Transform
-        result = transform_func(image, **kwargs)
-
-        # Save with same filename
-        output_path = output_dir_path / Path(image_path).name
-        processor.save_image(result, output_path)
-
-        logger.info(f"Saved: {output_path}")
-</file>
-
-<file path="tests/test_optimizations.py">
+<file path="tests/debug_transformation.py">
 #!/usr/bin/env -S uv run -s
 # /// script
 # dependencies = ["numpy", "loguru", "coloraide", "opencv-python", "pillow", "click", "numba"]
 # ///
-# this_file: tests/test_optimizations.py
+# this_file: tests/debug_transformation.py
 
 """
-Test script for fast_hierar and spatial acceleration optimizations.
+Debug the actual transformation process to find why no changes are visible.
 """
 
+# Add the src directory to path so we can import imgcolorshine modules
 import sys
-import time
 from pathlib import Path
 
 import numpy as np
+from coloraide import Color
 from loguru import logger
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from imgcolorshine.color import OKLCHEngine
-from imgcolorshine.hierar import HierarchicalProcessor
-from imgcolorshine.spatial import SpatialAccelerator
-from imgcolorshine.transform import ColorTransformer
-
-
-def create_test_image(width: int, height: int) -> np.ndarray:
-    """Create a test image with gradient patterns."""
-    image = np.zeros((height, width, 3), dtype=np.uint8)
-
-    # Create gradient pattern
-    for y in range(height):
-        for x in range(width):
-            image[y, x] = [
-                int(255 * x / width),  # Red gradient left to right
-                int(255 * y / height),  # Green gradient top to bottom
-                128,  # Constant blue
-            ]
-
-    return image
+from imgcolorshine.color_engine import OKLCHEngine
+from imgcolorshine.falloff import calculate_weights as falloff_calculate_weights
+from imgcolorshine.image_io import ImageProcessor
+from imgcolorshine.transforms import blend_colors, calculate_weights
 
 
-def test_hierarchical_processing():
-    """Test fast_hierar processing optimization."""
-    logger.info("Testing fast_hierar processing...")
-
-    # Create test image
-    image = create_test_image(512, 512)
+def debug_transformation():
+    """Debug the transformation process step by step."""
 
     # Initialize components
     engine = OKLCHEngine()
-    transformer = ColorTransformer(engine)
+    processor = ImageProcessor()
 
-    # Create attractor
-    attractor = engine.create_attractor("red", 50.0, 75.0)
+    # Load a small sample from the test image
+    image = processor.load_image("testdata/louis.jpg")
 
-    # Initialize fast_hierar processor
-    hier_processor = HierarchicalProcessor()
+    # Extract a small sample for detailed analysis
+    sample = image[100:110, 100:110]  # 10x10 pixel sample
 
-    # Prepare data
+    # Create blue attractor (same as test)
+    attractor = engine.create_attractor("blue", 80, 80)
+
+    # Convert sample to Oklab and OKLCH
+    sample_lab = engine.batch_rgb_to_oklab(sample)
+
+    sample_lch = np.zeros_like(sample_lab)
+    for y in range(sample_lab.shape[0]):
+        for x in range(sample_lab.shape[1]):
+            light, a, b = sample_lab[y, x]
+            sample_lch[y, x] = engine.oklab_to_oklch(light, a, b)
+
+    # Test weight calculation for center pixel
+    center_pixel_lab = sample_lab[5, 5]
+    center_pixel_lch = sample_lch[5, 5]
+
+    # Calculate distance and weight
+    attractor_lab = np.array(attractor.oklab_values)
+    delta_e = np.sqrt(np.sum((center_pixel_lab - attractor_lab) ** 2))
+
+    tolerance = 80
+    delta_e_max = 1.0 * (tolerance / 100.0) ** 2
+
+    if delta_e <= delta_e_max:
+        d_norm = delta_e / delta_e_max
+        attraction_factor = 0.5 * (np.cos(d_norm * np.pi) + 1.0)
+        weight = (80 / 100.0) * attraction_factor
+    else:
+        weight = 0.0
+
+    # Test blending
+    weights = np.array([weight])
     attractors_lab = np.array([attractor.oklab_values])
     attractors_lch = np.array([attractor.oklch_values])
-    tolerances = np.array([attractor.tolerance])
-    strengths = np.array([attractor.strength])
-    channels = [True, True, True]  # All channels enabled
-    flags_array = np.array(channels)
+    flags = np.array([False, False, True])  # Only chroma transformation
 
-    # Create transform function
-    def transform_func(img_rgb, *_args):
-        """"""
-        return (
-            transformer._transform_tile(
-                img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
-            )
-            * 255.0
-        )
+    original_lab = center_pixel_lab.copy()
+    blended_lab = blend_colors(center_pixel_lab, center_pixel_lch, attractors_lab, attractors_lch, weights, flags)
 
-    # Test fast_hierar processing
-    start_time = time.time()
-    result = hier_processor.process_hierarchical(image, transform_func, attractors_lab, tolerances, strengths, channels)
-    elapsed = time.time() - start_time
+    # Convert back to RGB and see the difference
+    engine.oklab_to_rgb(original_lab)
+    engine.oklab_to_rgb(blended_lab)
 
-    logger.info(f"Hierarchical processing completed in {elapsed:.3f}s")
-    logger.info(f"Result shape: {result.shape}, dtype: {result.dtype}")
+    # Test multiple pixels to see statistics
+    affected_count = 0
+    total_weight_sum = 0
+    max_rgb_change = 0
 
-    # Verify result
-    assert result.shape == image.shape
-    # Result is float32, original is uint8 - convert for comparison
-    result_uint8 = np.clip(result, 0, 255).astype(np.uint8)
-    assert np.any(result_uint8 != image)  # Should have some changes
+    for y in range(sample.shape[0]):
+        for x in range(sample.shape[1]):
+            pixel_lab = sample_lab[y, x]
+            pixel_lch = sample_lch[y, x]
+
+            # Calculate weight
+            weights_array = calculate_weights(pixel_lab, attractors_lab, np.array([tolerance]), np.array([80]))
+
+            if weights_array[0] > 0:
+                affected_count += 1
+                total_weight_sum += weights_array[0]
+
+                # Test the change
+                blended = blend_colors(pixel_lab, pixel_lch, attractors_lab, attractors_lch, weights_array, flags)
+
+                orig_rgb = engine.oklab_to_rgb(pixel_lab)
+                blend_rgb = engine.oklab_to_rgb(blended)
+                rgb_change = np.max(np.abs(blend_rgb - orig_rgb))
+                max_rgb_change = max(max_rgb_change, rgb_change)
+
+    sample.shape[0] * sample.shape[1]
+
+    if affected_count == 0 or max_rgb_change < 0.001 or max_rgb_change < 0.01:
+        pass
+    else:
+        pass
 
 
-def test_spatial_acceleration():
-    """Test spatial acceleration optimization."""
-    logger.info("\nTesting spatial acceleration...")
-
-    # Create test image
-    image = create_test_image(512, 512)
-    image_float = image / 255.0
-
-    # Initialize components
+def main():
+    """Debug color transformation behavior."""
     engine = OKLCHEngine()
-    transformer = ColorTransformer(engine)
 
-    # Create attractor
-    attractor = engine.create_attractor("green", 40.0, 60.0)
+    # Create a sample image with a gradient
+    sample = np.zeros((10, 10, 3), dtype=np.float32)
+    for y in range(10):
+        for x in range(10):
+            sample[y, x] = [0.5, 0.0, 0.0]  # Base color
 
-    # Initialize spatial accelerator
-    spatial_acc = SpatialAccelerator()
+    # Convert to Oklab
+    sample_lab = np.zeros_like(sample)
+    sample_lch = np.zeros_like(sample)
 
-    # Prepare data
-    attractors_lab = np.array([attractor.oklab_values])
-    attractors_lch = np.array([attractor.oklch_values])
-    tolerances = np.array([attractor.tolerance])
-    strengths = np.array([attractor.strength])
-    channels = [True, True, True]
-    flags_array = np.array(channels)
-
-    # Convert to Oklab for spatial queries
-    image_oklab = engine.batch_rgb_to_oklab(image_float)
-
-    # Create transform function
-    def transform_func(img_rgb, *_args):
-        """"""
-        return (
-            transformer._transform_tile(
-                img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
-            )
-            * 255.0
-        )
-
-    # Test spatial acceleration
-    start_time = time.time()
-    result = spatial_acc.transform_with_spatial_accel(
-        image, image_oklab, attractors_lab, tolerances, strengths, transform_func, channels
-    )
-    elapsed = time.time() - start_time
-
-    logger.info(f"Spatial acceleration completed in {elapsed:.3f}s")
-    logger.info(f"Result shape: {result.shape}, dtype: {result.dtype}")
-
-    # Log statistics
-    if hasattr(spatial_acc, "uniform_tiles"):
-        logger.info(f"Uniform tiles: {spatial_acc.uniform_tiles}")
-        if hasattr(spatial_acc, "partial_tiles"):
-            logger.info(f"Partial tiles: {spatial_acc.partial_tiles}")
-        if hasattr(spatial_acc, "skipped_tiles"):
-            logger.info(f"Skipped tiles: {spatial_acc.skipped_tiles}")
-
-    # Verify result
-    assert result.shape == image.shape
-    # Result may be float32 while original is uint8
-
-
-def test_combined_optimizations():
-    """Test combined fast_hierar + spatial acceleration."""
-    logger.info("\nTesting combined optimizations...")
-
-    # Create larger test image
-    image = create_test_image(1024, 1024)
-
-    # Initialize components
-    engine = OKLCHEngine()
-    transformer = ColorTransformer(engine)
-
-    # Create multiple attractors
-    attractor1 = engine.create_attractor("blue", 60.0, 80.0)
-    attractor2 = engine.create_attractor("yellow", 40.0, 60.0)
-
-    attractor_objects = [attractor1, attractor2]
-
-    # Use the process_with_optimizations function
-    from imgcolorshine.colorshine import process_with_optimizations
-
-    start_time = time.time()
-    result = process_with_optimizations(
-        image,
-        attractor_objects,
-        luminance=True,
-        saturation=True,
-        hue=True,
-        hierarchical=True,
-        spatial_accel=True,
-        transformer=transformer,
-        engine=engine,
-    )
-    elapsed = time.time() - start_time
-
-    logger.info(f"Combined optimization completed in {elapsed:.3f}s")
-    logger.info(f"Result shape: {result.shape}, dtype: {result.dtype}")
-
-    # Verify result
-    assert result.shape == image.shape
-    assert np.any(result != image)  # Should have changes
+    for y in range(sample_lab.shape[0]):
+        for x in range(sample_lab.shape[1]):
+            light, a, b = sample_lab[y, x]  # Changed 'l' to 'light'
+            sample_lch[y, x] = engine.oklab_to_oklch(light, a, b)
 
 
 if __name__ == "__main__":
-    logger.remove()
-    logger.add(sys.stderr, level="INFO")
-
-    logger.info("=== Testing imgcolorshine optimizations ===\n")
-
-    # Test individual optimizations
-    test_hierarchical_processing()
-    test_spatial_acceleration()
-    test_combined_optimizations()
-
-    logger.info("\n=== All tests completed successfully! ===")
+    debug_transformation()
 </file>
 
 <file path="tests/test_tolerance.py">
@@ -6379,6 +6166,267 @@ if __name__ == "__main__":
     main()
 </file>
 
+<file path="src/imgcolorshine/utils.py">
+#!/usr/bin/env -S uv run -s
+# /// script
+# dependencies = ["numpy", "loguru"]
+# ///
+# this_file: src/imgcolorshine/utils.py
+
+"""
+Utility functions for memory management and image processing.
+
+Provides helper functions for tiled processing of large images,
+memory estimation, validation, and batch operations. Essential
+for handling images that exceed available memory.
+
+"""
+
+from collections.abc import Callable
+
+import numpy as np
+from loguru import logger
+
+
+def process_large_image(
+    image: np.ndarray,
+    transform_func: Callable[[np.ndarray], np.ndarray],
+    tile_size: int = 1024,
+    overlap: int = 32,
+    progress_callback: Callable[[float], None] | None = None,
+) -> np.ndarray:
+    """
+    Process a large image in tiles to manage memory usage.
+
+    Args:
+        image: Input image array
+        transform_func: Function to apply to each tile
+        tile_size: Size of each tile
+        overlap: Overlap between tiles to avoid edge artifacts
+        progress_callback: Optional callback for progress updates
+
+    Returns:
+        Processed image
+
+    Used by transform.py for processing images that exceed memory limits.
+
+    Used in:
+    - old/imgcolorshine/imgcolorshine/__init__.py
+    - old/imgcolorshine/imgcolorshine/transform.py
+    - src/imgcolorshine/transform.py
+    """
+    h, w = image.shape[:2]
+    result = np.zeros_like(image)
+
+    # Calculate number of tiles
+    tiles_y = (h + tile_size - 1) // tile_size
+    tiles_x = (w + tile_size - 1) // tile_size
+    total_tiles = tiles_y * tiles_x
+    processed_tiles = 0
+
+    logger.info(f"Processing image in {tiles_x}×{tiles_y} tiles (size: {tile_size}×{tile_size})")
+
+    for ty in range(tiles_y):
+        for tx in range(tiles_x):
+            # Calculate tile boundaries with overlap
+            y_start = ty * tile_size
+            y_end = min((ty + 1) * tile_size + overlap, h)
+            x_start = tx * tile_size
+            x_end = min((tx + 1) * tile_size + overlap, w)
+
+            # Extract tile
+            tile = image[y_start:y_end, x_start:x_end]
+
+            # Process tile
+            processed_tile = transform_func(tile)
+
+            # Calculate the region to copy (without overlap)
+            copy_y_start = 0 if ty == 0 else overlap // 2
+            copy_y_end = processed_tile.shape[0] if ty == tiles_y - 1 else -overlap // 2
+            copy_x_start = 0 if tx == 0 else overlap // 2
+            copy_x_end = processed_tile.shape[1] if tx == tiles_x - 1 else -overlap // 2
+
+            # Calculate destination coordinates
+            dest_y_start = y_start if ty == 0 else y_start + overlap // 2
+            dest_y_end = y_end if ty == tiles_y - 1 else y_end - overlap // 2
+            dest_x_start = x_start if tx == 0 else x_start + overlap // 2
+            dest_x_end = x_end if tx == tiles_x - 1 else x_end - overlap // 2
+
+            # Copy processed tile to result
+            result[dest_y_start:dest_y_end, dest_x_start:dest_x_end] = processed_tile[
+                copy_y_start:copy_y_end, copy_x_start:copy_x_end
+            ]
+
+            # Update progress
+            processed_tiles += 1
+            if progress_callback:
+                progress = processed_tiles / total_tiles
+                progress_callback(progress)
+
+            if processed_tiles % 10 == 0 or processed_tiles == total_tiles:
+                logger.info(
+                    f"Processing tiles: {processed_tiles}/{total_tiles} ({processed_tiles / total_tiles * 100:.1f}%)"
+                )
+
+    return result
+
+
+def estimate_optimal_tile_size(image_shape: tuple, available_memory_mb: int = 2048, bytes_per_pixel: int = 12) -> int:
+    """
+    Estimate optimal tile size based on available memory.
+
+    Args:
+        image_shape: Shape of the image (H, W, C)
+        available_memory_mb: Available memory in MB
+        bytes_per_pixel: Estimated bytes per pixel for processing
+
+    Returns:
+        Optimal tile size
+
+    """
+    # Convert to bytes
+    available_bytes = available_memory_mb * 1024 * 1024
+
+    # Account for overhead (input, output, intermediate)
+    overhead_factor = 3.0
+    usable_bytes = available_bytes / overhead_factor
+
+    # Calculate pixels that fit in memory
+    pixels_in_memory = usable_bytes / bytes_per_pixel
+
+    # Find square tile size
+    tile_size = int(np.sqrt(pixels_in_memory))
+
+    # Round to nearest power of 2 for efficiency
+    tile_size = 2 ** int(np.log2(tile_size))
+
+    # Clamp to reasonable range
+    tile_size = max(256, min(tile_size, 4096))
+
+    logger.debug(f"Optimal tile size: {tile_size}×{tile_size} (for {available_memory_mb}MB memory)")
+
+    return tile_size
+
+
+def create_progress_bar(total_steps: int, description: str = "Processing"):
+    """
+    Create a simple progress tracking context.
+
+    This is a placeholder for integration with rich.progress or tqdm.
+
+    """
+
+    class SimpleProgress:
+        """"""
+
+        def __init__(self, total: int, desc: str):
+            """"""
+            self.total = total
+            self.current = 0
+            self.desc = desc
+
+        def update(self, n: int = 1):
+            """"""
+            self.current += n
+            percent = (self.current / self.total) * 100
+            logger.info(f"{self.desc}: {percent:.1f}%")
+
+        def __enter__(self):
+            """"""
+            return self
+
+        def __exit__(self, *args):
+            """"""
+
+    return SimpleProgress(total_steps, description)
+
+
+def validate_image(image: np.ndarray) -> None:
+    """
+    Validate image array format and values.
+
+    Args:
+        image: Image array to validate
+
+    Raises:
+        ValueError: If image is invalid
+
+    Used in:
+    - src/imgcolorshine/__init__.py
+    """
+    # Expected image dimensions
+    EXPECTED_NDIM = 3
+    EXPECTED_CHANNELS = 3
+
+    if image.ndim != EXPECTED_NDIM:
+        msg = f"Image must be 3D (H, W, C), got shape {image.shape}"
+        raise ValueError(msg)
+
+    if image.shape[2] != EXPECTED_CHANNELS:
+        msg = f"Image must have 3 channels (RGB), got {image.shape[2]}"
+        raise ValueError(msg)
+
+    if image.dtype not in (np.float32, np.float64):
+        msg = f"Image must be float32 or float64, got {image.dtype}"
+        raise ValueError(msg)
+
+    if np.any(image < 0) or np.any(image > 1):
+        msg = "Image values must be in range [0, 1]"
+        raise ValueError(msg)
+
+
+def clamp_to_gamut(colors: np.ndarray) -> np.ndarray:
+    """
+    Clamp colors to valid sRGB gamut.
+
+    Args:
+        colors: Array of colors in sRGB space
+
+    Returns:
+        Clamped colors
+
+    """
+    return np.clip(colors, 0, 1)
+
+
+def batch_process_images(image_paths: list, output_dir: str, transform_func: Callable, **kwargs) -> None:
+    """
+    Process multiple images in batch.
+
+    Args:
+        image_paths: List of input image paths
+        output_dir: Directory for output images
+        transform_func: Transformation function
+        **kwargs: Additional arguments for transform_func
+
+    Used in:
+    - src/imgcolorshine/__init__.py
+    """
+    from pathlib import Path
+
+    from imgcolorshine.io import ImageProcessor
+
+    output_dir_path = Path(output_dir)
+    output_dir_path.mkdir(parents=True, exist_ok=True)
+
+    processor = ImageProcessor()
+
+    for i, image_path in enumerate(image_paths):
+        logger.info(f"Processing image {i + 1}/{len(image_paths)}: {image_path}")
+
+        # Load image
+        image = processor.load_image(image_path)
+
+        # Transform
+        result = transform_func(image, **kwargs)
+
+        # Save with same filename
+        output_path = output_dir_path / Path(image_path).name
+        processor.save_image(result, output_path)
+
+        logger.info(f"Saved: {output_path}")
+</file>
+
 <file path="testdata/example.sh">
 #!/usr/bin/env bash
 # this_file: example.sh
@@ -6657,6 +6705,216 @@ def benchmark_image():
     return create_test_image(1920, 1080, "rainbow")
 </file>
 
+<file path="tests/test_optimizations.py">
+#!/usr/bin/env -S uv run -s
+# /// script
+# dependencies = ["numpy", "loguru", "coloraide", "opencv-python", "pillow", "click", "numba"]
+# ///
+# this_file: tests/test_optimizations.py
+
+"""
+Test script for fast_hierar and spatial acceleration optimizations.
+"""
+
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+from loguru import logger
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+from imgcolorshine.color import OKLCHEngine
+from imgcolorshine.hierar import HierarchicalProcessor
+from imgcolorshine.spatial import SpatialAccelerator
+from imgcolorshine.transform import ColorTransformer
+
+
+def create_test_image(width: int, height: int) -> np.ndarray:
+    """Create a test image with gradient patterns."""
+    image = np.zeros((height, width, 3), dtype=np.uint8)
+
+    # Create gradient pattern
+    for y in range(height):
+        for x in range(width):
+            image[y, x] = [
+                int(255 * x / width),  # Red gradient left to right
+                int(255 * y / height),  # Green gradient top to bottom
+                128,  # Constant blue
+            ]
+
+    return image
+
+
+def test_hierarchical_processing():
+    """Test fast_hierar processing optimization."""
+    logger.info("Testing fast_hierar processing...")
+
+    # Create test image
+    image = create_test_image(512, 512)
+
+    # Initialize components
+    engine = OKLCHEngine()
+    transformer = ColorTransformer(engine)
+
+    # Create attractor
+    attractor = engine.create_attractor("red", 50.0, 75.0)
+
+    # Initialize fast_hierar processor
+    hier_processor = HierarchicalProcessor()
+
+    # Prepare data
+    attractors_lab = np.array([attractor.oklab_values])
+    attractors_lch = np.array([attractor.oklch_values])
+    tolerances = np.array([attractor.tolerance])
+    strengths = np.array([attractor.strength])
+    channels = [True, True, True]  # All channels enabled
+    flags_array = np.array(channels)
+
+    # Create transform function
+    def transform_func(img_rgb, *_args):
+        """"""
+        return (
+            transformer._transform_tile(
+                img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
+            )
+            * 255.0
+        )
+
+    # Test fast_hierar processing
+    start_time = time.time()
+    result = hier_processor.process_hierarchical(image, transform_func, attractors_lab, tolerances, strengths, channels)
+    elapsed = time.time() - start_time
+
+    logger.info(f"Hierarchical processing completed in {elapsed:.3f}s")
+    logger.info(f"Result shape: {result.shape}, dtype: {result.dtype}")
+
+    # Verify result
+    assert result.shape == image.shape
+    # Result is float32, original is uint8 - convert for comparison
+    result_uint8 = np.clip(result, 0, 255).astype(np.uint8)
+    assert np.any(result_uint8 != image)  # Should have some changes
+
+
+def test_spatial_acceleration():
+    """Test spatial acceleration optimization."""
+    logger.info("\nTesting spatial acceleration...")
+
+    # Create test image
+    image = create_test_image(512, 512)
+    image_float = image / 255.0
+
+    # Initialize components
+    engine = OKLCHEngine()
+    transformer = ColorTransformer(engine)
+
+    # Create attractor
+    attractor = engine.create_attractor("green", 40.0, 60.0)
+
+    # Initialize spatial accelerator
+    spatial_acc = SpatialAccelerator()
+
+    # Prepare data
+    attractors_lab = np.array([attractor.oklab_values])
+    attractors_lch = np.array([attractor.oklch_values])
+    tolerances = np.array([attractor.tolerance])
+    strengths = np.array([attractor.strength])
+    channels = [True, True, True]
+    flags_array = np.array(channels)
+
+    # Convert to Oklab for spatial queries
+    image_oklab = engine.batch_rgb_to_oklab(image_float)
+
+    # Create transform function
+    def transform_func(img_rgb, *_args):
+        """"""
+        return (
+            transformer._transform_tile(
+                img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
+            )
+            * 255.0
+        )
+
+    # Test spatial acceleration
+    start_time = time.time()
+    result = spatial_acc.transform_with_spatial_accel(
+        image, image_oklab, attractors_lab, tolerances, strengths, transform_func, channels
+    )
+    elapsed = time.time() - start_time
+
+    logger.info(f"Spatial acceleration completed in {elapsed:.3f}s")
+    logger.info(f"Result shape: {result.shape}, dtype: {result.dtype}")
+
+    # Log statistics
+    if hasattr(spatial_acc, "uniform_tiles"):
+        logger.info(f"Uniform tiles: {spatial_acc.uniform_tiles}")
+        if hasattr(spatial_acc, "partial_tiles"):
+            logger.info(f"Partial tiles: {spatial_acc.partial_tiles}")
+        if hasattr(spatial_acc, "skipped_tiles"):
+            logger.info(f"Skipped tiles: {spatial_acc.skipped_tiles}")
+
+    # Verify result
+    assert result.shape == image.shape
+    # Result may be float32 while original is uint8
+
+
+def test_combined_optimizations():
+    """Test combined fast_hierar + spatial acceleration."""
+    logger.info("\nTesting combined optimizations...")
+
+    # Create larger test image
+    image = create_test_image(1024, 1024)
+
+    # Initialize components
+    engine = OKLCHEngine()
+    transformer = ColorTransformer(engine)
+
+    # Create multiple attractors
+    attractor1 = engine.create_attractor("blue", 60.0, 80.0)
+    attractor2 = engine.create_attractor("yellow", 40.0, 60.0)
+
+    attractor_objects = [attractor1, attractor2]
+
+    # Use the process_with_optimizations function
+    from imgcolorshine.colorshine import process_with_optimizations
+
+    start_time = time.time()
+    result = process_with_optimizations(
+        image,
+        attractor_objects,
+        luminance=True,
+        saturation=True,
+        hue=True,
+        hierarchical=True,
+        spatial_accel=True,
+        transformer=transformer,
+        engine=engine,
+    )
+    elapsed = time.time() - start_time
+
+    logger.info(f"Combined optimization completed in {elapsed:.3f}s")
+    logger.info(f"Result shape: {result.shape}, dtype: {result.dtype}")
+
+    # Verify result
+    assert result.shape == image.shape
+    assert np.any(result != image)  # Should have changes
+
+
+if __name__ == "__main__":
+    logger.remove()
+    logger.add(sys.stderr, level="INFO")
+
+    logger.info("=== Testing imgcolorshine optimizations ===\n")
+
+    # Test individual optimizations
+    test_hierarchical_processing()
+    test_spatial_acceleration()
+    test_combined_optimizations()
+
+    logger.info("\n=== All tests completed successfully! ===")
+</file>
+
 <file path="tests/test_performance.py">
 #!/usr/bin/env -S uv run -s
 # /// script
@@ -6797,148 +7055,6 @@ def test_performance_comparison() -> None:
 
 if __name__ == "__main__":
     test_performance_comparison()
-</file>
-
-<file path="CHANGELOG.md">
-# Changelog
-
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased] - 2025-06-15
-
-### Fixed
-- **NumPy 2.x Compatibility** 
-  - Fixed JAX import errors when using NumPy 2.x with JAX compiled for NumPy 1.x
-  - Made JAX imports lazy in `gpu.py` to prevent module-level import failures
-  - JAX availability is now checked only when needed, allowing graceful fallback to CPU
-
-### Added
-- **Hierarchical Processing Optimization** (`hierarchical.py`)
-  - Multi-resolution pyramid processing (2-5x speedup)
-  - Adaptive refinement based on color differences
-  - Gradient detection for smart refinement
-  - Coarse-to-fine processing strategy
-  - Configurable pyramid levels and thresholds
-- **Spatial Acceleration Structures** (`spatial_accel.py`)
-  - KD-tree based color space indexing (3-10x speedup)
-  - Early pixel culling outside influence radii
-  - Tile coherence optimization
-  - Uniform tile detection and caching
-  - Spatial queries for efficient processing
-- **Combined Optimization Support**
-  - Hierarchical + spatial acceleration for maximum performance
-  - Smart integration in `process_with_optimizations()`
-  - Automatic optimization selection based on image characteristics
-
-### Changed
-- **CLI Enhancements**
-  - Added `--hierarchical` flag for multi-resolution processing
-  - Added `--spatial_accel` flag for spatial acceleration (default: True)
-  - Updated help documentation with optimization examples
-- **Processing Pipeline**
-  - Integrated optimization framework in main processing flow
-  - Automatic selection of optimal processing path
-  - Improved memory efficiency with tile-based spatial queries
-- **Major Performance Optimizations** targeting 100x additional speedup:
-  - **Fused Color Transformation Kernel** (`fused_kernels.py`)
-    - Single-pass pixel transformation keeping all operations in CPU registers
-    - Eliminates intermediate array allocations
-    - Inline color space conversions (sRGB → Oklab → OKLCH → transform → sRGB)
-    - Integrated gamut mapping with binary search
-    - Parallel image processing with `numba.prange`
-  - **GPU Acceleration Support** with automatic fallback
-    - CuPy backend for NVIDIA GPUs (`gpu.py`, `gpu_transforms.py`)
-    - JAX backend support (experimental)
-    - Automatic memory management and device selection
-    - GPU memory estimation and pooling
-    - Efficient matrix operations using `einsum`
-    - Broadcasting for parallel attractor calculations
-  - **3D Color Look-Up Table (LUT)** for dramatic speedup (`lut.py`)
-    - Pre-computed transformations on 3D RGB grid
-    - Trilinear interpolation for arbitrary colors
-    - Disk caching with SHA256-based keys
-    - Configurable resolution (default 65³)
-    - Progress logging during LUT construction
-    - Integration with fused kernel for optimal performance
-  - **Memory Optimizations**
-    - Ensured C-contiguous arrays in image I/O
-    - Added `cache=True` to all Numba JIT functions
-    - Pre-allocation with `np.empty()` instead of `np.zeros()`
-
-### Changed (2025-01-15)
-- **CLI Enhancements**
-  - Added `--gpu` flag for GPU acceleration control (default: True)
-  - Added `--lut_size` parameter for LUT resolution (0=disabled, 65=recommended)
-  - Automatic backend selection: LUT → GPU → CPU fallback chain
-- **Processing Pipeline**
-  - Integrated LUT processing as first priority when enabled
-  - GPU processing with automatic fallback to CPU
-  - Improved error handling and logging for each backend
-- **Code Quality**
-  - Fixed imports and module dependencies
-  - Consistent code formatting with ruff
-  - Updated type hints and documentation
-
-### Performance Improvements (2025-01-15)
-- Fused kernel reduces memory traffic by ~80%
-- GPU acceleration provides 10-100x speedup on compatible hardware
-- 3D LUT provides 5-20x speedup with near-instant cached lookups
-- Combined optimizations target <10ms for 1920×1080 on modern hardware
-
-## [0.1.1] - 2025-01-14
-
-### Added
-- Numba-optimized color space transformations (77-115x faster)
-  - Direct matrix multiplication for sRGB ↔ Oklab conversions
-  - Vectorized OKLCH ↔ Oklab batch conversions
-  - Parallel processing with `numba.prange`
-  - Optimized gamut mapping with binary search
-- New module `trans_numba.py` with all performance-critical color operations
-- Performance benchmark script (`test_performance.py`)
-- Correctness test suite for validating optimizations
-
-### Changed
-- `color_engine.py` now uses Numba-optimized functions for batch RGB ↔ Oklab conversions
-- `transforms.py` uses vectorized OKLCH conversions instead of pixel-by-pixel loops
-- Eliminated ColorAide bottleneck in performance-critical paths
-- Matrix multiplication now uses manual implementation to avoid scipy dependency
-
-### Performance Improvements
-- 256×256 images: 5.053s → 0.044s (114.6x faster)
-- 512×512 images: 23.274s → 0.301s (77.3x faster)
-- 2048×2048 images now process in under 4 seconds
-
-## [0.1.0] - 2025-01-14
-
-### Added
-- Initial release of imgcolorshine
-- Core color transformation engine with OKLCH color space support
-- High-performance image I/O with OpenCV and PIL fallback
-- Numba-optimized pixel transformations with parallel processing
-- CSS Color Module 4 compliant gamut mapping
-- Multiple falloff functions (cosine, linear, quadratic, gaussian, cubic)
-- Tiled processing for large images with memory management
-- Click-based CLI interface with progress tracking
-- Support for all CSS color formats (hex, rgb, hsl, oklch, named colors)
-- Channel-specific transformations (luminance, saturation, hue)
-- Multi-attractor blending with configurable tolerance and strength
-- Comprehensive logging with loguru
-- Rich console output with progress indicators
-
-### Changed
-- Migrated from Fire to Click for CLI implementation
-- Restructured codebase to use modern Python packaging (src layout)
-- Updated all modules to include proper type hints
-- Enhanced documentation with detailed docstrings
-
-### Technical Details
-- Python 3.11+ required
-- Dependencies: click, coloraide, opencv-python, numpy, numba, pillow, loguru, rich
-- Modular architecture with separate modules for each concern
-- JIT compilation for performance-critical code paths
 </file>
 
 <file path="pyproject.toml">
@@ -7314,8 +7430,176 @@ ban-relative-imports = 'all'
 ]
 </file>
 
+<file path="CHANGELOG.md">
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased] - 2025-06-15
+
+### Documentation
+- **Comprehensive Development Plan** (`PLAN.md`)
+  - Created detailed optimization roadmap for Numba and mypyc
+  - Analyzed full codebase structure and optimization opportunities
+  - Identified performance bottlenecks in `hierar.py`, `spatial.py`, and `gamut.py`
+  - Documented test coverage gaps (20% overall, 0% for critical modules)
+  - Created test implementation strategy for missing coverage
+  - Added clear testing and iteration instructions
+  - Established 4-phase execution plan with success metrics
+
+### Fixed
+- **NumPy 2.x Compatibility** 
+  - Fixed JAX import errors when using NumPy 2.x with JAX compiled for NumPy 1.x
+  - Made JAX imports lazy in `gpu.py` to prevent module-level import failures
+  - JAX availability is now checked only when needed, allowing graceful fallback to CPU
+
+### Added
+- **Hierarchical Processing Optimization** (`hierarchical.py`)
+  - Multi-resolution pyramid processing (2-5x speedup)
+  - Adaptive refinement based on color differences
+  - Gradient detection for smart refinement
+  - Coarse-to-fine processing strategy
+  - Configurable pyramid levels and thresholds
+- **Spatial Acceleration Structures** (`spatial_accel.py`)
+  - KD-tree based color space indexing (3-10x speedup)
+  - Early pixel culling outside influence radii
+  - Tile coherence optimization
+  - Uniform tile detection and caching
+  - Spatial queries for efficient processing
+- **Combined Optimization Support**
+  - Hierarchical + spatial acceleration for maximum performance
+  - Smart integration in `process_with_optimizations()`
+  - Automatic optimization selection based on image characteristics
+
+### Changed
+- **CLI Enhancements**
+  - Added `--hierarchical` flag for multi-resolution processing
+  - Added `--spatial_accel` flag for spatial acceleration (default: True)
+  - Updated help documentation with optimization examples
+- **Processing Pipeline**
+  - Integrated optimization framework in main processing flow
+  - Automatic selection of optimal processing path
+  - Improved memory efficiency with tile-based spatial queries
+- **Major Performance Optimizations** targeting 100x additional speedup:
+  - **Fused Color Transformation Kernel** (`fused_kernels.py`)
+    - Single-pass pixel transformation keeping all operations in CPU registers
+    - Eliminates intermediate array allocations
+    - Inline color space conversions (sRGB → Oklab → OKLCH → transform → sRGB)
+    - Integrated gamut mapping with binary search
+    - Parallel image processing with `numba.prange`
+  - **GPU Acceleration Support** with automatic fallback
+    - CuPy backend for NVIDIA GPUs (`gpu.py`, `gpu_transforms.py`)
+    - JAX backend support (experimental)
+    - Automatic memory management and device selection
+    - GPU memory estimation and pooling
+    - Efficient matrix operations using `einsum`
+    - Broadcasting for parallel attractor calculations
+  - **3D Color Look-Up Table (LUT)** for dramatic speedup (`lut.py`)
+    - Pre-computed transformations on 3D RGB grid
+    - Trilinear interpolation for arbitrary colors
+    - Disk caching with SHA256-based keys
+    - Configurable resolution (default 65³)
+    - Progress logging during LUT construction
+    - Integration with fused kernel for optimal performance
+  - **Memory Optimizations**
+    - Ensured C-contiguous arrays in image I/O
+    - Added `cache=True` to all Numba JIT functions
+    - Pre-allocation with `np.empty()` instead of `np.zeros()`
+
+### Changed (2025-01-15)
+- **CLI Enhancements**
+  - Added `--gpu` flag for GPU acceleration control (default: True)
+  - Added `--lut_size` parameter for LUT resolution (0=disabled, 65=recommended)
+  - Automatic backend selection: LUT → GPU → CPU fallback chain
+- **Processing Pipeline**
+  - Integrated LUT processing as first priority when enabled
+  - GPU processing with automatic fallback to CPU
+  - Improved error handling and logging for each backend
+- **Code Quality**
+  - Fixed imports and module dependencies
+  - Consistent code formatting with ruff
+  - Updated type hints and documentation
+
+### Performance Improvements (2025-01-15)
+- Fused kernel reduces memory traffic by ~80%
+- GPU acceleration provides 10-100x speedup on compatible hardware
+- 3D LUT provides 5-20x speedup with near-instant cached lookups
+- Combined optimizations target <10ms for 1920×1080 on modern hardware
+
+## [0.1.1] - 2025-01-14
+
+### Added
+- Numba-optimized color space transformations (77-115x faster)
+  - Direct matrix multiplication for sRGB ↔ Oklab conversions
+  - Vectorized OKLCH ↔ Oklab batch conversions
+  - Parallel processing with `numba.prange`
+  - Optimized gamut mapping with binary search
+- New module `trans_numba.py` with all performance-critical color operations
+- Performance benchmark script (`test_performance.py`)
+- Correctness test suite for validating optimizations
+
+### Changed
+- `color_engine.py` now uses Numba-optimized functions for batch RGB ↔ Oklab conversions
+- `transforms.py` uses vectorized OKLCH conversions instead of pixel-by-pixel loops
+- Eliminated ColorAide bottleneck in performance-critical paths
+- Matrix multiplication now uses manual implementation to avoid scipy dependency
+
+### Performance Improvements
+- 256×256 images: 5.053s → 0.044s (114.6x faster)
+- 512×512 images: 23.274s → 0.301s (77.3x faster)
+- 2048×2048 images now process in under 4 seconds
+
+## [0.1.0] - 2025-01-14
+
+### Added
+- Initial release of imgcolorshine
+- Core color transformation engine with OKLCH color space support
+- High-performance image I/O with OpenCV and PIL fallback
+- Numba-optimized pixel transformations with parallel processing
+- CSS Color Module 4 compliant gamut mapping
+- Multiple falloff functions (cosine, linear, quadratic, gaussian, cubic)
+- Tiled processing for large images with memory management
+- Click-based CLI interface with progress tracking
+- Support for all CSS color formats (hex, rgb, hsl, oklch, named colors)
+- Channel-specific transformations (luminance, saturation, hue)
+- Multi-attractor blending with configurable tolerance and strength
+- Comprehensive logging with loguru
+- Rich console output with progress indicators
+
+### Changed
+- Migrated from Fire to Click for CLI implementation
+- Restructured codebase to use modern Python packaging (src layout)
+- Updated all modules to include proper type hints
+- Enhanced documentation with detailed docstrings
+
+### Technical Details
+- Python 3.11+ required
+- Dependencies: click, coloraide, opencv-python, numpy, numba, pillow, loguru, rich
+- Modular architecture with separate modules for each concern
+- JIT compilation for performance-critical code paths
+</file>
+
 <file path="cleanup.sh">
 #!/usr/bin/env bash
+
+# Check if uv is available, install if not
+if ! command -v uv >/dev/null 2>&1; then
+    echo "uv not found, installing with pip..."
+    $(which python) -m pip install uv
+fi
+
+# Check if we're in a virtual environment
+if [[ -z "$VIRTUAL_ENV" ]]; then
+    echo "Not in a virtual environment, creating and activating one..."
+    uv venv
+    source .venv/bin/activate
+    echo "Re-running script in virtual environment..."
+    exec "$0" "$@"
+fi
+
 echo "rm -rf dist/imgcolorshine*.*"
 rm -rf dist/imgcolorshine*.*
 echo "uv build"
@@ -7324,20 +7608,24 @@ echo "python -m uzpy run -e src"
 python -m uzpy run -e src
 echo "find . -name '*.py' -exec uvx autoflake -i {} +"
 for p in src tests; do find "$p" -name "*.py" -exec uvx autoflake -i {} +; done
-echo "find . -name '*.py' -exec uvx pyupgrade --py311-plus {} +"
-for p in src tests; do find "$p" -exec uvx pyupgrade --py311-plus {} +; done
+echo "find . -name '*.py' -type f -exec uvx pyupgrade --py311-plus {} +"
+for p in src tests; do find "$p" -type f -exec uvx pyupgrade --py311-plus {} +; done
 echo "find . -name '*.py' -exec uvx ruff check --output-format=github --fix --unsafe-fixes {} +"
 for p in src tests; do find "$p" -name "*.py" -exec uvx ruff check --output-format=github --fix --unsafe-fixes {} +; done
 echo "find . -name '*.py' -exec uvx ruff format --respect-gitignore --target-version py311 {} +"
 for p in src tests; do find "$p" -name "*.py" -exec uvx ruff format --respect-gitignore --target-version py311 {} +; done
 echo "uvx ty check"
 uvx ty check
-echo "PYTHONPATH=src mypy -p imgcolorshine"
-PYTHONPATH=src mypy -p imgcolorshine
-echo "repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules,docs -o llms.txt ."
-repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules,docs -o llms.txt .
+echo "PYTHONPATH=src $(which python) -m mypy -p imgcolorshine"
+PYTHONPATH=src python -m mypy -p imgcolorshine
+if command -v npx >/dev/null 2>&1; then
+    echo "npx repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules,docs -o llms.txt ."
+    npx repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules,docs -o llms.txt .
+else
+    echo "npx not found, skipping repomix"
+fi
 echo "python -m pytest"
-python -m pytest
+$(which python) -m pytest
 </file>
 
 <file path="README.md">
@@ -7568,13 +7856,16 @@ MIT License - see [LICENSE](LICENSE) file for details.
 <file path="TODO.md">
 # TODO
 
-Use `uv` or `hatch` or `python`, not `python3`. 
+- [ ] Implement Phase 1 from `PLAN.md`
+- [ ] Implement Phase 2 from `PLAN.md`
+- [ ] Implement Phase 3 from `PLAN.md`
+- [ ] Implement Phase 4 from `PLAN.md`
+- [ ] Implement Phase 5 from `PLAN.md`
+- [ ] Implement Phase 6 from `PLAN.md`
+- [ ] Implement Phase 7 from `PLAN.md`
+- [ ] Implement Phase 8 from `PLAN.md`
 
-- [ ] Analyze full codebase from llms.txt
-- [ ] Identify which tests are not covered
-- [ ] Identify which tests are not working
-- [ ] Write into `PLAN.md` a detailed plan for writing additional tests, and for fixing the failing tests. Note: sometimes we need to fix the code in `src` but sometimes it makes more sense to fix the tests in `tests`, because the tests are not adequare or are outdated.  
-- [ ] Also write into `PLAN.md` very clear instructions that encourage to run tests, review, revise, improve, iterate.
+Always use `uv` or `hatch` or `python`, not `python3`.
 </file>
 
 </files>

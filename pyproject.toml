@@ -57,10 +57,10 @@ test = [
     'coverage[toml]>=7.6.12',
 ]
 docs = [
-    'sphinx>=8.2.3',
+    'sphinx>=8.0.0',
     'sphinx-rtd-theme>=3.0.2',
-    'sphinx-autodoc-typehints>=2.0.0',
-    'myst-parser>=4.0.1',
+    'sphinx-autodoc-typehints>=3.0.0',
+    'myst-parser>=4.0.0',
 ]
 all = [
     'absolufy-imports>=0.3.1',
@@ -74,10 +74,10 @@ all = [
     'pytest>=8.3.4',
     'pyupgrade>=3.19.1',
     'ruff>=0.9.7',
-    'myst-parser>=4.0.1',
+    'myst-parser>=4.0.0',
     'sphinx-autodoc-typehints>=2.0.0',
     'sphinx-rtd-theme>=3.0.2',
-    'sphinx>=8.2.3',
+    'sphinx>=8.0.0',
 ]
 
 [project.scripts]

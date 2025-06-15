@@ -13,9 +13,90 @@ binary search to find the maximum chroma that fits within gamut.
 
 """
 
+import numba
 import numpy as np
 from coloraide import Color
 from loguru import logger
+
+# Import Numba-optimized functions from trans_numba
+from imgcolorshine.trans_numba import (
+    batch_gamut_map_oklch,
+    gamut_map_oklch_single,
+    is_in_gamut_srgb,
+    oklab_to_srgb_single,
+    oklch_to_oklab_single,
+)
+
+
+@numba.njit(cache=True)
+def binary_search_chroma(l: float, c: float, h: float, epsilon: float = 0.0001) -> float:
+    """
+    Numba-optimized binary search for maximum in-gamut chroma.
+
+    Finds the maximum chroma value that keeps the color within sRGB gamut
+    using binary search. This is the core of the CSS Color Module 4 gamut
+    mapping algorithm.
+
+    Args:
+        l: Lightness (0-1)
+        c: Initial chroma value
+        h: Hue in degrees (0-360)
+        epsilon: Convergence threshold
+
+    Returns:
+        Maximum chroma that fits within gamut
+    """
+    # Quick check if already in gamut
+    oklch = np.array([l, c, h], dtype=np.float32)
+    oklab = oklch_to_oklab_single(oklch)
+    rgb = oklab_to_srgb_single(oklab)
+
+    if is_in_gamut_srgb(rgb):
+        return c
+
+    # Binary search for maximum valid chroma
+    c_min, c_max = 0.0, c
+
+    for _ in range(20):  # Max iterations
+        if c_max - c_min <= epsilon:
+            break
+
+        c_mid = (c_min + c_max) / 2.0
+        test_oklch = np.array([l, c_mid, h], dtype=np.float32)
+        test_oklab = oklch_to_oklab_single(test_oklch)
+        test_rgb = oklab_to_srgb_single(test_oklab)
+
+        if is_in_gamut_srgb(test_rgb):
+            c_min = c_mid
+        else:
+            c_max = c_mid
+
+    return c_min
+
+
+@numba.njit(parallel=True, cache=True)
+def batch_map_oklch_numba(colors_flat: np.ndarray, epsilon: float = 0.0001) -> np.ndarray:
+    """
+    Numba-optimized batch gamut mapping for OKLCH colors.
+
+    Processes multiple colors in parallel for maximum performance.
+
+    Args:
+        colors_flat: Flattened array of OKLCH colors (N, 3)
+        epsilon: Convergence threshold for binary search
+
+    Returns:
+        Gamut-mapped OKLCH colors (N, 3)
+    """
+    n_colors = colors_flat.shape[0]
+    mapped_colors = np.empty_like(colors_flat)
+
+    for i in numba.prange(n_colors):
+        l, c, h = colors_flat[i]
+        c_mapped = binary_search_chroma(l, c, h, epsilon)
+        mapped_colors[i] = np.array([l, c_mapped, h], dtype=colors_flat.dtype)
+
+    return mapped_colors
 
 
 class GamutMapper:
@@ -48,10 +129,11 @@ class GamutMapper:
 
     def map_oklch_to_gamut(self, l: float, c: float, h: float) -> tuple[float, float, float]:
         """
-        CSS Color Module 4 gamut mapping algorithm.
+        CSS Color Module 4 gamut mapping algorithm with Numba optimization.
 
-        Reduces chroma while preserving lightness and chroma until
-        the color fits within the target gamut.
+        Reduces chroma while preserving lightness and hue until
+        the color fits within the target gamut. Uses Numba-optimized
+        binary search for better performance when available.
 
         Args:
             l: Lightness (0-1)
@@ -64,6 +146,13 @@ class GamutMapper:
         Used in:
         - old/imgcolorshine/test_imgcolorshine.py
         """
+        # Use Numba-optimized version for sRGB gamut mapping
+        if self.target_space == "srgb":
+            final_c = binary_search_chroma(l, c, h, self.epsilon)
+            logger.debug(f"Gamut mapped (Numba): C={c:.4f} → {final_c:.4f}")
+            return l, final_c, h
+
+        # Fall back to ColorAide for other color spaces
         # Create color object
         color = Color("oklch", [l, c, h])
 
@@ -142,7 +231,10 @@ class GamutMapper:
 
     def batch_map_oklch(self, colors: np.ndarray) -> np.ndarray:
         """
-        Map multiple OKLCH colors to gamut.
+        Map multiple OKLCH colors to gamut with Numba optimization.
+
+        Uses parallel processing for sRGB gamut mapping, falling back
+        to sequential processing for other color spaces.
 
         Args:
             colors: Array of shape (..., 3) with OKLCH values
@@ -152,9 +244,15 @@ class GamutMapper:
 
         """
         shape = colors.shape
-        flat_colors = colors.reshape(-1, 3)
-        mapped_colors = np.zeros_like(flat_colors)
+        flat_colors = colors.reshape(-1, 3).astype(np.float32)
 
+        # Use Numba-optimized parallel version for sRGB
+        if self.target_space == "srgb":
+            mapped_colors = batch_map_oklch_numba(flat_colors, self.epsilon)
+            return mapped_colors.reshape(shape)
+
+        # Fall back to sequential processing for other color spaces
+        mapped_colors = np.zeros_like(flat_colors)
         for i, (l, c, h) in enumerate(flat_colors):
             mapped_colors[i] = self.map_oklch_to_gamut(l, c, h)
 

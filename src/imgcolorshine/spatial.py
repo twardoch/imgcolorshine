@@ -21,6 +21,80 @@ from loguru import logger
 from scipy.spatial import KDTree
 
 
+@numba.njit(cache=True, parallel=True)
+def compute_influence_mask_direct(pixels_flat: np.ndarray, centers: np.ndarray, radii: np.ndarray) -> np.ndarray:
+    """
+    Numba-optimized direct computation of influence mask.
+
+    Computes which pixels fall within any attractor's influence radius
+    using parallel processing for maximum performance.
+
+    Args:
+        pixels_flat: Flattened pixel array in Oklab space (N, 3)
+        centers: Attractor centers in Oklab space (M, 3)
+        radii: Influence radii for each attractor (M,)
+
+    Returns:
+        Boolean mask (N,) where True indicates influenced pixels
+    """
+    n_pixels = pixels_flat.shape[0]
+    n_attractors = centers.shape[0]
+    mask = np.zeros(n_pixels, dtype=np.bool_)
+
+    # Process pixels in parallel
+    for i in numba.prange(n_pixels):
+        pixel = pixels_flat[i]
+
+        # Check against each attractor
+        for j in range(n_attractors):
+            # Compute Euclidean distance in Oklab space
+            dx = pixel[0] - centers[j, 0]
+            dy = pixel[1] - centers[j, 1]
+            dz = pixel[2] - centers[j, 2]
+            distance = np.sqrt(dx * dx + dy * dy + dz * dz)
+
+            # Check if within influence radius
+            if distance <= radii[j]:
+                mask[i] = True
+                break  # No need to check other attractors
+
+    return mask
+
+
+@numba.njit(cache=True)
+def find_pixel_attractors(pixel: np.ndarray, centers: np.ndarray, radii: np.ndarray, indices: np.ndarray) -> np.ndarray:
+    """
+    Numba-optimized function to find attractors influencing a pixel.
+
+    Args:
+        pixel: Single pixel in Oklab space (3,)
+        centers: Attractor centers in Oklab space (M, 3)
+        radii: Influence radii for each attractor (M,)
+        indices: Attractor indices (M,)
+
+    Returns:
+        Array of attractor indices that influence this pixel
+    """
+    n_attractors = centers.shape[0]
+    influencing = []
+
+    for j in range(n_attractors):
+        # Compute Euclidean distance in Oklab space
+        dx = pixel[0] - centers[j, 0]
+        dy = pixel[1] - centers[j, 1]
+        dz = pixel[2] - centers[j, 2]
+        distance = np.sqrt(dx * dx + dy * dy + dz * dz)
+
+        # Check if within influence radius
+        if distance <= radii[j]:
+            influencing.append(indices[j])
+
+    # Convert to numpy array
+    if influencing:
+        return np.array(influencing, dtype=np.int32)
+    return np.empty(0, dtype=np.int32)
+
+
 @dataclass
 class InfluenceRegion:
     """Represents an attractor's region of influence in color space."""
@@ -148,29 +222,34 @@ class SpatialAccelerator:
 
     def _get_mask_direct(self, pixels_flat: np.ndarray) -> np.ndarray:
         """
-        Direct method to compute influence mask.
+        Direct method to compute influence mask using Numba optimization.
 
-        More efficient for small numbers of attractors.
+        More efficient for small numbers of attractors. Uses parallel
+        processing to compute distances for all pixels simultaneously.
 
         Args:
-            pixels_flat: Flattened pixel array (N, 3)
+            pixels_flat: Flattened pixel array in Oklab space (N, 3)
 
         Returns:
             Boolean mask (N,)
         """
-        mask = np.zeros(len(pixels_flat), dtype=bool)
+        if not self.influence_regions:
+            return np.zeros(len(pixels_flat), dtype=bool)
 
-        for region in self.influence_regions:
-            # Compute distances to this attractor
-            distances = np.linalg.norm(pixels_flat - region.center, axis=1)
-            # Mark pixels within radius
-            mask |= distances <= region.radius
+        # Prepare data for Numba function
+        len(self.influence_regions)
+        centers = np.array([region.center for region in self.influence_regions], dtype=np.float32)
+        radii = np.array([region.radius for region in self.influence_regions], dtype=np.float32)
 
-        return mask
+        # Use Numba-optimized function for parallel computation
+        return compute_influence_mask_direct(pixels_flat.astype(np.float32), centers, radii)
 
     def query_pixel_attractors(self, pixel_oklab: np.ndarray) -> list[int]:
         """
-        Find which attractors influence a specific pixel.
+        Find which attractors influence a specific pixel using Numba optimization.
+
+        Uses optimized distance computation to quickly identify all attractors
+        that have influence over the given pixel color.
 
         Args:
             pixel_oklab: Single pixel color in Oklab space (3,)
@@ -178,14 +257,19 @@ class SpatialAccelerator:
         Returns:
             List of attractor indices that influence this pixel
         """
-        influencing_attractors = []
+        if not self.influence_regions:
+            return []
 
-        for region in self.influence_regions:
-            distance = np.linalg.norm(pixel_oklab - region.center)
-            if distance <= region.radius:
-                influencing_attractors.append(region.attractor_idx)
+        # Prepare data for Numba function
+        len(self.influence_regions)
+        centers = np.array([region.center for region in self.influence_regions], dtype=np.float32)
+        radii = np.array([region.radius for region in self.influence_regions], dtype=np.float32)
+        indices = np.array([region.attractor_idx for region in self.influence_regions], dtype=np.int32)
 
-        return influencing_attractors
+        # Use Numba-optimized function
+        result = find_pixel_attractors(pixel_oklab.astype(np.float32), centers, radii, indices)
+
+        return result.tolist()
 
     @staticmethod
     @numba.njit
