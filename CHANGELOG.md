@@ -203,3 +203,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dependencies: click, coloraide, opencv-python, numpy, numba, pillow, loguru, rich
 - Modular architecture with separate modules for each concern
 - JIT compilation for performance-critical code paths
+
+### Added / Behavioural Changes
+
+- **Extended Strength Range (0-200)**  
+  The `strength` parameter for each attractor now accepts values up to **200**.  
+  
+  • **0-100** – behaves exactly as before; weight = strength × raised-cosine fall-off.  
+  • **100-200** – gradually flattens the fall-off curve. At 200 every pixel *within the tolerance radius* is pulled with full weight (duotone effect).
+
+  Implementation details:
+  - Weight computation moved to `engine._calculate_weights_percentile()`.
+  - For `strength > 100` an extra factor `s_extra = (strength-100)/100` blends the fall-off value with 1.0.
+  - CLI validator in `colorshine.parse_attractor()` now allows 0-200.
+
+  This enables one-knob transition from subtle grading to complete duotone without changing tolerance.

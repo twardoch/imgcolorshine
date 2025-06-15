@@ -129,10 +129,11 @@ Each attractor is specified as: `"color;tolerance;strength"`
   - 30-60: Moderate range of influence
   - 70-100: Broad influence across many colors
   
-- **strength** (0-100): Transformation intensity
-  - 0-30: Subtle shifts
-  - 40-70: Noticeable but natural
-  - 80-100: Strong transformation
+- **strength** (0-200): Transformation intensity
+  - 0-30: Subtle shifts, original color dominates
+  - 40-70: Noticeable but natural transformations
+  - 80-100: Strong pull toward attractor (fall-off still applies)
+  - 100-200: Extended range – progressively flattens the fall-off curve
 
 ### Command Options
 
@@ -189,82 +190,23 @@ done
 
 ## How It Works
 
-### The Physics Model
+### The Attraction Model: "Pull" vs "Replace"
+`imgcolorshine` uses a **"pull" model**, not a "replace" model. Colors are gradually pulled toward attractors, creating natural, smooth transitions.
 
-imgcolorshine uses a gravitational attraction model where:
-
-1. **Attractors** are color points in OKLCH space that exert "pull" on image colors
-2. **Distance** determines influence strength (perceptual ΔE in Oklab)
-3. **Tolerance** sets the maximum influence radius
-4. **Strength** controls the pull intensity
-5. **Falloff** uses a raised cosine curve for smooth transitions
-
-### Color Space Operations
-
-All transformations occur in OKLCH (Oklab Lightness, Chroma, Hue) space:
-
-- **L**: Perceptual lightness (0-1)
-- **C**: Chroma/saturation (0-0.4+)
-- **H**: Hue angle (0-360°)
-
-This ensures:
-- Perceptually uniform color distances
-- Natural-looking transformations
-- No unexpected color shifts
-- Consistent results across different images
-
-### Transformation Pipeline
-
-1. **Load Image**: Read and convert to float32 RGB
-2. **Color Conversion**: RGB → Linear RGB → XYZ → Oklab → OKLCH
-3. **Calculate Influences**: For each pixel, compute influence from all attractors
-4. **Blend Transformations**: Weighted average based on influences
-5. **Gamut Mapping**: Ensure colors are displayable in sRGB
-6. **Convert Back**: OKLCH → Oklab → XYZ → Linear RGB → sRGB
-7. **Save Result**: Write processed image
+### The Transformation Process
+1.  **Color Space**: All operations happen in the perceptually uniform OKLCH color space.
+2.  **Attraction Model**: Each attractor's influence is determined by:
+    -   **Tolerance (0-100)**: This is a **percentile**. `tolerance=50` means the attractor will influence the 50% of the image's pixels that are most similar to it. This makes the effect adaptive to each image's unique color palette.
+    -   **Strength (0-200)**: This controls the **intensity of the pull** – and, beyond 100, how much the raised-cosine fall-off is overridden.
+3.  **Blending**: Influences from multiple attractors are blended using a normalized, weighted average.
+4.  **Gamut Mapping**: Any resulting colors that are outside the displayable sRGB gamut are carefully mapped back in, preserving the perceived color as much as possible.
 
 ## Performance
+The refactored codebase is optimized for correctness and maintainability. Performance is enhanced through:
+-   **Numba**: Critical numerical loops are JIT-compiled to C-like speed.
+-   **Mypyc**: Core modules are compiled into native C extensions, removing Python interpreter overhead.
 
-### Optimization Layers
-
-1. **Numba JIT Compilation**
-   - Compiled color space conversions
-   - Parallel pixel processing
-   - Vectorized operations
-   - Cache-optimized memory access
-
-2. **GPU Acceleration (CuPy)**
-   - Massively parallel processing
-   - Optimized memory transfers
-   - Automatic CPU fallback
-   - Support for large images
-
-3. **3D Color LUT**
-   - Pre-computed transformations
-   - Trilinear interpolation
-   - Disk caching
-   - Near-instant lookups
-
-4. **Fused Kernels**
-   - Single-pass transformation
-   - All operations in registers
-   - Minimal memory traffic
-   - Integrated gamut mapping
-
-5. **Spatial Structures**
-   - KD-tree color indexing
-   - Early pixel culling
-   - Tile coherence detection
-   - Uniform region optimization
-
-### Benchmark Results
-
-| Image Size | Pure Python | CPU (Numba) | GPU (CuPy) | LUT (Cached) |
-|------------|-------------|-------------|------------|--------------|
-| 256×256    | 5.053s      | 0.044s      | 0.012s     | 0.008s       |
-| 512×512    | 23.274s     | 0.301s      | 0.025s     | 0.032s       |
-| 1920×1080  | ~150s       | 2.8s        | 0.045s     | 0.18s        |
-| 4K (3840×2160) | ~600s   | 11.2s       | 0.15s      | 0.72s        |
+A 2048x2048 image is processed in a few seconds on a modern machine.
 
 ## Architecture
 

@@ -12,16 +12,16 @@ Contains the main image transformation pipeline.
 
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from loguru import logger
 
-from imgcolorshine.color import OKLCHEngine
+from imgcolorshine.engine import ColorTransformer, OKLCHEngine
 from imgcolorshine.io import ImageProcessor
-from imgcolorshine.transform import ColorTransformer
 
 
-def setup_logging(verbose: bool = False):
+def setup_logging(verbose: bool = False) -> None:
     """Configure loguru logging based on verbosity."""
     logger.remove()
     if verbose:
@@ -45,8 +45,8 @@ def parse_attractor(attractor_str: str) -> tuple[str, float, float]:
         if not 0 <= tolerance <= 100:
             msg = f"Tolerance must be 0-100, got {tolerance}"
             raise ValueError(msg)
-        if not 0 <= strength <= 100:
-            msg = f"Strength must be 0-100, got {strength}"
+        if not 0 <= strength <= 200:
+            msg = f"Strength must be 0-200, got {strength}"
             raise ValueError(msg)
 
         return color, tolerance, strength
@@ -68,13 +68,9 @@ def process_image(
     output_image: str | None = None,
     luminance: bool = True,
     saturation: bool = True,
-    chroma: bool = True,
+    hue: bool = True,
     verbose: bool = False,
-    tile_size: int = 1024,
-    gpu: bool = True,
-    lut_size: int = 0,
-    fast_hierar: bool = False,
-    fast_spatial: bool = True,
+    **kwargs: Any,
 ) -> None:
     """
     Process an image with color attractors.
@@ -86,15 +82,11 @@ def process_image(
         input_image: Path to input image
         attractors: Color attractors in format "color;tolerance;strength"
         output_image: Output path (auto-generated if None)
-        luminance: Enable lightness transformation
-        saturation: Enable chroma transformation
-        chroma: Enable chroma transformation
+        luminance: Enable lightness transformation (L in OKLCH)
+        saturation: Enable saturation transformation (C in OKLCH)
+        hue: Enable hue transformation (H in OKLCH)
         verbose: Enable verbose logging
-        tile_size: Tile size for large image processing
-        gpu: Use GPU acceleration if available
-        lut_size: Size of 3D LUT (0=disabled)
-        fast_hierar: Enable fast_hierar multi-resolution processing
-        fast_spatial: Enable spatial acceleration
+        **kwargs: Additional keyword arguments (tile_size, gpu, lut_size, etc.)
 
     Used in:
     - src/imgcolorshine/cli.py
@@ -109,8 +101,8 @@ def process_image(
         msg = "At least one attractor must be provided"
         raise ValueError(msg)
 
-    if not any([luminance, saturation, chroma]):
-        msg = "At least one channel (luminance, saturation, chroma) must be enabled"
+    if not any([luminance, saturation, hue]):
+        msg = "At least one channel (luminance, saturation, hue) must be enabled"
         raise ValueError(msg)
 
     # Parse attractors
@@ -130,7 +122,7 @@ def process_image(
 
     # Initialize components
     engine = OKLCHEngine()
-    processor = ImageProcessor(tile_size=tile_size)
+    processor = ImageProcessor(tile_size=kwargs.get("tile_size", 1024))
     transformer = ColorTransformer(engine)
 
     # Create attractor objects
@@ -142,107 +134,24 @@ def process_image(
 
     # Load image
     logger.info(f"Loading image: {input_path}")
-    image = processor.load_image(input_path)
+    image: np.ndarray[Any, Any] = processor.load_image(input_path)
 
-    # Try LUT transformation first if enabled
-    transformed = None
-    if lut_size > 0:
-        try:
-            logger.info(f"Building {lut_size}³ color LUT...")
-            import numpy as np
+    # --- Force standard transformer path for new percentile logic ---
+    # The new percentile-based tolerance model requires a two-pass analysis
+    # of the entire image, which is incompatible with the tile-based LUT,
+    # GPU, and fused kernel optimizations. We prioritize correctness here.
 
-            from imgcolorshine.kernel import transform_pixel_fused
-            from imgcolorshine.lut import ColorLUT
+    logger.info("Using percentile-based tolerance model.")
+    transformed: np.ndarray[Any, Any] = transformer.transform_image(
+        image,
+        attractor_objects,
+        {"luminance": luminance, "saturation": saturation, "hue": hue},
+    )
 
-            # Create LUT
-            lut = ColorLUT(size=lut_size if lut_size > 0 else 65)
-
-            # Prepare attractor data
-            attractors_lab = np.array([a.oklab_values for a in attractor_objects])
-            tolerances = np.array([a.tolerance for a in attractor_objects])
-            strengths = np.array([a.strength for a in attractor_objects])
-            channels = [luminance, saturation, chroma]
-
-            # Build LUT using fused kernel
-            def transform_func(rgb, attr_lab, tol, str_vals, l, s, h):
-                return np.array(transform_pixel_fused(rgb[0], rgb[1], rgb[2], attr_lab, tol, str_vals, l, s, h))
-
-            lut.build_lut(transform_func, attractors_lab, tolerances, strengths, channels)
-
-            # Apply LUT
-            logger.info("Applying LUT transformation...")
-            transformed = lut.apply_lut(image)
-            logger.info("LUT processing successful")
-
-        except Exception as e:
-            logger.warning(f"LUT processing failed: {e}, falling back to standard processing")
-            transformed = None
-
-    # Try GPU transformation if LUT failed or disabled
-    if transformed is None and gpu:
-        try:
-            from imgcolorshine.gpu import GPU_AVAILABLE
-
-            if GPU_AVAILABLE:
-                logger.info("Attempting GPU acceleration...")
-                import numpy as np
-
-                from imgcolorshine.trans_gpu import process_image_gpu
-
-                # Prepare attractor data
-                attractors_lab = np.array([a.oklab_values for a in attractor_objects])
-                tolerances = np.array([a.tolerance for a in attractor_objects])
-                strengths = np.array([a.strength for a in attractor_objects])
-
-                # Process on GPU
-                transformed = process_image_gpu(
-                    image,
-                    attractors_lab,
-                    tolerances,
-                    strengths,
-                    luminance,
-                    saturation,
-                    chroma,
-                )
-
-                if transformed is not None:
-                    logger.info("GPU processing successful")
-                else:
-                    logger.warning("GPU processing failed, falling back to CPU")
-                    gpu = False
-            else:
-                logger.debug("GPU not available, using CPU")
-                gpu = False
-        except ImportError:
-            logger.debug("GPU libraries not installed, using CPU")
-            gpu = False
-
-    # CPU processing (fallback or if GPU disabled)
-    if not gpu or transformed is None:
-        # Check if we should use optimizations
-        if fast_hierar or fast_spatial:
-            logger.info("Using optimized CPU processing...")
-            transformed = process_with_optimizations(
-                image,
-                attractor_objects,
-                luminance,
-                saturation,
-                chroma,
-                fast_hierar,
-                fast_spatial,
-                transformer,
-                engine,
-            )
-        else:
-            logger.info("Transforming colors on CPU...")
-            flags = {"luminance": luminance, "saturation": saturation, "chroma": chroma}
-            transformed = transformer.transform_image(image, attractor_objects, flags)
-
-    # Save image
-    logger.info(f"Saving image: {output_path}")
+    # Save the final image
+    logger.info("Saving transformed image...")
     processor.save_image(transformed, output_path)
-
-    logger.info(f"Processing complete: {input_path} → {output_path}")
+    logger.info(f"Successfully saved to {output_path}")
 
 
 def process_with_optimizations(
@@ -250,7 +159,7 @@ def process_with_optimizations(
     attractor_objects: list,
     luminance: bool,
     saturation: bool,
-    chroma: bool,
+    hue: bool,
     hierarchical: bool,
     spatial_accel: bool,
     transformer: "ColorTransformer",
@@ -267,7 +176,7 @@ def process_with_optimizations(
     attractors_lab = np.array([a.oklab_values for a in attractor_objects])
     tolerances = np.array([a.tolerance for a in attractor_objects])
     strengths = np.array([a.strength for a in attractor_objects])
-    channels = [luminance, saturation, chroma]
+    channels = [luminance, saturation, hue]
 
     # Import optimization modules
     if hierarchical:
@@ -394,7 +303,7 @@ def process_with_optimizations(
         )
     else:
         # Should not reach here, but fallback to standard processing
-        flags = {"luminance": luminance, "saturation": saturation, "chroma": chroma}
+        flags = {"luminance": luminance, "saturation": saturation, "hue": hue}
         transformed = transformer.transform_image(image, attractor_objects, flags)
 
     return transformed

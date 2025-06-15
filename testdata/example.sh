@@ -41,21 +41,21 @@ process_params() {
     local params=$1
     local luminance=$2
     local saturation=$3
-    local chroma=$4
+    local hue=$4
     local suffix=$5
 
     # Extract color and values from params
     IFS=';' read -r color tolerance strength <<<"$params"
 
-    echo "Processing: $color with tolerance=$tolerance, strength=$strength (l=$luminance,s=$saturation,h=$chroma)"
+    echo "Processing: $color with tolerance=$tolerance, strength=$strength (l=$luminance,s=$saturation,h=$hue)"
 
     # Build and display the CLI command
-    local cmd="imgcolorshine shine louis.jpg \"$params\" --luminance $luminance --saturation $saturation --chroma $chroma --output_image=\"output/louis-$suffix-$color-$tolerance-$strength.jpg\""
+    local cmd="imgcolorshine shine louis.jpg \"$params\" --luminance $luminance --saturation $saturation --hue $hue --output_image=\"output/louis-$suffix-$color-$tolerance-$strength.jpg\""
     echo "CLI: $cmd"
 
     # Execute the command
     imgcolorshine shine louis.jpg "$params" \
-        --luminance "$luminance" --saturation "$saturation" --chroma "$chroma" \
+        --luminance "$luminance" --saturation "$saturation" --hue "$hue" \
         --output_image="output/louis-$suffix-$color-$tolerance-$strength.jpg"
 }
 
@@ -74,7 +74,7 @@ if [ "$PARALLEL_AVAILABLE" -eq 1 ]; then
     # Saturation only
     echo "$PARAMS" | parallel process_params {} False True False "s"
 
-    # chroma only
+    # hue only
     echo "$PARAMS" | parallel process_params {} False False True "h"
 
     # All flags enabled
@@ -93,7 +93,7 @@ else
         process_params "$params" False True False "s"
     done
 
-    # chroma only
+    # hue only
     echo "$PARAMS" | while read -r params; do
         process_params "$params" False False True "h"
     done

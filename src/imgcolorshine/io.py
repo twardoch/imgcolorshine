@@ -14,6 +14,7 @@ for performance, with PIL as a fallback.
 """
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from loguru import logger
@@ -50,7 +51,7 @@ class ImageProcessor:
     - src/imgcolorshine/utils.py
     """
 
-    def __init__(self, tile_size: int = 1024):
+    def __init__(self, tile_size: int = 1024) -> None:
         """
         Initialize the image processor.
 
@@ -62,7 +63,7 @@ class ImageProcessor:
         self.use_opencv = HAS_OPENCV
         logger.debug(f"ImageProcessor initialized (OpenCV: {self.use_opencv}, tile_size: {tile_size})")
 
-    def load_image(self, path: str | Path) -> np.ndarray:
+    def load_image(self, path: str | Path) -> np.ndarray[Any, Any]:
         """
         Load an image from file.
 
@@ -92,7 +93,7 @@ class ImageProcessor:
             return self._load_opencv(path)
         return self._load_pil(path)
 
-    def save_image(self, image: np.ndarray, path: str | Path, quality: int = 95) -> None:
+    def save_image(self, image: np.ndarray[Any, Any], path: str | Path, quality: int = 95) -> None:
         """
         Save an image to file.
 
@@ -122,7 +123,7 @@ class ImageProcessor:
         else:
             self._save_pil(image, path, quality)
 
-    def _load_opencv(self, path: Path) -> np.ndarray:
+    def _load_opencv(self, path: Path) -> np.ndarray[Any, Any]:
         """Load image using OpenCV for better performance."""
         # OpenCV loads as BGR, we need RGB
         img = cv2.imread(str(path), cv2.IMREAD_COLOR)
@@ -144,7 +145,7 @@ class ImageProcessor:
         # Ensure C-contiguous memory layout for optimal performance
         return np.ascontiguousarray(img)
 
-    def _load_pil(self, path: Path) -> np.ndarray:
+    def _load_pil(self, path: Path) -> np.ndarray[Any, Any]:
         """Load image using PIL as fallback."""
         with Image.open(path) as img:
             # Convert to RGB if necessary
@@ -162,7 +163,7 @@ class ImageProcessor:
             # Ensure C-contiguous memory layout for optimal performance
             return np.ascontiguousarray(arr)
 
-    def _save_opencv(self, image: np.ndarray, path: Path, quality: int) -> None:
+    def _save_opencv(self, image: np.ndarray[Any, Any], path: Path, quality: int) -> None:
         """Save image using OpenCV for better performance."""
         # Ensure values are in [0, 1]
         image = np.clip(image, 0, 1)
@@ -192,7 +193,7 @@ class ImageProcessor:
 
         logger.debug(f"Saved image with OpenCV (quality: {quality})")
 
-    def _save_pil(self, image: np.ndarray, path: Path, quality: int) -> None:
+    def _save_pil(self, image: np.ndarray[Any, Any], path: Path, quality: int) -> None:
         """Save image using PIL as fallback."""
         # Ensure values are in [0, 1]
         image = np.clip(image, 0, 1)

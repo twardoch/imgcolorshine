@@ -34,7 +34,7 @@ def test_basic_transformation(cli, test_image_path):
             "red;50;75",
             output_image="output.jpg",
             luminance=True,
-            chroma=True,
+            saturation=True,
             hue=True,
             verbose=True,
         )
@@ -45,8 +45,8 @@ def test_basic_transformation(cli, test_image_path):
             attractors=("red;50;75",),
             output_image="output.jpg",
             luminance=True,
-            saturation=True,  # chroma maps to saturation internally
-            chroma=True,  # hue maps to chroma internally
+            saturation=True,
+            hue=True,
             verbose=True,
             tile_size=1024,
             gpu=True,
@@ -64,7 +64,7 @@ def test_multiple_attractors(cli, test_image_path):
             "red;50;75",
             "blue;30;60",
             luminance=False,
-            chroma=True,
+            saturation=True,
             hue=False,
         )
 
@@ -73,8 +73,8 @@ def test_multiple_attractors(cli, test_image_path):
             attractors=("red;50;75", "blue;30;60"),
             output_image=None,
             luminance=False,
-            saturation=True,  # chroma maps to saturation internally
-            chroma=False,  # hue maps to chroma internally
+            saturation=True,
+            hue=False,
             verbose=False,
             tile_size=1024,
             gpu=True,
@@ -93,7 +93,7 @@ def test_channel_flags(cli, test_image_path):
             "red;50;75",
             luminance=True,
             saturation=True,
-            chroma=False,
+            hue=False,
         )
 
         # Verify channel flags were passed correctly
@@ -101,7 +101,7 @@ def test_channel_flags(cli, test_image_path):
         call_args = mock_process.call_args[1]
         assert call_args["luminance"] is True
         assert call_args["saturation"] is True
-        assert call_args["chroma"] is False
+        assert call_args["hue"] is False
 
 
 def test_optimization_flags(cli, test_image_path):
