@@ -49,7 +49,7 @@ class Attractor:
         self.oklch_values = (
             self.color["lightness"],
             self.color["chroma"],
-            self.color["chroma"],
+            self.color["hue"],
         )
 
         # Convert to Oklab for distance calculations
