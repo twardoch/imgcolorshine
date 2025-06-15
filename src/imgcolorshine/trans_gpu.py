@@ -12,9 +12,8 @@ with automatic memory management and optimized kernels.
 """
 
 import numpy as np
-from loguru import logger
-
 from colorshine.gpu import check_gpu_memory_available, estimate_gpu_memory_required, get_array_module
+from loguru import logger
 
 # Try to import CuPy
 try:

@@ -150,7 +150,6 @@ def process_image(
         try:
             logger.info(f"Building {lut_size}³ color LUT...")
             import numpy as np
-
             from colorshine.fused_kernels import transform_pixel_fused
             from colorshine.lut import ColorLUT
 
@@ -186,7 +185,6 @@ def process_image(
             if GPU_AVAILABLE:
                 logger.info("Attempting GPU acceleration...")
                 import numpy as np
-
                 from colorshine.gpu_transforms import process_image_gpu
 
                 # Prepare attractor data
