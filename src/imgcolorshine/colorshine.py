@@ -88,7 +88,7 @@ def process_image(
         output_image: Output path (auto-generated if None)
         luminance: Enable lightness transformation
         saturation: Enable chroma transformation
-        hue: Enable hue transformation
+        hue: Enable chroma transformation
         verbose: Enable verbose logging
         tile_size: Tile size for large image processing
         gpu: Use GPU acceleration if available
@@ -110,7 +110,7 @@ def process_image(
         raise ValueError(msg)
 
     if not any([luminance, saturation, hue]):
-        msg = "At least one channel (luminance, saturation, hue) must be enabled"
+        msg = "At least one channel (luminance, saturation, chroma) must be enabled"
         raise ValueError(msg)
 
     # Parse attractors
@@ -217,14 +217,11 @@ def process_image(
         if hierarchical or spatial_accel:
             logger.info("Using optimized CPU processing...")
             transformed = process_with_optimizations(
-                image, attractor_objects, 
-                luminance, saturation, hue,
-                hierarchical, spatial_accel,
-                transformer, engine
+                image, attractor_objects, luminance, saturation, hue, hierarchical, spatial_accel, transformer, engine
             )
         else:
             logger.info("Transforming colors on CPU...")
-            flags = {"luminance": luminance, "saturation": saturation, "hue": hue}
+            flags = {"luminance": luminance, "saturation": saturation, "chroma": hue}
             transformed = transformer.transform_image(image, attractor_objects, flags)
 
     # Save image
@@ -247,113 +244,116 @@ def process_with_optimizations(
 ) -> np.ndarray:
     """
     Process image with hierarchical and/or spatial optimizations.
-    
+
     Combines both optimizations when both are enabled for maximum performance.
     """
     import numpy as np
-    
+
     # Prepare attractor data
     attractors_lab = np.array([a.oklab_values for a in attractor_objects])
     tolerances = np.array([a.tolerance for a in attractor_objects])
     strengths = np.array([a.strength for a in attractor_objects])
     channels = [luminance, saturation, hue]
-    
+
     # Import optimization modules
     if hierarchical:
         from imgcolorshine.hierarchical import HierarchicalProcessor
     if spatial_accel:
         from imgcolorshine.spatial_accel import SpatialAccelerator
-    
+
     # Combined optimization path
     if hierarchical and spatial_accel:
         logger.info("Using combined hierarchical + spatial acceleration")
-        
+
         # Initialize processors
         hier_processor = HierarchicalProcessor()
         spatial_acc = SpatialAccelerator()
-        
+
         # Build spatial index once
         spatial_acc.build_spatial_index(attractors_lab, tolerances)
-        
+
         # Create a transform function that uses spatial acceleration
         def spatial_transform_func(img, *args):
             # Convert to Oklab for spatial queries
             # Convert to Oklab for spatial queries
             img_oklab = engine.batch_rgb_to_oklab(img / 255.0)
-            
+
             # Create transform function wrapper
             attractors_lch = np.array([a.oklch_values for a in attractor_objects])
             flags_array = np.array(channels)
-            
+
             def transform_wrapper(img_rgb, *args):
-                return transformer._transform_tile(
-                    img_rgb / 255.0,
-                    attractors_lab, attractors_lch,
-                    tolerances, strengths, flags_array
-                ) * 255.0
-            
+                return (
+                    transformer._transform_tile(
+                        img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
+                    )
+                    * 255.0
+                )
+
             # Use spatial acceleration
-            result = spatial_acc.transform_with_spatial_accel(
-                img, img_oklab, attractors_lab, tolerances, strengths,
-                transform_wrapper, channels
+            return spatial_acc.transform_with_spatial_accel(
+                img, img_oklab, attractors_lab, tolerances, strengths, transform_wrapper, channels
             )
-            return result
-        
+
         # Process hierarchically with spatial optimization
         transformed = hier_processor.process_hierarchical(
-            image, spatial_transform_func, 
-            attractors_lab, tolerances, strengths, channels
+            image, spatial_transform_func, attractors_lab, tolerances, strengths, channels
         )
-        
+
     elif hierarchical:
         logger.info("Using hierarchical processing")
-        
+
         hier_processor = HierarchicalProcessor()
-        
+
         # Create a wrapper for the transform function
         def transform_func(img_rgb, *args):
             # Prepare attractor data in OKLCH format too
             attractors_lch = np.array([a.oklch_values for a in attractor_objects])
             flags_array = np.array(channels)
-            
+
             # Use the transformer's tile transform method
-            return transformer._transform_tile(
-                img_rgb / 255.0,  # Normalize to 0-1
-                attractors_lab, attractors_lch,
-                tolerances, strengths, flags_array
-            ) * 255.0  # Convert back to 0-255
-        
+            return (
+                transformer._transform_tile(
+                    img_rgb / 255.0,  # Normalize to 0-1
+                    attractors_lab,
+                    attractors_lch,
+                    tolerances,
+                    strengths,
+                    flags_array,
+                )
+                * 255.0
+            )  # Convert back to 0-255
+
         transformed = hier_processor.process_hierarchical(
-            image, transform_func,
-            attractors_lab, tolerances, strengths, channels
+            image, transform_func, attractors_lab, tolerances, strengths, channels
         )
-        
+
     elif spatial_accel:
         logger.info("Using spatial acceleration")
-        
+
         # Convert image to Oklab for spatial queries
         image_oklab = engine.batch_rgb_to_oklab(image / 255.0)
-        
+
         spatial_acc = SpatialAccelerator()
-        
+
         # Create transform function wrapper
         attractors_lch = np.array([a.oklch_values for a in attractor_objects])
         flags_array = np.array(channels)
-        
+
         def transform_func(img_rgb, *args):
-            return transformer._transform_tile(
-                img_rgb / 255.0,
-                attractors_lab, attractors_lch,
-                tolerances, strengths, flags_array
-            ) * 255.0
-        
+            return (
+                transformer._transform_tile(
+                    img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
+                )
+                * 255.0
+            )
+
         transformed = spatial_acc.transform_with_spatial_accel(
-            image, image_oklab, attractors_lab, tolerances, strengths,
-            transform_func, channels
+            image, image_oklab, attractors_lab, tolerances, strengths, transform_func, channels
         )
     else:
         # Should not reach here, but fallback to standard processing
-        flags = {"luminance": luminance, "saturation": saturation, "hue": hue}
+        flags = {"luminance": luminance, "saturation": saturation, "chroma": hue}
         transformed = transformer.transform_image(image, attractor_objects, flags)
-    
+
     return transformed

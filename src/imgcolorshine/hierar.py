@@ -12,8 +12,8 @@ by processing low-resolution versions first and only refining pixels that
 differ significantly from the coarse approximation.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Tuple
 
 import cv2
 import numba
@@ -27,7 +27,7 @@ class PyramidLevel:
 
     image: np.ndarray
     scale: float
-    shape: Tuple[int, int]
+    shape: tuple[int, int]
     level: int
 
 
@@ -57,9 +57,9 @@ class HierarchicalProcessor:
         self.pyramid_factor = pyramid_factor
         self.use_adaptive_subdivision = use_adaptive_subdivision
         self.gradient_threshold = gradient_threshold
-        self.pyramid_levels: List[PyramidLevel] = []
+        self.pyramid_levels: list[PyramidLevel] = []
 
-    def build_pyramid(self, image: np.ndarray) -> List[PyramidLevel]:
+    def build_pyramid(self, image: np.ndarray) -> list[PyramidLevel]:
         """
         Build Gaussian pyramid from input image.
 
@@ -105,9 +105,7 @@ class HierarchicalProcessor:
 
     @staticmethod
     @numba.njit
-    def _compute_perceptual_distance(
-        lab1: np.ndarray, lab2: np.ndarray
-    ) -> np.ndarray:
+    def _compute_perceptual_distance(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
         """
         Compute perceptual distance between two Lab images.
 
@@ -149,13 +147,9 @@ class HierarchicalProcessor:
         normalized_distance = distance / (255.0 * np.sqrt(3))
 
         # Create binary mask
-        mask = normalized_distance > threshold
+        return normalized_distance > threshold
 
-        return mask
-
-    def detect_gradient_regions(
-        self, image: np.ndarray, gradient_threshold: float
-    ) -> np.ndarray:
+    def detect_gradient_regions(self, image: np.ndarray, gradient_threshold: float) -> np.ndarray:
         """
         Detect regions with high color gradients.
 
@@ -198,7 +192,7 @@ class HierarchicalProcessor:
         attractors: np.ndarray,
         tolerances: np.ndarray,
         strengths: np.ndarray,
-        channels: List[bool],
+        channels: list[bool],
     ) -> np.ndarray:
         """
         Process image hierarchically from coarse to fine resolution.
@@ -219,7 +213,7 @@ class HierarchicalProcessor:
         """
         # Build image pyramid
         pyramid = self.build_pyramid(image)
-        
+
         if len(pyramid) == 1:
             # Image too small for pyramid, process directly
             logger.debug("Image too small for pyramid, processing directly")
@@ -228,11 +222,9 @@ class HierarchicalProcessor:
         # Process coarsest level completely
         coarsest = pyramid[-1]
         logger.info(f"Processing coarsest level: {coarsest.shape}")
-        
+
         # Transform the coarsest level
-        result = transform_func(
-            coarsest.image, attractors, tolerances, strengths, channels
-        )
+        result = transform_func(coarsest.image, attractors, tolerances, strengths, channels)
 
         # Statistics tracking
         total_pixels_refined = 0
@@ -250,15 +242,11 @@ class HierarchicalProcessor:
             upsampled = cv2.resize(result, (w, h), interpolation=cv2.INTER_LINEAR)
 
             # Compute refinement mask
-            diff_mask = self.compute_difference_mask(
-                level.image, upsampled, self.difference_threshold
-            )
+            diff_mask = self.compute_difference_mask(level.image, upsampled, self.difference_threshold)
 
             # Add gradient regions if enabled
             if self.use_adaptive_subdivision:
-                gradient_mask = self.detect_gradient_regions(
-                    level.image, self.gradient_threshold
-                )
+                gradient_mask = self.detect_gradient_regions(level.image, self.gradient_threshold)
                 refinement_mask = diff_mask | gradient_mask
             else:
                 refinement_mask = diff_mask
@@ -269,22 +257,18 @@ class HierarchicalProcessor:
 
             # Process only masked pixels if any need refinement
             if num_refined > 0:
-                logger.debug(
-                    f"Refining {num_refined} pixels ({num_refined/refinement_mask.size*100:.1f}%)"
-                )
+                logger.debug(f"Refining {num_refined} pixels ({num_refined / refinement_mask.size * 100:.1f}%)")
 
                 # For efficient processing, we need to handle masked transformation
                 # This is a simplified approach - in production, we'd optimize this
                 refined_result = upsampled.copy()
-                
+
                 # Transform the entire level (optimization opportunity here)
-                transformed_level = transform_func(
-                    level.image, attractors, tolerances, strengths, channels
-                )
-                
+                transformed_level = transform_func(level.image, attractors, tolerances, strengths, channels)
+
                 # Apply only to masked pixels
                 refined_result[refinement_mask] = transformed_level[refinement_mask]
-                
+
                 result = refined_result
             else:
                 # No refinement needed, use upsampled result
@@ -294,9 +278,7 @@ class HierarchicalProcessor:
         # Log statistics
         if total_pixels > 0:
             refinement_ratio = total_pixels_refined / total_pixels
-            logger.info(
-                f"Hierarchical processing complete: refined {refinement_ratio*100:.1f}% of pixels"
-            )
+            logger.info(f"Hierarchical processing complete: refined {refinement_ratio * 100:.1f}% of pixels")
 
         return result
 
@@ -307,7 +289,7 @@ class HierarchicalProcessor:
         attractors: np.ndarray,
         tolerances: np.ndarray,
         strengths: np.ndarray,
-        channels: List[bool],
+        channels: list[bool],
         tile_size: int = 512,
     ) -> np.ndarray:
         """
@@ -332,9 +314,7 @@ class HierarchicalProcessor:
 
         # If image is small enough, process without tiling
         if h <= tile_size * 2 and w <= tile_size * 2:
-            return self.process_hierarchical(
-                image, transform_func, attractors, tolerances, strengths, channels
-            )
+            return self.process_hierarchical(image, transform_func, attractors, tolerances, strengths, channels)
 
         logger.info(f"Processing large image ({h}x{w}) with tiled hierarchical approach")
 

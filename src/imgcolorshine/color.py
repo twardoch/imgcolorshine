@@ -49,7 +49,7 @@ class Attractor:
         self.oklch_values = (
             self.color["lightness"],
             self.color["chroma"],
-            self.color["hue"],
+            self.color["chroma"],
         )
 
         # Convert to Oklab for distance calculations
@@ -214,7 +214,7 @@ class OKLCHEngine:
         """
         CSS Color Module 4 compliant gamut mapping.
 
-        Reduces chroma while preserving lightness and hue until the color
+        Reduces chroma while preserving lightness and chroma until the color
         is within sRGB gamut. Uses binary search for efficiency.
 
         """

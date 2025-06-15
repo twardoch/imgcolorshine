@@ -232,7 +232,7 @@ def transform_pixels_gpu(
         attractors_lch: Attractors in OKLCH (N, 3)
         tolerances: Tolerance values [0, 100]
         strengths: Strength values [0, 100]
-        flags: Boolean array [luminance, saturation, hue]
+        flags: Boolean array [luminance, saturation, chroma]
         xp: Array module (auto-detect if None)
 
     Returns:
@@ -297,7 +297,7 @@ def transform_pixels_gpu(
         )
 
     if flags[2]:  # Hue
-        # Circular mean for hue
+        # Circular mean for chroma
         h_rad = pixels_lch[:, 2] * xp.pi / 180.0
         sin_sum = source_weights.squeeze() * xp.sin(h_rad)
         cos_sum = source_weights.squeeze() * xp.cos(h_rad)
@@ -336,7 +336,7 @@ def process_image_gpu(
         strengths: Strength values [0, 100]
         enable_luminance: Transform lightness
         enable_saturation: Transform chroma
-        enable_hue: Transform hue
+        enable_hue: Transform chroma
 
     Returns:
         Transformed image in sRGB [0, 1]

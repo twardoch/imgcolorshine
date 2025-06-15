@@ -2,7 +2,7 @@
 # /// script
 # dependencies = ["numpy", "scipy", "loguru", "numba"]
 # ///
-# this_file: src/imgcolorshine/spatial_accel.py
+# this_file: src/imgcolorshine/fast_spatial.py
 
 """
 Spatial acceleration structures for imgcolorshine.
@@ -12,8 +12,8 @@ can be affected by which attractors, enabling early termination and
 tile coherence optimizations.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Set, Tuple
 
 import numba
 import numpy as np
@@ -37,8 +37,8 @@ class TileInfo:
     uniform: bool
     mean_color: np.ndarray
     variance: float
-    dominant_attractors: List[int]
-    coords: Tuple[int, int, int, int]
+    dominant_attractors: list[int]
+    coords: tuple[int, int, int, int]
 
 
 class SpatialAccelerator:
@@ -61,14 +61,12 @@ class SpatialAccelerator:
         self.uniformity_threshold = uniformity_threshold
         self.tile_size = tile_size
         self.cache_tiles = cache_tiles
-        self.color_tree: Optional[KDTree] = None
-        self.influence_regions: List[InfluenceRegion] = []
-        self.tile_cache: Dict[Tuple, TileInfo] = {}
+        self.color_tree: KDTree | None = None
+        self.influence_regions: list[InfluenceRegion] = []
+        self.tile_cache: dict[tuple, TileInfo] = {}
         self._max_radius: float = 0.0
 
-    def build_spatial_index(
-        self, attractors_oklab: np.ndarray, tolerances: np.ndarray
-    ) -> None:
+    def build_spatial_index(self, attractors_oklab: np.ndarray, tolerances: np.ndarray) -> None:
         """
         Build KD-tree and influence regions from attractors.
 
@@ -103,8 +101,7 @@ class SpatialAccelerator:
         self.tile_cache.clear()
 
         logger.debug(
-            f"Built spatial index: {len(self.influence_regions)} attractors, "
-            f"max radius {self._max_radius:.3f}"
+            f"Built spatial index: {len(self.influence_regions)} attractors, max radius {self._max_radius:.3f}"
         )
 
     def get_influenced_pixels_mask(self, pixels_oklab: np.ndarray) -> np.ndarray:
@@ -133,9 +130,7 @@ class SpatialAccelerator:
         # For each influence region, find pixels within radius
         for region in self.influence_regions:
             # Query all points within this region's radius
-            indices = self.color_tree.query_ball_point(
-                pixels_flat, r=region.radius, workers=-1
-            )
+            indices = self.color_tree.query_ball_point(pixels_flat, r=region.radius, workers=-1)
 
             # Check which pixels are close to this specific attractor
             for idx, neighbors in enumerate(indices):
@@ -173,7 +168,7 @@ class SpatialAccelerator:
 
         return mask
 
-    def query_pixel_attractors(self, pixel_oklab: np.ndarray) -> List[int]:
+    def query_pixel_attractors(self, pixel_oklab: np.ndarray) -> list[int]:
         """
         Find which attractors influence a specific pixel.
 
@@ -194,7 +189,7 @@ class SpatialAccelerator:
 
     @staticmethod
     @numba.njit
-    def _compute_tile_stats(tile_oklab: np.ndarray) -> Tuple[np.ndarray, float]:
+    def _compute_tile_stats(tile_oklab: np.ndarray) -> tuple[np.ndarray, float]:
         """
         Compute mean and variance for a tile.
 
@@ -228,9 +223,7 @@ class SpatialAccelerator:
 
         return mean, variance
 
-    def analyze_tile_coherence(
-        self, tile_oklab: np.ndarray, tile_coords: Tuple[int, int, int, int]
-    ) -> TileInfo:
+    def analyze_tile_coherence(self, tile_oklab: np.ndarray, tile_coords: tuple[int, int, int, int]) -> TileInfo:
         """
         Analyze spatial coherence within a tile for optimization.
 
@@ -270,9 +263,7 @@ class SpatialAccelerator:
             ]
 
             # Find common attractors across sample points
-            attractor_sets = [
-                set(self.query_pixel_attractors(p)) for p in sample_points
-            ]
+            attractor_sets = [set(self.query_pixel_attractors(p)) for p in sample_points]
             if attractor_sets:
                 common_attractors = set.intersection(*attractor_sets)
                 dominant_attractors = list(common_attractors)
@@ -301,7 +292,7 @@ class SpatialAccelerator:
         tolerances: np.ndarray,
         strengths: np.ndarray,
         transform_func: Callable,
-        channels: List[bool],
+        channels: list[bool],
     ) -> np.ndarray:
         """
         Transform image using spatial acceleration.
@@ -339,25 +330,21 @@ class SpatialAccelerator:
 
         logger.info(
             f"Spatial acceleration: processing {influenced_pixels:,} of {total_pixels:,} "
-            f"pixels ({influence_ratio*100:.1f}%)"
+            f"pixels ({influence_ratio * 100:.1f}%)"
         )
 
         # If most pixels are influenced, skip spatial optimization
         if influence_ratio > 0.8:
             logger.debug("Most pixels influenced, using standard processing")
-            return transform_func(
-                image_rgb, attractors_oklab, tolerances, strengths, channels
-            )
+            return transform_func(image_rgb, attractors_oklab, tolerances, strengths, channels)
 
         # Process with spatial optimization
         # For now, we'll use a simple approach - in production this would be optimized
         result = image_rgb.copy()
-        
+
         # Transform the whole image (this is the optimization opportunity)
-        transformed = transform_func(
-            image_rgb, attractors_oklab, tolerances, strengths, channels
-        )
-        
+        transformed = transform_func(image_rgb, attractors_oklab, tolerances, strengths, channels)
+
         # Apply only to influenced pixels
         result[influence_mask] = transformed[influence_mask]
 
@@ -371,8 +358,8 @@ class SpatialAccelerator:
         tolerances: np.ndarray,
         strengths: np.ndarray,
         transform_func: Callable,
-        channels: List[bool],
-        tile_size: Optional[int] = None,
+        channels: list[bool],
+        tile_size: int | None = None,
     ) -> np.ndarray:
         """
         Process image using tile coherence optimization.
@@ -420,7 +407,7 @@ class SpatialAccelerator:
                 if tile_info.uniform and tile_info.dominant_attractors:
                     # Uniform tile with attractors - transform mean color only
                     uniform_tiles += 1
-                    
+
                     # Transform the mean color
                     mean_rgb = np.mean(tile_rgb.reshape(-1, 3), axis=0)
                     transformed_mean = transform_func(
@@ -430,23 +417,21 @@ class SpatialAccelerator:
                         strengths[tile_info.dominant_attractors],
                         channels,
                     )[0, 0]
-                    
+
                     # Apply to entire tile
                     result[y:y2, x:x2] = transformed_mean
-                    
+
                 elif not tile_info.dominant_attractors:
                     # No attractors affect this tile, copy original
                     result[y:y2, x:x2] = tile_rgb
-                    
+
                 else:
                     # Non-uniform tile, process normally
-                    result[y:y2, x:x2] = transform_func(
-                        tile_rgb, attractors_oklab, tolerances, strengths, channels
-                    )
+                    result[y:y2, x:x2] = transform_func(tile_rgb, attractors_oklab, tolerances, strengths, channels)
 
         logger.info(
             f"Tile coherence: {uniform_tiles}/{total_tiles} tiles were uniform "
-            f"({uniform_tiles/total_tiles*100:.1f}%)"
+            f"({uniform_tiles / total_tiles * 100:.1f}%)"
         )
 
         return result

@@ -47,7 +47,7 @@ def transform_pixel_fused(
         strengths: Array of strength values [0, 1]
         enable_luminance: Transform lightness channel
         enable_saturation: Transform chroma channel
-        enable_hue: Transform hue channel
+        enable_hue: Transform chroma channel
 
     Returns:
         Tuple of (r, g, b) transformed sRGB values
@@ -275,7 +275,7 @@ def transform_image_fused(
         strengths: Array of strength values [0, 1]
         enable_luminance: Transform lightness channel
         enable_saturation: Transform chroma channel
-        enable_hue: Transform hue channel
+        enable_hue: Transform chroma channel
 
     Returns:
         Transformed image array (H, W, 3) in sRGB [0, 1]

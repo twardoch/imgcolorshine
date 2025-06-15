@@ -117,7 +117,7 @@ def blend_colors(
         attractors_lab: Attractor colors in Oklab
         attractors_lch: Attractor colors in OKLCH
         weights: Weight for each attractor
-        flags: Boolean array [luminance, saturation, hue]
+        flags: Boolean array [luminance, saturation, chroma]
 
     Returns:
         Blended color in Oklab space
@@ -155,7 +155,7 @@ def blend_colors(
                 final_c += weights[i] * attractors_lch[i][1]
 
     if flags[2]:  # Hue
-        # Use circular mean for hue
+        # Use circular mean for chroma
         sin_sum = src_weight * np.sin(np.deg2rad(pixel_lch[2]))
         cos_sum = src_weight * np.cos(np.deg2rad(pixel_lch[2]))
 
@@ -197,7 +197,7 @@ def transform_pixels(
         attractors_lch: Attractor colors in OKLCH
         tolerances: Tolerance values for each attractor
         strengths: Strength values for each attractor
-        flags: Boolean array [luminance, saturation, hue]
+        flags: Boolean array [luminance, saturation, chroma]
 
     Returns:
         Transformed image in Oklab space
@@ -259,7 +259,7 @@ class ColorTransformer:
         Args:
             image: Input image (H, W, 3) in sRGB [0, 1]
             attractors: List of color attractors
-            flags: Channel flags {'luminance': bool, 'saturation': bool, 'hue': bool}
+            flags: Channel flags {'luminance': bool, 'saturation': bool, 'chroma': bool}
             progress_callback: Optional callback for progress updates
 
         Returns:
@@ -287,7 +287,7 @@ class ColorTransformer:
             [
                 flags.get("luminance", True),
                 flags.get("saturation", True),
-                flags.get("hue", True),
+                flags.get("chroma", True),
             ]
         )
 
@@ -297,8 +297,8 @@ class ColorTransformer:
             enabled_channels.append("luminance")
         if flags.get("saturation", True):
             enabled_channels.append("saturation")
-        if flags.get("hue", True):
-            enabled_channels.append("hue")
+        if flags.get("chroma", True):
+            enabled_channels.append("chroma")
         logger.debug(f"Enabled channels: {', '.join(enabled_channels)}")
 
         # Prepare attractor data for Numba
