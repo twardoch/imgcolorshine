@@ -87,6 +87,8 @@ imgcolorshine = 'imgcolorshine.cli:main'
 requires = [
     'hatchling>=1.27.0',
     'hatch-vcs>=0.4.0',
+    'mypyc>=1.0.0',
+    'mypy>=1.15.0',
 ]
 build-backend = 'hatchling.build'
 [tool.hatch.build]
@@ -110,6 +112,19 @@ source = 'vcs'
 
 [tool.hatch.metadata]
 allow-direct-references = true
+
+[tool.mypyc]
+# Modules to compile with mypyc
+modules = [
+    "imgcolorshine.color",
+    "imgcolorshine.transform",
+    "imgcolorshine.io",
+    "imgcolorshine.falloff",
+]
+# Mypyc compilation options
+strict_optional = true
+warn_return_any = true
+warn_unused_configs = true
 [tool.hatch.envs.default]
 features = [
     'dev',
