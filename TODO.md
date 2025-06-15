@@ -1,58 +1,98 @@
 # TODO
 
-TASK: Work through the steps below. Once you've completed a step, mark it with `[x]`. Always use `uv` or `hatch` or `python`, not `python3`. 
+TASK: Work through the steps below. Once you've completed a step, mark it with `[x]`. Always use `uv` or `hatch` or `python`, not `python3`.
+
+## Current Session Tasks
+
+- [x] Update `CHANGELOG.md` based on recent changes incl. recent git changes
+- [x] Update `PLAN.md` removing things that are done
+- [x] Update `TODO.md` removing things that are done; then add things to be done there.
+- [x] Add an extensive detailed plan of things to be done into `PLAN.md`
+- [x] Thoroughly revise `README.md` to comprehensively describe the entire package
+- [x] Run `./cleanup.sh`, review `./cleanup.log` and fix issues
+
+## Immediate Priority Tasks
+
+### 1. Fix Failing Tests (11 tests failing)
+- [ ] Fix `test_colorshine.py` (2 tests)
+  - `test_shine_function` - mock setup issues
+  - `test_process_image_channel_defaults` - KeyError issues
+- [ ] Fix `test_main_interface.py` (4 tests)
+  - Test process_image_basic
+  - Test process_image_multiple_attractors
+  - Test process_image_channel_control
+  - Test process_image_custom_output
+- [ ] Fix `test_transform_coverage.py` (1 test)
+  - TestColorTransformer::test_empty_attractors
+- [ ] Fix `test_utils_coverage.py` (4 tests)
+  - TestImageProcessing::test_process_large_image_basic
+  - TestImageProcessing::test_process_large_image_with_overlap
+  - TestValidation::test_validate_image
+  - TestProgressBar::test_create_progress_bar
+
+### 2. Improve Test Coverage to >60%
+- [ ] Create tests for `trans_gpu.py` (0% coverage)
+- [ ] Create tests for `trans_numba.py` (24% → 50%+)
+- [ ] Create tests for `numba_utils.py` (0% coverage)
+- [ ] Improve `kernel.py` coverage (4% → 50%+)
+- [ ] Improve `transform.py` coverage (40% → 60%+)
+- [ ] Improve `spatial.py` coverage (36% → 60%+)
+
+### 3. Performance Optimizations
+- [ ] Integrate `numba_utils.py` functions into main modules
+  - [ ] Use `compute_color_distances_batch` in spatial.py
+  - [ ] Use `find_nearest_attractors` in transform.py
+  - [ ] Use `compute_tile_uniformity` in spatial.py
+  - [ ] Use `apply_transformation_mask` in hierar.py
+  - [ ] Use `compute_edge_strength` in hierar.py
+  - [ ] Use `downsample_oklab` in hierar.py
+- [ ] Profile and benchmark the improvements
+- [ ] Document performance gains
+
+### 4. Mypyc Compilation
+- [ ] Complete mypyc setup and testing
+- [ ] Compile `color.py` module with mypyc
+- [ ] Compile `transform.py` module with mypyc
+- [ ] Test compatibility on multiple platforms
+- [ ] Benchmark performance improvements
+- [ ] Document build process
+
+## Long-term Goals
+
+### Documentation
+- [ ] Create comprehensive API documentation
+- [ ] Add more usage examples to README
+- [ ] Create tutorial notebooks
+- [ ] Document performance characteristics
+- [ ] Create architecture diagrams
+
+### Features
+- [ ] Add batch processing CLI command
+- [ ] Add configuration file support
+- [ ] Add more color space support (LAB, HSV, etc.)
+- [ ] Add interactive mode for parameter tuning
+- [ ] Add preview mode for large images
+
+### Quality Improvements
+- [ ] Achieve 80%+ test coverage on all critical modules
+- [ ] Add property-based testing with Hypothesis
+- [ ] Add integration tests with real images
+- [ ] Set up continuous integration (CI)
+- [ ] Add pre-commit hooks
+
+### Performance
+- [ ] Optimize memory usage for very large images
+- [ ] Add multi-threading support for CPU processing
+- [ ] Implement streaming processing for video
+- [ ] Add WebAssembly build for browser usage
+- [ ] Create benchmarking suite
 
 ## Completed Tasks ✅
 
-1. [x] Analyze `PLAN.md` and analyze the entire codebase in `llms.txt`
-2. [x] Analyze the recent git history. 
-3. [x] Update `CHANGELOG.md` with the latest changes.
-4. [x] Remove from `PLAN.md` tasks that are actually already accomplished. 
-5. [x] Read `tests/COVERAGE_REPORT.md` and `tests/TESTING_WORKFLOW.md` and update them with the latest changes.
-6. [x] Start working on remaining tasks in `PLAN.md`.
-7. [x] As you work, check off tasks in `PLAN.md` as you complete them.
-8. [x] When you've completed a task, run `./cleanup.sh` and then check `cleanup.log` and fix problems.
-
-## Accomplishments in This Session ✅
-
-### Test Coverage Improvement: 41% → 50%
-- Created comprehensive test suites for `kernel.py` (17 tests) - 0% → covered
-- Created comprehensive test suites for `lut.py` (16 tests) - 0% → 66% coverage
-- Improved test coverage for `transform.py` - 18% → 40% coverage
-- Improved test coverage for `utils.py` - 8% → 79% coverage
-- Fixed import and implementation issues in existing tests
-- Total of 199 passing tests (up from ~150)
-
-### Code Additions
-- Created `numba_utils.py` with 6 optimized utility functions for performance
-- Created `test_kernel.py` with comprehensive kernel testing
-- Created `test_lut.py` with comprehensive LUT testing
-- Created `test_transform_coverage.py` to improve transform module coverage
-- Created `test_utils_coverage.py` to improve utils module coverage
-
-### Documentation Updates
-- Updated CHANGELOG.md with detailed accomplishments
-- Updated PLAN.md to mark completed tasks
-
-## Next Tasks 📋
-
-1. [ ] Fix remaining 11 failing tests:
-   - `test_colorshine.py` (2 tests)
-   - `test_main_interface.py` (4 tests)
-   - `test_transform_coverage.py` (1 test)
-   - `test_utils_coverage.py` (4 tests)
-
-2. [ ] Continue improving test coverage to reach >60%:
-   - Create tests for `trans_gpu.py` (0%)
-   - Create tests for `trans_numba.py` (24%)
-   - Create tests for `numba_utils.py` (0%)
-   - Improve `kernel.py` coverage (currently 4%)
-
-3. [ ] Implement mypyc compilation:
-   - Compile `color.py` module
-   - Compile `transform.py` module
-   - Test performance improvements
-
-4. [ ] Performance optimizations:
-   - Integrate `numba_utils.py` functions into main modules
-   - Profile and optimize remaining bottlenecks
+### From Previous Session
+- Created comprehensive test suites for `kernel.py` (17 tests)
+- Created comprehensive test suites for `lut.py` (16 tests)
+- Improved test coverage from 41% → 50%
+- Created `numba_utils.py` with 6 optimized utility functions
+- Updated CHANGELOG.md and PLAN.md with accomplishments
+- Fixed multiple test implementation issues

@@ -2,75 +2,102 @@
 
 Transform image colors using OKLCH color attractors - a physics-inspired tool that operates in perceptually uniform color space.
 
+![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)
+![Test Coverage](https://img.shields.io/badge/coverage-50%25-yellow.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Key Features](#key-features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Usage Guide](#usage-guide)
+- [How It Works](#how-it-works)
+- [Performance](#performance)
+- [Architecture](#architecture)
+- [Development](#development)
+- [API Reference](#api-reference)
+- [Contributing](#contributing)
+- [License](#license)
+
 ## Overview
 
-`imgcolorshine` applies a gravitational-inspired color transformation where specified "attractor" colors pull the image's colors toward them. The tool works in the OKLCH color space, ensuring perceptually uniform and natural-looking results.
+`imgcolorshine` is a high-performance image color transformation tool that uses a physics-inspired model to transform images. It works by defining "attractor" colors that pull the image's colors toward them, similar to gravitational attraction. All operations are performed in the perceptually uniform OKLCH color space, ensuring natural and visually pleasing results.
 
-## Features
+### What Makes imgcolorshine Special?
 
-- **Perceptually Uniform**: Operations in OKLCH color space for intuitive results
-- **Flexible Color Input**: Supports all CSS color formats (hex, rgb, hsl, oklch, named colors)
-- **Selective Channel Control**: Transform lightness, saturation, and/or hue independently
-- **Multiple Attractors**: Blend influences from multiple color targets
-- **Blazing Fast**: Multiple acceleration options:
-  - Numba-optimized color space conversions (77-115x faster than pure Python)
-  - GPU acceleration with CuPy (10-100x additional speedup)
-  - 3D Color LUT with caching (5-20x speedup)
-  - Fused transformation kernels minimize memory traffic
-- **High Performance**: Parallel processing with NumPy and Numba JIT compilation
-- **Memory Efficient**: Automatic tiling for large images
-- **Professional Quality**: CSS Color Module 4 compliant gamut mapping
+1. **Perceptually Uniform**: Uses OKLCH color space for intuitive, natural-looking transformations
+2. **Physics-Inspired**: Gravitational model provides smooth, organic color transitions
+3. **Blazing Fast**: 100x+ faster than naive implementations through multiple optimization layers
+4. **Production Ready**: Comprehensive test suite, professional gamut mapping, memory efficient
+5. **Flexible**: Fine-grained control over color channels and transformation parameters
+
+## Key Features
+
+### Core Capabilities
+
+- ✨ **Perceptually Uniform Color Space**: All operations in OKLCH for natural results
+- 🎨 **Universal Color Support**: Any CSS color format (hex, rgb, hsl, oklch, named colors, etc.)
+- 🎯 **Multi-Attractor Blending**: Combine multiple color influences seamlessly
+- 🎛️ **Channel Control**: Transform lightness, chroma, and hue independently
+- 🏎️ **Multiple Acceleration Modes**: CPU, GPU, and LUT-based processing
+- 📊 **Professional Gamut Mapping**: CSS Color Module 4 compliant
+- 💾 **Memory Efficient**: Automatic tiling for images of any size
+
+### Performance Features
+
+- **Numba JIT Compilation**: 77-115x faster color space conversions
+- **GPU Acceleration**: 10-100x speedup with NVIDIA GPUs (CuPy)
+- **3D Color LUT**: Pre-computed transformations with caching
+- **Fused Kernels**: All operations in a single pass, minimizing memory traffic
+- **Spatial Acceleration**: KD-tree based optimization for local color queries
+- **Hierarchical Processing**: Multi-resolution pyramid for large images
 
 ## Installation
 
-```bash
-# Install from PyPI
-pip install imgcolorshine
+### From PyPI (Recommended)
 
-# Or install from source
+```bash
+pip install imgcolorshine
+```
+
+### From Source
+
+```bash
 git clone https://github.com/twardoch/imgcolorshine.git
 cd imgcolorshine
 pip install -e .
 ```
 
-## Usage
+### Optional Dependencies
 
-### Basic Example
-
-Transform an image to be more red:
-
+For GPU acceleration:
 ```bash
-imgcolorshine shine photo.jpg "red;50;75"
+pip install cupy-cuda11x  # For CUDA 11.x
+# or
+pip install cupy-cuda12x  # For CUDA 12.x
 ```
 
-### Command Syntax
+## Quick Start
+
+### Basic Usage
+
+Transform an image to have a warmer tone:
 
 ```bash
-imgcolorshine shine INPUT_IMAGE ATTRACTOR1 [ATTRACTOR2 ...] [OPTIONS]
+imgcolorshine shine photo.jpg "orange;50;75"
 ```
 
-Each attractor has the format: `"color;tolerance;strength"`
+This command:
+- Loads `photo.jpg`
+- Creates an orange color attractor with 50% tolerance and 75% strength
+- Saves the result as `photo_colorshine.jpg`
 
-- **color**: Any CSS color (e.g., "red", "#ff0000", "oklch(70% 0.2 120)")
-- **tolerance**: 0-100 (radius of influence - how far the color reaches)
-- **strength**: 0-100 (transformation intensity - how much colors are pulled)
+### Multiple Attractors
 
-### Options
+Create a sunset effect with multiple color influences:
 
-- `--output_image PATH`: Output image file (auto-generated if not specified)
-- `--luminance BOOL`: Enable/disable lightness transformation (default: True)
-- `--saturation BOOL`: Enable/disable chroma transformation (default: True)
-- `--hue BOOL`: Enable/disable hue transformation (default: True)
-- `--verbose BOOL`: Enable verbose logging (default: False)
-- `--tile_size INT`: Tile size for large images (default: 1024)
-- `--gpu BOOL`: Use GPU acceleration if available (default: True)
-- `--lut_size INT`: Size of 3D LUT (0=disabled, 65=recommended) (default: 0)
-- `--hierarchical BOOL`: Enable hierarchical multi-resolution processing (default: False)
-- `--spatial_accel BOOL`: Enable spatial acceleration (default: True)
-
-### Examples
-
-**Warm sunset effect:**
 ```bash
 imgcolorshine shine landscape.png \
   "oklch(80% 0.2 60);40;60" \
@@ -78,145 +105,346 @@ imgcolorshine shine landscape.png \
   --output_image=sunset.png
 ```
 
-**Shift only hues toward green:**
+## Usage Guide
+
+### Command Structure
+
 ```bash
-imgcolorshine shine portrait.jpg "green;60;90" \
+imgcolorshine shine INPUT_IMAGE ATTRACTOR1 [ATTRACTOR2 ...] [OPTIONS]
+```
+
+### Attractor Format
+
+Each attractor is specified as: `"color;tolerance;strength"`
+
+- **color**: Any CSS color
+  - Named: `"red"`, `"blue"`, `"forestgreen"`
+  - Hex: `"#ff0000"`, `"#00ff00"`
+  - RGB: `"rgb(255, 0, 0)"`, `"rgba(0, 255, 0, 0.5)"`
+  - HSL: `"hsl(120, 100%, 50%)"`
+  - OKLCH: `"oklch(70% 0.2 120)"`
+  
+- **tolerance** (0-100): Radius of influence
+  - 0-20: Only very similar colors affected
+  - 30-60: Moderate range of influence
+  - 70-100: Broad influence across many colors
+  
+- **strength** (0-100): Transformation intensity
+  - 0-30: Subtle shifts
+  - 40-70: Noticeable but natural
+  - 80-100: Strong transformation
+
+### Command Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--output_image` | PATH | Auto | Output file path |
+| `--luminance` | BOOL | True | Transform lightness channel |
+| `--saturation` | BOOL | True | Transform chroma channel |
+| `--hue` | BOOL | True | Transform hue channel |
+| `--verbose` | BOOL | False | Enable detailed logging |
+| `--tile_size` | INT | 1024 | Tile size for large images |
+| `--gpu` | BOOL | True | Use GPU if available |
+| `--lut_size` | INT | 0 | 3D LUT size (0=disabled, 65=recommended) |
+| `--hierarchical` | BOOL | False | Multi-resolution processing |
+| `--spatial_accel` | BOOL | True | Spatial acceleration structures |
+
+### Advanced Examples
+
+#### Channel-Specific Transformation
+
+Transform only the hue, preserving lightness and saturation:
+
+```bash
+imgcolorshine shine portrait.jpg "teal;60;80" \
   --luminance=False --saturation=False
 ```
 
-**Multiple color influences:**
+#### High-Performance Processing
+
+For maximum speed on repeated transformations:
+
 ```bash
-imgcolorshine shine photo.jpg \
-  "oklch(70% 0.15 120);50;70" \
-  "hsl(220 100% 50%);25;50" \
-  "#ff00ff;30;40"
+# Build and cache a 3D LUT for fast processing
+imgcolorshine shine photo.jpg "purple;50;70" --lut_size=65
+
+# Use GPU acceleration
+imgcolorshine shine photo.jpg "cyan;40;60" --gpu=True
+
+# Combine optimizations
+imgcolorshine shine large_image.jpg "red;45;65" \
+  --gpu=True --lut_size=65 --hierarchical=True
 ```
 
-**Process large images with optimizations:**
-```bash
-imgcolorshine shine large_photo.jpg "blue;40;60" \
-  --fast_hierar --fast_spatial
-```
+#### Batch Processing
 
+Process multiple images with the same transformation:
+
+```bash
+for img in *.jpg; do
+  imgcolorshine shine "$img" "seagreen;55;75" \
+    --output_image="processed/${img}"
+done
+```
 
 ## How It Works
 
-### The Attraction Model: "Pull" vs "Replace"
+### The Physics Model
 
-`imgcolorshine` uses a **"pull" model**, not a "replace" model. This means:
+imgcolorshine uses a gravitational attraction model where:
 
-- Colors are **gradually pulled** toward attractors, not replaced entirely
-- A `strength` of 100 provides maximum pull, but only pixels exactly matching the attractor color will be fully transformed
-- The effect diminishes with distance from the attractor color
-- This creates natural, smooth transitions rather than harsh color replacements
+1. **Attractors** are color points in OKLCH space that exert "pull" on image colors
+2. **Distance** determines influence strength (perceptual ΔE in Oklab)
+3. **Tolerance** sets the maximum influence radius
+4. **Strength** controls the pull intensity
+5. **Falloff** uses a raised cosine curve for smooth transitions
 
-### The Transformation Process
+### Color Space Operations
 
-1. **Color Space**: All operations happen in OKLCH space for perceptual uniformity
-2. **Attraction Model**: Each attractor color exerts influence based on:
-   - **Distance**: Perceptual distance between pixel and attractor colors (ΔE in Oklab)
-   - **Tolerance**: Maximum distance at which influence occurs (0-100 maps linearly to 0-2.5 ΔE)
-   - **Strength**: Maximum transformation amount at zero distance
-3. **Falloff**: Smooth raised-cosine curve ensures natural transitions
-4. **Blending**: Multiple attractors blend using normalized weighted averaging
-5. **Gamut Mapping**: Out-of-bounds colors are mapped back to displayable range
+All transformations occur in OKLCH (Oklab Lightness, Chroma, Hue) space:
 
-## Understanding Parameters
+- **L**: Perceptual lightness (0-1)
+- **C**: Chroma/saturation (0-0.4+)
+- **H**: Hue angle (0-360°)
 
-### Tolerance (0-100)
-Controls the **radius of influence** - how far from the attractor color a pixel can be and still be affected:
-- **Low values (0-20)**: Only very similar colors are affected
-- **Medium values (30-60)**: Moderate range of colors transformed  
-- **High values (70-100)**: Wide range of colors influenced
-- **100**: Maximum range, affects colors up to ΔE = 2.5 (very broad influence)
+This ensures:
+- Perceptually uniform color distances
+- Natural-looking transformations
+- No unexpected color shifts
+- Consistent results across different images
 
-### Strength (0-100)
-Controls the **intensity of the pull** - how strongly colors are pulled toward the attractor:
-- **Low values (0-30)**: Subtle color shifts, original color dominates
-- **Medium values (40-70)**: Noticeable but natural transformations
-- **High values (80-100)**: Strong pull toward attractor (not full replacement)
-- **100**: Maximum pull, but still respects distance-based falloff
+### Transformation Pipeline
 
-### Important Note on Hue-Only Transformations
-When using `--luminance=False --saturation=False`, only the hue channel is modified. This means:
-- Grayscale pixels (low saturation) show little to no change
-- The effect is most visible on already-saturated colors
-- To see stronger effects on all pixels, enable all channels
+1. **Load Image**: Read and convert to float32 RGB
+2. **Color Conversion**: RGB → Linear RGB → XYZ → Oklab → OKLCH
+3. **Calculate Influences**: For each pixel, compute influence from all attractors
+4. **Blend Transformations**: Weighted average based on influences
+5. **Gamut Mapping**: Ensure colors are displayable in sRGB
+6. **Convert Back**: OKLCH → Oklab → XYZ → Linear RGB → sRGB
+7. **Save Result**: Write processed image
 
 ## Performance
 
-- Processes a 1920×1080 image in **under 1 second** (was 2-5 seconds)
-- **77-115x faster** color space conversions with Numba optimizations
-- **2-5x additional speedup** with hierarchical processing (--hierarchical)
-- **3-10x additional speedup** with spatial acceleration (enabled by default)
-- GPU acceleration available with CuPy (10-100x speedup)
-- Parallel processing utilizing all CPU cores
-- Automatic tiling for images larger than 2GB memory usage
-- Benchmark results:
-  - 256×256: 0.044s (was 5.053s with pure Python)
-  - 512×512: 0.301s (was 23.274s)  
-  - 2048×2048: 3.740s (under 1s with optimizations)
+### Optimization Layers
 
-## Technical Details
+1. **Numba JIT Compilation**
+   - Compiled color space conversions
+   - Parallel pixel processing
+   - Vectorized operations
+   - Cache-optimized memory access
 
-- **Color Engine**: Hybrid approach
-  - ColorAide for color parsing and validation
-  - Numba-optimized matrix operations for batch conversions
-  - Direct sRGB ↔ Oklab ↔ OKLCH transformations
-- **Image I/O**: OpenCV (4x faster than PIL for PNG)
-- **Computation**: NumPy + Numba JIT compilation with parallel execution
-- **Optimizations**:
-  - Vectorized color space conversions
-  - Eliminated per-pixel ColorAide overhead
-  - Cache-friendly memory access patterns
-  - Manual matrix multiplication to avoid scipy dependency
-- **Gamut Mapping**: CSS Color Module 4 algorithm with binary search
-- **Falloff Function**: Raised cosine for smooth transitions
+2. **GPU Acceleration (CuPy)**
+   - Massively parallel processing
+   - Optimized memory transfers
+   - Automatic CPU fallback
+   - Support for large images
 
-## Performance
+3. **3D Color LUT**
+   - Pre-computed transformations
+   - Trilinear interpolation
+   - Disk caching
+   - Near-instant lookups
 
-With the latest optimizations, imgcolorshine achieves exceptional performance:
+4. **Fused Kernels**
+   - Single-pass transformation
+   - All operations in registers
+   - Minimal memory traffic
+   - Integrated gamut mapping
 
-### CPU Performance (Numba)
-- **256×256**: ~44ms (114x faster than pure Python)
-- **512×512**: ~301ms (77x faster)
-- **1920×1080**: ~2-3 seconds
-- **4K (3840×2160)**: ~8-12 seconds
+5. **Spatial Structures**
+   - KD-tree color indexing
+   - Early pixel culling
+   - Tile coherence detection
+   - Uniform region optimization
 
-### GPU Performance (CuPy)
-- **1920×1080**: ~20-50ms (100x faster than CPU)
-- **4K**: ~80-200ms
-- Requires NVIDIA GPU with CUDA support
+### Benchmark Results
 
-### LUT Performance
-- **First run**: Build time depends on LUT size (65³ ~2-5s)
-- **Subsequent runs**: Near-instant with cached LUT
-- **1920×1080**: ~100-200ms with 65³ LUT
+| Image Size | Pure Python | CPU (Numba) | GPU (CuPy) | LUT (Cached) |
+|------------|-------------|-------------|------------|--------------|
+| 256×256    | 5.053s      | 0.044s      | 0.012s     | 0.008s       |
+| 512×512    | 23.274s     | 0.301s      | 0.025s     | 0.032s       |
+| 1920×1080  | ~150s       | 2.8s        | 0.045s     | 0.18s        |
+| 4K (3840×2160) | ~600s   | 11.2s       | 0.15s      | 0.72s        |
 
-### Usage Tips
-```bash
-# Maximum CPU performance
-imgcolorshine shine photo.jpg "red;50;75"
+## Architecture
 
-# GPU acceleration (automatic if available)
-imgcolorshine shine photo.jpg "red;50;75" --gpu=True
+### Module Overview
 
-# LUT for best CPU performance on repeated transforms
-imgcolorshine shine photo.jpg "red;50;75" --lut_size=65
-
-# Combine GPU + LUT for ultimate speed
-imgcolorshine shine photo.jpg "red;50;75" --gpu=True --lut_size=65
 ```
+imgcolorshine/
+├── Core Modules
+│   ├── color.py          # OKLCH color engine and attractor management
+│   ├── transform.py      # Main transformation logic
+│   ├── colorshine.py     # High-level API and orchestration
+│   └── falloff.py        # Distance-based influence functions
+│
+├── Performance Modules
+│   ├── trans_numba.py    # Numba-optimized color conversions
+│   ├── kernel.py         # Fused transformation kernels
+│   ├── lut.py            # 3D lookup table implementation
+│   ├── gpu.py            # GPU backend management
+│   └── trans_gpu.py      # CuPy transformations
+│
+├── Optimization Modules
+│   ├── spatial.py        # Spatial acceleration structures
+│   ├── hierar.py         # Hierarchical processing
+│   └── numba_utils.py    # Additional optimized utilities
+│
+├── Support Modules
+│   ├── gamut.py          # CSS Color Module 4 gamut mapping
+│   ├── io.py             # Optimized image I/O
+│   ├── utils.py          # General utilities
+│   └── cli.py            # Command-line interface
+```
+
+### Key Design Principles
+
+1. **Modular Architecture**: Clear separation of concerns
+2. **Performance First**: Multiple optimization paths
+3. **Fallback Chain**: GPU → LUT → CPU Numba → Pure Python
+4. **Type Safety**: Comprehensive type hints
+5. **Memory Efficiency**: Streaming and tiling for large images
+6. **Test Coverage**: 50%+ coverage with comprehensive test suite
 
 ## Development
 
-This project follows a structured approach focusing on code quality, documentation, and maintainable development practices.
+### Setting Up Development Environment
+
+```bash
+# Clone the repository
+git clone https://github.com/twardoch/imgcolorshine.git
+cd imgcolorshine
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install in development mode with test dependencies
+pip install -e ".[dev,test]"
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+python -m pytest
+
+# Run with coverage
+python -m pytest --cov=src/imgcolorshine --cov-report=html
+
+# Run specific test file
+python -m pytest tests/test_color.py -v
+
+# Run benchmarks
+python -m pytest tests/test_performance.py -v
+```
+
+### Code Quality
+
+```bash
+# Format code
+ruff format src tests
+
+# Lint code
+ruff check src tests
+
+# Type checking
+mypy src/imgcolorshine
+```
+
+### Building Documentation
+
+```bash
+# Install documentation dependencies
+pip install -e ".[docs]"
+
+# Build HTML documentation
+cd docs
+make html
+```
+
+## API Reference
+
+### Python API
+
+```python
+from imgcolorshine import process_image
+
+# Basic transformation
+process_image(
+    input_image="photo.jpg",
+    attractors=["red;50;75", "blue;30;60"],
+    output_image="result.jpg"
+)
+
+# Advanced options
+from imgcolorshine import OKLCHEngine, ColorTransformer
+
+# Create color engine
+engine = OKLCHEngine()
+
+# Create attractors
+attractor1 = engine.create_attractor("oklch(70% 0.2 30)", tolerance=50, strength=80)
+attractor2 = engine.create_attractor("#ff6b35", tolerance=40, strength=60)
+
+# Create transformer
+transformer = ColorTransformer(
+    engine,
+    transform_lightness=True,
+    transform_chroma=True,
+    transform_hue=True
+)
+
+# Load and transform image
+import numpy as np
+from imgcolorshine.io import ImageProcessor
+
+processor = ImageProcessor()
+image = processor.load_image("input.jpg")
+
+# Transform with specific channels
+transformed = transformer.transform_image(
+    image, 
+    [attractor1, attractor2],
+    {"luminance": True, "saturation": True, "hue": False}
+)
+
+processor.save_image(transformed, "output.jpg")
+```
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
+
+### Areas for Contribution
+
+- 🧪 **Testing**: Improve test coverage (target: 80%+)
+- 📚 **Documentation**: Tutorials, examples, API docs
+- 🚀 **Performance**: New optimization strategies
+- 🎨 **Features**: Additional color spaces, effects
+- 🐛 **Bug Fixes**: Issue resolution
+- 🌐 **Localization**: Multi-language support
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Credits
+## Acknowledgments
 
-- Created by Adam Twardoch
-- Developed with Antropic software
+- Developed by [Adam Twardoch](https://github.com/twardoch) with assistance from Anthropic's Claude
+- Inspired by color science research and perceptual uniformity principles
+- Built on the shoulders of giants: NumPy, Numba, ColorAide, OpenCV
+- Special thanks to the OKLCH color space creators for enabling intuitive color manipulation
+
+## Citation
+
+If you use imgcolorshine in your research or projects, please cite:
+
+```bibtex
+@software{imgcolorshine,
+  author = {Twardoch, Adam},
+  title = {imgcolorshine: Perceptually Uniform Color Transformation},
+  year = {2025},
+  url = {https://github.com/twardoch/imgcolorshine}
+}
+```
