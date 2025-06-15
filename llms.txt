@@ -101,11 +101,6 @@ TODO.md
 <files>
 This section contains the contents of the repository's files.
 
-<file path="src/imgcolorshine/py.typed">
-# Marker file for PEP 561
-# this_file: src/imgcolorshine/py.typed
-</file>
-
 <file path=".giga/specifications.json">
 [
   {
@@ -533,6 +528,11 @@ def apply_falloff_lut(d_norm: float, lut: np.ndarray) -> float:
     # Linear interpolation between LUT entries
     frac = idx_float - idx
     return lut[idx] * (1 - frac) + lut[idx + 1] * frac
+</file>
+
+<file path="src/imgcolorshine/py.typed">
+# Marker file for PEP 561
+# this_file: src/imgcolorshine/py.typed
 </file>
 
 <file path="tests/debug_color_distances.py">
@@ -4546,221 +4546,6 @@ if __name__ == "__main__":
     debug_algorithm()
 </file>
 
-<file path="tests/test_optimizations.py">
-#!/usr/bin/env -S uv run -s
-# /// script
-# dependencies = ["numpy", "loguru", "coloraide", "opencv-python", "pillow", "click", "numba"]
-# ///
-# this_file: tests/test_optimizations.py
-
-"""
-Test script for fast_hierar and spatial acceleration optimizations.
-"""
-
-import sys
-import time
-from pathlib import Path
-
-import numpy as np
-from loguru import logger
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-from imgcolorshine.color import OKLCHEngine
-from imgcolorshine.hierar import HierarchicalProcessor
-from imgcolorshine.io import ImageProcessor
-from imgcolorshine.spatial import SpatialAccelerator
-from imgcolorshine.transform import ColorTransformer
-
-
-def create_test_image(width: int, height: int) -> np.ndarray:
-    """Create a test image with gradient patterns."""
-    image = np.zeros((height, width, 3), dtype=np.uint8)
-
-    # Create gradient pattern
-    for y in range(height):
-        for x in range(width):
-            image[y, x] = [
-                int(255 * x / width),  # Red gradient left to right
-                int(255 * y / height),  # Green gradient top to bottom
-                128,  # Constant blue
-            ]
-
-    return image
-
-
-def test_hierarchical_processing():
-    """Test fast_hierar processing optimization."""
-    logger.info("Testing fast_hierar processing...")
-
-    # Create test image
-    image = create_test_image(512, 512)
-
-    # Initialize components
-    engine = OKLCHEngine()
-    transformer = ColorTransformer(engine)
-
-    # Create attractor
-    attractor = engine.create_attractor("red", 50.0, 75.0)
-
-    # Initialize fast_hierar processor
-    hier_processor = HierarchicalProcessor()
-
-    # Prepare data
-    attractors_lab = np.array([attractor.oklab_values])
-    attractors_lch = np.array([attractor.oklch_values])
-    tolerances = np.array([attractor.tolerance])
-    strengths = np.array([attractor.strength])
-    channels = [True, True, True]  # All channels enabled
-    flags_array = np.array(channels)
-
-    # Create transform function
-    def transform_func(img_rgb, *args):
-        """"""
-        return (
-            transformer._transform_tile(
-                img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
-            )
-            * 255.0
-        )
-
-    # Test fast_hierar processing
-    start_time = time.time()
-    result = hier_processor.process_hierarchical(image, transform_func, attractors_lab, tolerances, strengths, channels)
-    elapsed = time.time() - start_time
-
-    logger.info(f"Hierarchical processing completed in {elapsed:.3f}s")
-    logger.info(f"Result shape: {result.shape}, dtype: {result.dtype}")
-
-    # Verify result
-    assert result.shape == image.shape
-    # Result is float32, original is uint8 - convert for comparison
-    result_uint8 = np.clip(result, 0, 255).astype(np.uint8)
-    assert np.any(result_uint8 != image)  # Should have some changes
-
-    return result
-
-
-def test_spatial_acceleration():
-    """Test spatial acceleration optimization."""
-    logger.info("\nTesting spatial acceleration...")
-
-    # Create test image
-    image = create_test_image(512, 512)
-    image_float = image / 255.0
-
-    # Initialize components
-    engine = OKLCHEngine()
-    transformer = ColorTransformer(engine)
-
-    # Create attractor
-    attractor = engine.create_attractor("green", 40.0, 60.0)
-
-    # Initialize spatial accelerator
-    spatial_acc = SpatialAccelerator()
-
-    # Prepare data
-    attractors_lab = np.array([attractor.oklab_values])
-    attractors_lch = np.array([attractor.oklch_values])
-    tolerances = np.array([attractor.tolerance])
-    strengths = np.array([attractor.strength])
-    channels = [True, True, True]
-    flags_array = np.array(channels)
-
-    # Convert to Oklab for spatial queries
-    image_oklab = engine.batch_rgb_to_oklab(image_float)
-
-    # Create transform function
-    def transform_func(img_rgb, *args):
-        """"""
-        return (
-            transformer._transform_tile(
-                img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
-            )
-            * 255.0
-        )
-
-    # Test spatial acceleration
-    start_time = time.time()
-    result = spatial_acc.transform_with_spatial_accel(
-        image, image_oklab, attractors_lab, tolerances, strengths, transform_func, channels
-    )
-    elapsed = time.time() - start_time
-
-    logger.info(f"Spatial acceleration completed in {elapsed:.3f}s")
-    logger.info(f"Result shape: {result.shape}, dtype: {result.dtype}")
-
-    # Log statistics
-    if hasattr(spatial_acc, "uniform_tiles"):
-        logger.info(f"Uniform tiles: {spatial_acc.uniform_tiles}")
-        logger.info(f"Partial tiles: {spatial_acc.partial_tiles}")
-        logger.info(f"Skipped tiles: {spatial_acc.skipped_tiles}")
-
-    # Verify result
-    assert result.shape == image.shape
-    # Result may be float32 while original is uint8
-
-    return result
-
-
-def test_combined_optimizations():
-    """Test combined fast_hierar + spatial acceleration."""
-    logger.info("\nTesting combined optimizations...")
-
-    # Create larger test image
-    image = create_test_image(1024, 1024)
-
-    # Initialize components
-    engine = OKLCHEngine()
-    transformer = ColorTransformer(engine)
-
-    # Create multiple attractors
-    attractor1 = engine.create_attractor("blue", 60.0, 80.0)
-    attractor2 = engine.create_attractor("yellow", 40.0, 60.0)
-
-    attractor_objects = [attractor1, attractor2]
-
-    # Use the process_with_optimizations function
-    from imgcolorshine.colorshine import process_with_optimizations
-
-    start_time = time.time()
-    result = process_with_optimizations(
-        image,
-        attractor_objects,
-        luminance=True,
-        saturation=True,
-        hue=True,
-        hierarchical=True,
-        spatial_accel=True,
-        transformer=transformer,
-        engine=engine,
-    )
-    elapsed = time.time() - start_time
-
-    logger.info(f"Combined optimization completed in {elapsed:.3f}s")
-    logger.info(f"Result shape: {result.shape}, dtype: {result.dtype}")
-
-    # Verify result
-    assert result.shape == image.shape
-    assert np.any(result != image)  # Should have changes
-
-    return result
-
-
-if __name__ == "__main__":
-    logger.remove()
-    logger.add(sys.stderr, level="INFO")
-
-    logger.info("=== Testing imgcolorshine optimizations ===\n")
-
-    # Test individual optimizations
-    hier_result = test_hierarchical_processing()
-    spatial_result = test_spatial_acceleration()
-    combined_result = test_combined_optimizations()
-
-    logger.info("\n=== All tests completed successfully! ===")
-</file>
-
 <file path="tests/test_package.py">
 """Test suite for imgcolorshine."""
 
@@ -5818,599 +5603,219 @@ if __name__ == "__main__":
     sys.exit(0 if success else 1)
 </file>
 
-<file path="tests/test_tolerance.py">
+<file path="tests/test_optimizations.py">
 #!/usr/bin/env -S uv run -s
 # /// script
-# dependencies = ["pytest", "numpy", "coloraide", "loguru"]
+# dependencies = ["numpy", "loguru", "coloraide", "opencv-python", "pillow", "click", "numba"]
 # ///
-# this_file: tests/test_tolerance.py
+# this_file: tests/test_optimizations.py
 
 """
-Unit tests for tolerance calculation and color transformation logic.
-
-These tests verify that the linear tolerance mapping works correctly
-and produces expected results for known color distances.
+Test script for fast_hierar and spatial acceleration optimizations.
 """
+
+import sys
+import time
+from pathlib import Path
 
 import numpy as np
-import pytest
+from loguru import logger
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from imgcolorshine.color import OKLCHEngine
-from imgcolorshine.transform import MAX_DELTA_E, calculate_weights
+from imgcolorshine.hierar import HierarchicalProcessor
+from imgcolorshine.io import ImageProcessor
+from imgcolorshine.spatial import SpatialAccelerator
+from imgcolorshine.transform import ColorTransformer
 
 
-class TestToleranceCalculation:
-    """Test suite for tolerance-based weight calculations."""
+def create_test_image(width: int, height: int) -> np.ndarray:
+    """Create a test image with gradient patterns."""
+    image = np.zeros((height, width, 3), dtype=np.uint8)
 
-    def setup_method(self):
-        """Set up test fixtures."""
-        self.engine = OKLCHEngine()
-
-    def test_max_delta_e_value(self):
-        """Verify MAX_DELTA_E is set to expected value."""
-        assert MAX_DELTA_E == 2.5
-
-    def test_linear_tolerance_mapping(self):
-        """Test that tolerance maps linearly to delta_e_max."""
-        # Create a dummy pixel and attractor
-        pixel_lab = np.array([0.5, 0.0, 0.0])
-        attractors_lab = np.array([[0.5, 0.0, 0.0]])  # Same color
-
-        # Test various tolerance values (skip 0 to avoid division by zero in the algorithm)
-        for tolerance in [1, 25, 50, 75, 100]:
-            tolerances = np.array([tolerance])
-            strengths = np.array([100])
-
-            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
-
-            # For identical colors, weight should equal strength/100
-            expected_weight = 1.0  # strength=100, distance=0
-            assert np.isclose(weights[0], expected_weight, rtol=1e-5)
-
-    def test_tolerance_radius_effect(self):
-        """Test that tolerance correctly controls the radius of influence."""
-        # Create colors with known distances
-        pixel_lab = np.array([0.5, 0.0, 0.0])
-
-        # Test different distances
-        test_cases = [
-            # (distance, tolerance, should_affect)
-            (0.49, 20, True),  # 0.49 < 20 * 2.5 / 100 = 0.5
-            (0.5, 21, True),  # 0.5 < 21 * 2.5 / 100 = 0.525
-            (0.51, 20, False),  # 0.51 > 20 * 2.5 / 100 = 0.5
-            (0.99, 40, True),  # 0.99 < 40 * 2.5 / 100 = 1.0
-            (1.0, 41, True),  # 1.0 < 41 * 2.5 / 100 = 1.025
-            (1.01, 40, False),  # 1.01 > 40 * 2.5 / 100 = 1.0
-            (1.99, 80, True),  # 1.99 < 80 * 2.5 / 100 = 2.0
-            (2.0, 81, True),  # 2.0 < 81 * 2.5 / 100 = 2.025
-            (2.01, 80, False),  # 2.01 > 80 * 2.5 / 100 = 2.0
-        ]
-
-        for distance, tolerance, should_affect in test_cases:
-            # Create attractor at specified distance
-            attractors_lab = np.array([[0.5, distance, 0.0]])
-            tolerances = np.array([tolerance])
-            strengths = np.array([100])
-
-            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
-
-            if should_affect:
-                assert weights[0] > 0, f"Expected non-zero weight for distance={distance}, tolerance={tolerance}"
-            else:
-                assert weights[0] == 0, f"Expected zero weight for distance={distance}, tolerance={tolerance}"
-
-    def test_strength_scaling(self):
-        """Test that strength correctly scales the weight."""
-        pixel_lab = np.array([0.5, 0.0, 0.0])
-        attractors_lab = np.array([[0.5, 0.0, 0.0]])  # Same color
-        tolerances = np.array([100])
-
-        # Test different strength values
-        for strength in [0, 25, 50, 75, 100]:
-            strengths = np.array([strength])
-            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
-
-            # For identical colors, weight should equal strength/100
-            expected_weight = strength / 100.0
-            assert np.isclose(weights[0], expected_weight, rtol=1e-5)
-
-    def test_falloff_function(self):
-        """Test the raised cosine falloff function behavior."""
-        pixel_lab = np.array([0.5, 0.0, 0.0])
-        tolerances = np.array([100])
-        strengths = np.array([100])
-
-        # Test falloff at different normalized distances
-        test_distances = [0.0, 0.25, 0.5, 0.75, 1.0]
-        expected_falloffs = [
-            1.0,
-            0.8536,
-            0.5,
-            0.1464,
-            0.0,
-        ]  # Raised cosine values
-
-        for d_norm, expected_falloff in zip(test_distances, expected_falloffs, strict=True):
-            # Create attractor at distance that gives desired d_norm
-            distance = d_norm * MAX_DELTA_E
-            attractors_lab = np.array([[0.5, distance, 0.0]])
-
-            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
-
-            # Weight should be strength * falloff
-            expected_weight = expected_falloff
-            assert np.isclose(weights[0], expected_weight, rtol=1e-3)
-
-    def test_multiple_attractors(self):
-        """Test weight calculation with multiple attractors."""
-        pixel_lab = np.array([0.5, 0.0, 0.0])
-
-        # Create three attractors at different distances
-        attractors_lab = np.array(
-            [
-                [0.5, 0.0, 0.0],  # Same color
-                [0.5, 0.5, 0.0],  # Medium distance
-                [0.5, 2.0, 0.0],  # Far distance
+    # Create gradient pattern
+    for y in range(height):
+        for x in range(width):
+            image[y, x] = [
+                int(255 * x / width),  # Red gradient left to right
+                int(255 * y / height),  # Green gradient top to bottom
+                128,  # Constant blue
             ]
+
+    return image
+
+
+def test_hierarchical_processing():
+    """Test fast_hierar processing optimization."""
+    logger.info("Testing fast_hierar processing...")
+
+    # Create test image
+    image = create_test_image(512, 512)
+
+    # Initialize components
+    engine = OKLCHEngine()
+    transformer = ColorTransformer(engine)
+
+    # Create attractor
+    attractor = engine.create_attractor("red", 50.0, 75.0)
+
+    # Initialize fast_hierar processor
+    hier_processor = HierarchicalProcessor()
+
+    # Prepare data
+    attractors_lab = np.array([attractor.oklab_values])
+    attractors_lch = np.array([attractor.oklch_values])
+    tolerances = np.array([attractor.tolerance])
+    strengths = np.array([attractor.strength])
+    channels = [True, True, True]  # All channels enabled
+    flags_array = np.array(channels)
+
+    # Create transform function
+    def transform_func(img_rgb, *args):
+        """"""
+        return (
+            transformer._transform_tile(
+                img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
+            )
+            * 255.0
         )
 
-        tolerances = np.array([100, 50, 30])
-        strengths = np.array([100, 80, 60])
+    # Test fast_hierar processing
+    start_time = time.time()
+    result = hier_processor.process_hierarchical(image, transform_func, attractors_lab, tolerances, strengths, channels)
+    elapsed = time.time() - start_time
 
-        weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
+    logger.info(f"Hierarchical processing completed in {elapsed:.3f}s")
+    logger.info(f"Result shape: {result.shape}, dtype: {result.dtype}")
 
-        # First attractor: same color, should have full weight
-        assert np.isclose(weights[0], 1.0, rtol=1e-5)
+    # Verify result
+    assert result.shape == image.shape
+    # Result is float32, original is uint8 - convert for comparison
+    result_uint8 = np.clip(result, 0, 255).astype(np.uint8)
+    assert np.any(result_uint8 != image)  # Should have some changes
 
-        # Second attractor: should have partial weight
-        assert 0 < weights[1] < 0.8
+    return result
 
-        # Third attractor: outside tolerance, should have zero weight
-        assert weights[2] == 0.0
 
-    def test_known_color_pairs(self):
-        """Test with real color pairs and known perceptual distances."""
-        # Test cases with approximate known distances
-        test_cases = [
-            # (color1, color2, approx_distance, tolerance_needed)
-            ("red", "darkred", 0.3, 15),
-            ("red", "orange", 0.4, 20),
-            ("red", "yellow", 0.8, 35),
-            ("red", "green", 1.2, 50),
-            ("red", "blue", 1.5, 65),
-            ("white", "black", 1.0, 45),
-            ("gray", "darkgray", 0.25, 12),
-        ]
+def test_spatial_acceleration():
+    """Test spatial acceleration optimization."""
+    logger.info("\nTesting spatial acceleration...")
 
-        for color1_str, color2_str, _, min_tolerance in test_cases:
-            # Convert colors to Oklab
-            color1 = self.engine.parse_color(color1_str).convert("oklab")
-            color2 = self.engine.parse_color(color2_str).convert("oklab")
+    # Create test image
+    image = create_test_image(512, 512)
+    image_float = image / 255.0
 
-            pixel_lab = np.array([color1["lightness"], color1["a"], color1["b"]])
-            attractors_lab = np.array([[color2["lightness"], color2["a"], color2["b"]]])
+    # Initialize components
+    engine = OKLCHEngine()
+    transformer = ColorTransformer(engine)
 
-            # Test that min_tolerance allows influence
-            tolerances = np.array([min_tolerance])
-            strengths = np.array([100])
+    # Create attractor
+    attractor = engine.create_attractor("green", 40.0, 60.0)
 
-            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
+    # Initialize spatial accelerator
+    spatial_acc = SpatialAccelerator()
 
-            # Should have some influence at min_tolerance
-            assert weights[0] > 0, (
-                f"Expected {color1_str} to be influenced by {color2_str} at tolerance={min_tolerance}"
+    # Prepare data
+    attractors_lab = np.array([attractor.oklab_values])
+    attractors_lch = np.array([attractor.oklch_values])
+    tolerances = np.array([attractor.tolerance])
+    strengths = np.array([attractor.strength])
+    channels = [True, True, True]
+    flags_array = np.array(channels)
+
+    # Convert to Oklab for spatial queries
+    image_oklab = engine.batch_rgb_to_oklab(image_float)
+
+    # Create transform function
+    def transform_func(img_rgb, *args):
+        """"""
+        return (
+            transformer._transform_tile(
+                img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
             )
+            * 255.0
+        )
 
-    def test_edge_cases(self):
-        """Test edge cases and boundary conditions."""
-        pixel_lab = np.array([0.5, 0.0, 0.0])
-        attractors_lab = np.array([[0.5, 1.0, 0.0]])
+    # Test spatial acceleration
+    start_time = time.time()
+    result = spatial_acc.transform_with_spatial_accel(
+        image, image_oklab, attractors_lab, tolerances, strengths, transform_func, channels
+    )
+    elapsed = time.time() - start_time
 
-        # Test tolerance = 0
-        weights = calculate_weights(pixel_lab, attractors_lab, np.array([0]), np.array([100]))
-        assert weights[0] == 0.0
+    logger.info(f"Spatial acceleration completed in {elapsed:.3f}s")
+    logger.info(f"Result shape: {result.shape}, dtype: {result.dtype}")
 
-        # Test strength = 0
-        weights = calculate_weights(pixel_lab, attractors_lab, np.array([100]), np.array([0]))
-        assert weights[0] == 0.0
+    # Log statistics
+    if hasattr(spatial_acc, "uniform_tiles"):
+        logger.info(f"Uniform tiles: {spatial_acc.uniform_tiles}")
+        logger.info(f"Partial tiles: {spatial_acc.partial_tiles}")
+        logger.info(f"Skipped tiles: {spatial_acc.skipped_tiles}")
 
-        # Test very small but non-zero values
-        weights = calculate_weights(pixel_lab, attractors_lab, np.array([0.1]), np.array([0.1]))
-        assert weights[0] >= 0.0
+    # Verify result
+    assert result.shape == image.shape
+    # Result may be float32 while original is uint8
+
+    return result
+
+
+def test_combined_optimizations():
+    """Test combined fast_hierar + spatial acceleration."""
+    logger.info("\nTesting combined optimizations...")
+
+    # Create larger test image
+    image = create_test_image(1024, 1024)
+
+    # Initialize components
+    engine = OKLCHEngine()
+    transformer = ColorTransformer(engine)
+
+    # Create multiple attractors
+    attractor1 = engine.create_attractor("blue", 60.0, 80.0)
+    attractor2 = engine.create_attractor("yellow", 40.0, 60.0)
+
+    attractor_objects = [attractor1, attractor2]
+
+    # Use the process_with_optimizations function
+    from imgcolorshine.colorshine import process_with_optimizations
+
+    start_time = time.time()
+    result = process_with_optimizations(
+        image,
+        attractor_objects,
+        luminance=True,
+        saturation=True,
+        hue=True,
+        hierarchical=True,
+        spatial_accel=True,
+        transformer=transformer,
+        engine=engine,
+    )
+    elapsed = time.time() - start_time
+
+    logger.info(f"Combined optimization completed in {elapsed:.3f}s")
+    logger.info(f"Result shape: {result.shape}, dtype: {result.dtype}")
+
+    # Verify result
+    assert result.shape == image.shape
+    assert np.any(result != image)  # Should have changes
+
+    return result
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
-</file>
+    logger.remove()
+    logger.add(sys.stderr, level="INFO")
 
-<file path="cleanup.sh">
-#!/usr/bin/env bash
+    logger.info("=== Testing imgcolorshine optimizations ===\n")
 
-rm -rf dist/imgcolorshine*.*
-uv build
+    # Test individual optimizations
+    hier_result = test_hierarchical_processing()
+    spatial_result = test_spatial_acceleration()
+    combined_result = test_combined_optimizations()
 
-python -m uzpy run -e src
-fd -e py -x uvx autoflake -i {}
-fd -e py -x uvx pyupgrade --py311-plus {}
-fd -e py -x uvx ruff check --output-format=github --fix --unsafe-fixes {}
-fd -e py -x uvx ruff format --respect-gitignore --target-version py311 {}
-uvx ty check
-PYTHONPATH=src mypy -p imgcolorshine
-
-repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules,docs -o llms.txt .
-python -m pytest
-</file>
-
-<file path="pyproject.toml">
-[project]
-name = 'imgcolorshine'
-description = ''
-readme = 'README.md'
-requires-python = '>=3.10'
-keywords = []
-dynamic = ['version']
-classifiers = [
-    'Development Status :: 4 - Beta',
-    'Programming Language :: Python',
-    'Programming Language :: Python :: 3.10',
-    'Programming Language :: Python :: 3.11',
-    'Programming Language :: Python :: 3.12',
-    'Programming Language :: Python :: Implementation :: CPython',
-    'Programming Language :: Python :: Implementation :: PyPy',
-    'Operating System :: OS Independent',
-    'License :: OSI Approved :: MIT License',
-    'Intended Audience :: Developers',
-]
-dependencies = [
-    'fire>=0.6.0',
-    'loguru>=0.7.0',
-    'numpy>=2.2.2',
-    'numba>=0.58.0',
-    'coloraide>=4.6',
-    'opencv-python>=4.8.0',
-    'pillow>=11.1.0',
-]
-
-[[project.authors]]
-name = 'Adam Twardoch'
-email = 'adam+github@twardoch.com'
-
-[project.license]
-text = 'MIT'
-
-[project.urls]
-Documentation = 'https://github.com/twardoch/imgcolorshine#readme'
-Issues = 'https://github.com/twardoch/imgcolorshine/issues'
-Source = 'https://github.com/twardoch/imgcolorshine'
-
-[project.optional-dependencies]
-dev = [
-    'pre-commit>=4.1.0',
-    'ruff>=0.9.7',
-    'mypy>=1.15.0',
-    'absolufy-imports>=0.3.1',
-    'pyupgrade>=3.19.1',
-    'isort>=6.0.1',
-]
-test = [
-    'pytest>=8.3.4',
-    'pytest-cov>=6.0.0',
-    'pytest-benchmark[histogram]>=5.1.0',
-    'pytest-asyncio>=0.26.0',
-    'coverage[toml]>=7.6.12',
-]
-docs = [
-    'sphinx>=8.2.3',
-    'sphinx-rtd-theme>=3.0.2',
-    'sphinx-autodoc-typehints>=2.0.0',
-    'myst-parser>=4.0.1',
-]
-all = [
-    'absolufy-imports>=0.3.1',
-    'coverage[toml]>=7.6.12',
-    'isort>=6.0.1',
-    'mypy>=1.15.0',
-    'pre-commit>=4.1.0',
-    'pytest-asyncio>=0.26.0',
-    'pytest-benchmark[histogram]>=5.1.0',
-    'pytest-cov>=6.0.0',
-    'pytest>=8.3.4',
-    'pyupgrade>=3.19.1',
-    'ruff>=0.9.7',
-    'myst-parser>=4.0.1',
-    'sphinx-autodoc-typehints>=2.0.0',
-    'sphinx-rtd-theme>=3.0.2',
-    'sphinx>=8.2.3',
-]
-
-[project.scripts]
-imgcolorshine = 'imgcolorshine.cli:main'
-
-[build-system]
-requires = [
-    'hatchling>=1.27.0',
-    'hatch-vcs>=0.4.0',
-]
-build-backend = 'hatchling.build'
-[tool.hatch.build]
-include = [
-    'src/imgcolorshine/py.typed',
-    'src/imgcolorshine/data/**/*',
-]
-exclude = [
-    '**/__pycache__',
-    '**/.pytest_cache',
-    '**/.mypy_cache',
-]
-[tool.hatch.build.targets.wheel]
-packages = ['src/imgcolorshine']
-reproducible = true
-[tool.hatch.build.hooks.vcs]
-version-file = 'src/imgcolorshine/__version__.py'
-
-[tool.hatch.version]
-source = 'vcs'
-
-[tool.hatch.metadata]
-allow-direct-references = true
-[tool.hatch.envs.default]
-features = [
-    'dev',
-    'test',
-    'all',
-]
-dependencies = []
-
-[tool.hatch.envs.default.scripts]
-test = 'pytest {args:tests}'
-test-cov = 'pytest --cov-report=term-missing --cov-config=pyproject.toml --cov=src/imgcolorshine --cov=tests {args:tests}'
-type-check = 'mypy src/imgcolorshine tests'
-lint = [
-    'uvx ruff check src/imgcolorshine tests',
-    'uvx ruff format --respect-gitignore src/imgcolorshine tests', 'uvx ty check'
-]
-fmt = [
-    'uvx ruff format --respect-gitignore src/imgcolorshine tests',
-    'uvx ruff check --fix src/imgcolorshine tests',
-]
-fix = [
-    'uvx ruff check --fix --unsafe-fixes src/imgcolorshine tests',
-    'uvx ruff format --respect-gitignore src/imgcolorshine tests',
-]
-[[tool.hatch.envs.all.matrix]]
-python = [
-    '3.10',
-    '3.11',
-    '3.12',
-]
-
-[tool.hatch.envs.lint]
-detached = true
-features = ['dev']
-
-[tool.hatch.envs.lint.scripts]
-typing = 'mypy --install-types --non-interactive {args:src/imgcolorshine tests}'
-style = [
-    'ruff check {args:.}',
-    'ruff format --respect-gitignore {args:.}',
-]
-fmt = [
-    'ruff format --respect-gitignore {args:.}',
-    'ruff check --fix {args:.}',
-]
-fix = [
-    'ruff check --fix --unsafe-fixes {args:.}',
-    'ruff format --respect-gitignore {args:.}',
-]
-all = [
-    'style',
-    'typing',
-    'fix',
-]
-
-[tool.hatch.envs.test]
-features = ['test']
-
-[tool.hatch.envs.test.scripts]
-test = 'python -m pytest {args:tests}'
-test-cov = 'python -m pytest --cov-report=term-missing --cov-config=pyproject.toml --cov=src/imgcolorshine --cov=tests {args:tests}'
-bench = 'python -m pytest -v -p no:briefcase tests/test_benchmark.py --benchmark-only'
-bench-save = 'python -m pytest -v -p no:briefcase tests/test_benchmark.py --benchmark-only --benchmark-json=benchmark/results.json'
-
-[tool.hatch.envs.docs]
-features = ['docs']
-
-[tool.hatch.envs.docs.scripts]
-build = 'sphinx-build -b html docs/source docs/build'
-
-[tool.hatch.envs.ci]
-features = ['test']
-
-[tool.hatch.envs.ci.scripts]
-test = 'pytest --cov=src/imgcolorshine --cov-report=xml'
-[tool.coverage.paths]
-imgcolorshine = [
-    'src/imgcolorshine',
-    '*/imgcolorshine/src/imgcolorshine',
-]
-tests = [
-    'tests',
-    '*/imgcolorshine/tests',
-]
-
-[tool.coverage.report]
-exclude_lines = [
-    'no cov',
-    'if __name__ == .__main__.:',
-    'if TYPE_CHECKING:',
-    'pass',
-    'raise NotImplementedError',
-    'raise ImportError',
-    'except ImportError',
-    'except KeyError',
-    'except AttributeError',
-    'except NotImplementedError',
-]
-
-[tool.coverage.run]
-source_pkgs = [
-    'imgcolorshine',
-    'tests',
-]
-branch = true
-parallel = true
-omit = ['src/imgcolorshine/__about__.py']
-
-[tool.mypy]
-python_version = '3.10'
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
-
-[[tool.mypy.overrides]]
-module = ['tests.*']
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-[tool.pytest.ini_options]
-addopts = '-v --durations=10 -p no:briefcase -p no:ruff -p no:black -p no:xdist'
-asyncio_mode = 'auto'
-asyncio_default_fixture_loop_scope = 'function'
-console_output_style = 'progress'
-filterwarnings = [
-    'ignore::DeprecationWarning',
-    'ignore::UserWarning',
-    'ignore:pkg_resources is deprecated:UserWarning',
-]
-log_cli = true
-log_cli_level = 'INFO'
-markers = [
-    '''benchmark: marks tests as benchmarks (select with '-m benchmark')''',
-    'unit: mark a test as a unit test',
-    'integration: mark a test as an integration test',
-    'permutation: tests for permutation functionality',
-    'parameter: tests for parameter parsing',
-    'prompt: tests for prompt parsing',
-]
-norecursedirs = [
-    '.*',
-    'build',
-    'dist',
-    'venv',
-    '__pycache__',
-    '*.egg-info',
-    '_private',
-]
-python_classes = ['Test*']
-python_files = ['test_*.py']
-python_functions = ['test_*']
-testpaths = ['tests']
-
-[tool.pytest-benchmark]
-min_rounds = 100
-min_time = 0.1
-histogram = true
-storage = 'file'
-save-data = true
-compare = [
-    'min',
-    'max',
-    'mean',
-    'stddev',
-    'median',
-    'iqr',
-    'ops',
-    'rounds',
-]
-
-[tool.ruff]
-target-version = 'py310'
-line-length = 120
-
-[tool.ruff.lint]
-select = [
-    'A',
-    'ARG',
-    'ASYNC',
-    'B',
-    'C',
-    'DTZ',
-    'E',
-    'EM',
-    'F',
-    'FBT',
-    'I',
-    'ICN',
-    'ISC',
-    'LOG',
-    'N',
-    'PLC',
-    'PLE',
-    'PLR',
-    'PLW',
-    'PT',
-    'PTH',
-    'PYI',
-    'RET',
-    'RSE',
-    'RUF',
-    'S',
-    'SIM',
-    'T',
-    'TCH',
-    'TID',
-    'UP',
-    'W',
-    'YTT',
-]
-ignore = [
-    'B027',
-    'C901',
-    'FBT003',
-    'PLR0911',
-    'PLR0912',
-    'PLR0913',
-    'PLR0915',
-    'PLR1714',
-    'PLW0603',
-    'PT013',
-    'PTH123',
-    'PYI056',
-    'S105',
-    'S106',
-    'S107',
-    'S110',
-    'SIM102',
-]
-unfixable = ['F401']
-exclude = [
-    '.git',
-    '.venv',
-    'venv',
-    'dist',
-    'build',
-    'old',
-]
-
-[tool.ruff.lint.isort]
-known-first-party = ['imgcolorshine']
-
-[tool.ruff.lint.flake8-tidy-imports]
-ban-relative-imports = 'all'
-
-[tool.ruff.lint.per-file-ignores]
-"tests/**/*" = [
-    'PLR2004',
-    'S101',
-    'TID252',
-]
+    logger.info("\n=== All tests completed successfully! ===")
 </file>
 
 <file path="src/imgcolorshine/utils.py">
@@ -6809,6 +6214,211 @@ def test_performance_comparison() -> None:
 
 if __name__ == "__main__":
     test_performance_comparison()
+</file>
+
+<file path="tests/test_tolerance.py">
+#!/usr/bin/env -S uv run -s
+# /// script
+# dependencies = ["pytest", "numpy", "coloraide", "loguru"]
+# ///
+# this_file: tests/test_tolerance.py
+
+"""
+Unit tests for tolerance calculation and color transformation logic.
+
+These tests verify that the linear tolerance mapping works correctly
+and produces expected results for known color distances.
+"""
+
+import numpy as np
+import pytest
+
+from imgcolorshine.color import OKLCHEngine
+from imgcolorshine.transform import MAX_DELTA_E, calculate_weights
+
+
+class TestToleranceCalculation:
+    """Test suite for tolerance-based weight calculations."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.engine = OKLCHEngine()
+
+    def test_max_delta_e_value(self):
+        """Verify MAX_DELTA_E is set to expected value."""
+        assert MAX_DELTA_E == 2.5
+
+    def test_linear_tolerance_mapping(self):
+        """Test that tolerance maps linearly to delta_e_max."""
+        # Create a dummy pixel and attractor
+        pixel_lab = np.array([0.5, 0.0, 0.0])
+        attractors_lab = np.array([[0.5, 0.0, 0.0]])  # Same color
+
+        # Test various tolerance values (skip 0 to avoid division by zero in the algorithm)
+        for tolerance in [1, 25, 50, 75, 100]:
+            tolerances = np.array([tolerance])
+            strengths = np.array([100])
+
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
+
+            # For identical colors, weight should equal strength/100
+            expected_weight = 1.0  # strength=100, distance=0
+            assert np.isclose(weights[0], expected_weight, rtol=1e-5)
+
+    def test_tolerance_radius_effect(self):
+        """Test that tolerance correctly controls the radius of influence."""
+        # Create colors with known distances
+        pixel_lab = np.array([0.5, 0.0, 0.0])
+
+        # Test different distances
+        test_cases = [
+            # (distance, tolerance, should_affect)
+            (0.49, 20, True),  # 0.49 < 20 * 2.5 / 100 = 0.5
+            (0.5, 21, True),  # 0.5 < 21 * 2.5 / 100 = 0.525
+            (0.51, 20, False),  # 0.51 > 20 * 2.5 / 100 = 0.5
+            (0.99, 40, True),  # 0.99 < 40 * 2.5 / 100 = 1.0
+            (1.0, 41, True),  # 1.0 < 41 * 2.5 / 100 = 1.025
+            (1.01, 40, False),  # 1.01 > 40 * 2.5 / 100 = 1.0
+            (1.99, 80, True),  # 1.99 < 80 * 2.5 / 100 = 2.0
+            (2.0, 81, True),  # 2.0 < 81 * 2.5 / 100 = 2.025
+            (2.01, 80, False),  # 2.01 > 80 * 2.5 / 100 = 2.0
+        ]
+
+        for distance, tolerance, should_affect in test_cases:
+            # Create attractor at specified distance
+            attractors_lab = np.array([[0.5, distance, 0.0]])
+            tolerances = np.array([tolerance])
+            strengths = np.array([100])
+
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
+
+            if should_affect:
+                assert weights[0] > 0, f"Expected non-zero weight for distance={distance}, tolerance={tolerance}"
+            else:
+                assert weights[0] == 0, f"Expected zero weight for distance={distance}, tolerance={tolerance}"
+
+    def test_strength_scaling(self):
+        """Test that strength correctly scales the weight."""
+        pixel_lab = np.array([0.5, 0.0, 0.0])
+        attractors_lab = np.array([[0.5, 0.0, 0.0]])  # Same color
+        tolerances = np.array([100])
+
+        # Test different strength values
+        for strength in [0, 25, 50, 75, 100]:
+            strengths = np.array([strength])
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
+
+            # For identical colors, weight should equal strength/100
+            expected_weight = strength / 100.0
+            assert np.isclose(weights[0], expected_weight, rtol=1e-5)
+
+    def test_falloff_function(self):
+        """Test the raised cosine falloff function behavior."""
+        pixel_lab = np.array([0.5, 0.0, 0.0])
+        tolerances = np.array([100])
+        strengths = np.array([100])
+
+        # Test falloff at different normalized distances
+        test_distances = [0.0, 0.25, 0.5, 0.75, 1.0]
+        expected_falloffs = [
+            1.0,
+            0.8536,
+            0.5,
+            0.1464,
+            0.0,
+        ]  # Raised cosine values
+
+        for d_norm, expected_falloff in zip(test_distances, expected_falloffs, strict=True):
+            # Create attractor at distance that gives desired d_norm
+            distance = d_norm * MAX_DELTA_E
+            attractors_lab = np.array([[0.5, distance, 0.0]])
+
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
+
+            # Weight should be strength * falloff
+            expected_weight = expected_falloff
+            assert np.isclose(weights[0], expected_weight, rtol=1e-3)
+
+    def test_multiple_attractors(self):
+        """Test weight calculation with multiple attractors."""
+        pixel_lab = np.array([0.5, 0.0, 0.0])
+
+        # Create three attractors at different distances
+        attractors_lab = np.array(
+            [
+                [0.5, 0.0, 0.0],  # Same color
+                [0.5, 0.5, 0.0],  # Medium distance
+                [0.5, 2.0, 0.0],  # Far distance
+            ]
+        )
+
+        tolerances = np.array([100, 50, 30])
+        strengths = np.array([100, 80, 60])
+
+        weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
+
+        # First attractor: same color, should have full weight
+        assert np.isclose(weights[0], 1.0, rtol=1e-5)
+
+        # Second attractor: should have partial weight
+        assert 0 < weights[1] < 0.8
+
+        # Third attractor: outside tolerance, should have zero weight
+        assert weights[2] == 0.0
+
+    def test_known_color_pairs(self):
+        """Test with real color pairs and known perceptual distances."""
+        # Test cases with approximate known distances
+        test_cases = [
+            # (color1, color2, approx_distance, tolerance_needed)
+            ("red", "darkred", 0.3, 15),
+            ("red", "orange", 0.4, 20),
+            ("red", "yellow", 0.8, 35),
+            ("red", "green", 1.2, 50),
+            ("red", "blue", 1.5, 65),
+            ("white", "black", 1.0, 45),
+            ("gray", "darkgray", 0.25, 12),
+        ]
+
+        for color1_str, color2_str, _, min_tolerance in test_cases:
+            # Convert colors to Oklab
+            color1 = self.engine.parse_color(color1_str).convert("oklab")
+            color2 = self.engine.parse_color(color2_str).convert("oklab")
+
+            pixel_lab = np.array([color1["lightness"], color1["a"], color1["b"]])
+            attractors_lab = np.array([[color2["lightness"], color2["a"], color2["b"]]])
+
+            # Test that min_tolerance allows influence
+            tolerances = np.array([min_tolerance])
+            strengths = np.array([100])
+
+            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
+
+            # Should have some influence at min_tolerance
+            assert weights[0] > 0, (
+                f"Expected {color1_str} to be influenced by {color2_str} at tolerance={min_tolerance}"
+            )
+
+    def test_edge_cases(self):
+        """Test edge cases and boundary conditions."""
+        pixel_lab = np.array([0.5, 0.0, 0.0])
+        attractors_lab = np.array([[0.5, 1.0, 0.0]])
+
+        # Test tolerance = 0
+        weights = calculate_weights(pixel_lab, attractors_lab, np.array([0]), np.array([100]))
+        assert weights[0] == 0.0
+
+        # Test strength = 0
+        weights = calculate_weights(pixel_lab, attractors_lab, np.array([100]), np.array([0]))
+        assert weights[0] == 0.0
+
+        # Test very small but non-zero values
+        weights = calculate_weights(pixel_lab, attractors_lab, np.array([0.1]), np.array([0.1]))
+        assert weights[0] >= 0.0
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
 </file>
 
 <file path="src/imgcolorshine/cli.py">
@@ -7319,6 +6929,405 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dependencies: click, coloraide, opencv-python, numpy, numba, pillow, loguru, rich
 - Modular architecture with separate modules for each concern
 - JIT compilation for performance-critical code paths
+</file>
+
+<file path="cleanup.sh">
+#!/usr/bin/env bash
+echo "rm -rf dist/imgcolorshine*.*"
+rm -rf dist/imgcolorshine*.*
+echo "uv build"
+uv build
+echo "python -m uzpy run -e src"
+python -m uzpy run -e src
+echo "find . -name '*.py' -exec uvx autoflake -i {} +"
+for p in src tests; do find "$p" -name "*.py" -exec uvx autoflake -i {} +; done
+echo "find . -name '*.py' -exec uvx pyupgrade --py311-plus {} +"
+for p in src tests; do find "$p" -exec uvx pyupgrade --py311-plus {} +; done
+echo "find . -name '*.py' -exec uvx ruff check --output-format=github --fix --unsafe-fixes {} +"
+for p in src tests; do find "$p" -name "*.py" -exec uvx ruff check --output-format=github --fix --unsafe-fixes {} +; done
+echo "find . -name '*.py' -exec uvx ruff format --respect-gitignore --target-version py311 {} +"
+for p in src tests; do find "$p" -name "*.py" -exec uvx ruff format --respect-gitignore --target-version py311 {} +; done
+echo "uvx ty check"
+uvx ty check
+echo "PYTHONPATH=src mypy -p imgcolorshine"
+PYTHONPATH=src mypy -p imgcolorshine
+echo "repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules,docs -o llms.txt ."
+repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules,docs -o llms.txt .
+echo "python -m pytest"
+python -m pytest
+</file>
+
+<file path="pyproject.toml">
+[project]
+name = 'imgcolorshine'
+description = ''
+readme = 'README.md'
+requires-python = '>=3.10'
+keywords = []
+dynamic = ['version']
+classifiers = [
+    'Development Status :: 4 - Beta',
+    'Programming Language :: Python',
+    'Programming Language :: Python :: 3.10',
+    'Programming Language :: Python :: 3.11',
+    'Programming Language :: Python :: 3.12',
+    'Programming Language :: Python :: Implementation :: CPython',
+    'Programming Language :: Python :: Implementation :: PyPy',
+    'Operating System :: OS Independent',
+    'License :: OSI Approved :: MIT License',
+    'Intended Audience :: Developers',
+]
+dependencies = [
+    'fire>=0.6.0',
+    'loguru>=0.7.0',
+    'numpy>=2.2.2',
+    'numba>=0.58.0',
+    'scipy>=1.11.0',
+    'coloraide>=4.6',
+    'opencv-python>=4.8.0',
+    'pillow>=11.1.0',
+]
+
+[[project.authors]]
+name = 'Adam Twardoch'
+email = 'adam+github@twardoch.com'
+
+[project.license]
+text = 'MIT'
+
+[project.urls]
+Documentation = 'https://github.com/twardoch/imgcolorshine#readme'
+Issues = 'https://github.com/twardoch/imgcolorshine/issues'
+Source = 'https://github.com/twardoch/imgcolorshine'
+
+[project.optional-dependencies]
+dev = [
+    'pre-commit>=4.1.0',
+    'ruff>=0.9.7',
+    'mypy>=1.15.0',
+    'absolufy-imports>=0.3.1',
+    'pyupgrade>=3.19.1',
+    'isort>=6.0.1',
+]
+test = [
+    'pytest>=8.3.4',
+    'pytest-cov>=6.0.0',
+    'pytest-benchmark[histogram]>=5.1.0',
+    'pytest-asyncio>=0.26.0',
+    'coverage[toml]>=7.6.12',
+]
+docs = [
+    'sphinx>=8.2.3',
+    'sphinx-rtd-theme>=3.0.2',
+    'sphinx-autodoc-typehints>=2.0.0',
+    'myst-parser>=4.0.1',
+]
+all = [
+    'absolufy-imports>=0.3.1',
+    'coverage[toml]>=7.6.12',
+    'isort>=6.0.1',
+    'mypy>=1.15.0',
+    'pre-commit>=4.1.0',
+    'pytest-asyncio>=0.26.0',
+    'pytest-benchmark[histogram]>=5.1.0',
+    'pytest-cov>=6.0.0',
+    'pytest>=8.3.4',
+    'pyupgrade>=3.19.1',
+    'ruff>=0.9.7',
+    'myst-parser>=4.0.1',
+    'sphinx-autodoc-typehints>=2.0.0',
+    'sphinx-rtd-theme>=3.0.2',
+    'sphinx>=8.2.3',
+]
+
+[project.scripts]
+imgcolorshine = 'imgcolorshine.cli:main'
+
+[build-system]
+requires = [
+    'hatchling>=1.27.0',
+    'hatch-vcs>=0.4.0',
+]
+build-backend = 'hatchling.build'
+[tool.hatch.build]
+include = [
+    'src/imgcolorshine/py.typed',
+    'src/imgcolorshine/data/**/*',
+]
+exclude = [
+    '**/__pycache__',
+    '**/.pytest_cache',
+    '**/.mypy_cache',
+]
+[tool.hatch.build.targets.wheel]
+packages = ['src/imgcolorshine']
+reproducible = true
+[tool.hatch.build.hooks.vcs]
+version-file = 'src/imgcolorshine/__version__.py'
+
+[tool.hatch.version]
+source = 'vcs'
+
+[tool.hatch.metadata]
+allow-direct-references = true
+[tool.hatch.envs.default]
+features = [
+    'dev',
+    'test',
+    'all',
+]
+dependencies = []
+
+[tool.hatch.envs.default.scripts]
+test = 'pytest {args:tests}'
+test-cov = 'pytest --cov-report=term-missing --cov-config=pyproject.toml --cov=src/imgcolorshine --cov=tests {args:tests}'
+type-check = 'mypy src/imgcolorshine tests'
+lint = [
+    'uvx ruff check src/imgcolorshine tests',
+    'uvx ruff format --respect-gitignore src/imgcolorshine tests', 'uvx ty check'
+]
+fmt = [
+    'uvx ruff format --respect-gitignore src/imgcolorshine tests',
+    'uvx ruff check --fix src/imgcolorshine tests',
+]
+fix = [
+    'uvx ruff check --fix --unsafe-fixes src/imgcolorshine tests',
+    'uvx ruff format --respect-gitignore src/imgcolorshine tests',
+]
+[[tool.hatch.envs.all.matrix]]
+python = [
+    '3.10',
+    '3.11',
+    '3.12',
+]
+
+[tool.hatch.envs.lint]
+detached = true
+features = ['dev']
+
+[tool.hatch.envs.lint.scripts]
+typing = 'mypy --install-types --non-interactive {args:src/imgcolorshine tests}'
+style = [
+    'ruff check {args:.}',
+    'ruff format --respect-gitignore {args:.}',
+]
+fmt = [
+    'ruff format --respect-gitignore {args:.}',
+    'ruff check --fix {args:.}',
+]
+fix = [
+    'ruff check --fix --unsafe-fixes {args:.}',
+    'ruff format --respect-gitignore {args:.}',
+]
+all = [
+    'style',
+    'typing',
+    'fix',
+]
+
+[tool.hatch.envs.test]
+features = ['test']
+
+[tool.hatch.envs.test.scripts]
+test = 'python -m pytest {args:tests}'
+test-cov = 'python -m pytest --cov-report=term-missing --cov-config=pyproject.toml --cov=src/imgcolorshine --cov=tests {args:tests}'
+bench = 'python -m pytest -v -p no:briefcase tests/test_benchmark.py --benchmark-only'
+bench-save = 'python -m pytest -v -p no:briefcase tests/test_benchmark.py --benchmark-only --benchmark-json=benchmark/results.json'
+
+[tool.hatch.envs.docs]
+features = ['docs']
+
+[tool.hatch.envs.docs.scripts]
+build = 'sphinx-build -b html docs/source docs/build'
+
+[tool.hatch.envs.ci]
+features = ['test']
+
+[tool.hatch.envs.ci.scripts]
+test = 'pytest --cov=src/imgcolorshine --cov-report=xml'
+[tool.coverage.paths]
+imgcolorshine = [
+    'src/imgcolorshine',
+    '*/imgcolorshine/src/imgcolorshine',
+]
+tests = [
+    'tests',
+    '*/imgcolorshine/tests',
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    'no cov',
+    'if __name__ == .__main__.:',
+    'if TYPE_CHECKING:',
+    'pass',
+    'raise NotImplementedError',
+    'raise ImportError',
+    'except ImportError',
+    'except KeyError',
+    'except AttributeError',
+    'except NotImplementedError',
+]
+
+[tool.coverage.run]
+source_pkgs = [
+    'imgcolorshine',
+    'tests',
+]
+branch = true
+parallel = true
+omit = ['src/imgcolorshine/__about__.py']
+
+[tool.mypy]
+python_version = '3.10'
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = ['tests.*']
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+[tool.pytest.ini_options]
+addopts = '-v --durations=10 -p no:briefcase -p no:ruff -p no:black -p no:xdist'
+asyncio_mode = 'auto'
+asyncio_default_fixture_loop_scope = 'function'
+console_output_style = 'progress'
+filterwarnings = [
+    'ignore::DeprecationWarning',
+    'ignore::UserWarning',
+    'ignore:pkg_resources is deprecated:UserWarning',
+]
+log_cli = true
+log_cli_level = 'INFO'
+markers = [
+    '''benchmark: marks tests as benchmarks (select with '-m benchmark')''',
+    'unit: mark a test as a unit test',
+    'integration: mark a test as an integration test',
+    'permutation: tests for permutation functionality',
+    'parameter: tests for parameter parsing',
+    'prompt: tests for prompt parsing',
+]
+norecursedirs = [
+    '.*',
+    'build',
+    'dist',
+    'venv',
+    '__pycache__',
+    '*.egg-info',
+    '_private',
+]
+python_classes = ['Test*']
+python_files = ['test_*.py']
+python_functions = ['test_*']
+testpaths = ['tests']
+
+[tool.pytest-benchmark]
+min_rounds = 100
+min_time = 0.1
+histogram = true
+storage = 'file'
+save-data = true
+compare = [
+    'min',
+    'max',
+    'mean',
+    'stddev',
+    'median',
+    'iqr',
+    'ops',
+    'rounds',
+]
+
+[tool.ruff]
+target-version = 'py310'
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    'A',
+    'ARG',
+    'ASYNC',
+    'B',
+    'C',
+    'DTZ',
+    'E',
+    'EM',
+    'F',
+    'FBT',
+    'I',
+    'ICN',
+    'ISC',
+    'LOG',
+    'N',
+    'PLC',
+    'PLE',
+    'PLR',
+    'PLW',
+    'PT',
+    'PTH',
+    'PYI',
+    'RET',
+    'RSE',
+    'RUF',
+    'S',
+    'SIM',
+    'T',
+    'TCH',
+    'TID',
+    'UP',
+    'W',
+    'YTT',
+]
+ignore = [
+    'B027',
+    'C901',
+    'FBT003',
+    'PLR0911',
+    'PLR0912',
+    'PLR0913',
+    'PLR0915',
+    'PLR1714',
+    'PLW0603',
+    'PT013',
+    'PTH123',
+    'PYI056',
+    'S105',
+    'S106',
+    'S107',
+    'S110',
+    'SIM102',
+]
+unfixable = ['F401']
+exclude = [
+    '.git',
+    '.venv',
+    'venv',
+    'dist',
+    'build',
+    'old',
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ['imgcolorshine']
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = 'all'
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*" = [
+    'PLR2004',
+    'S101',
+    'TID252',
+]
 </file>
 
 <file path="README.md">

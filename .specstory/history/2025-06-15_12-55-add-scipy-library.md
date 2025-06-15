@@ -30,3 +30,38 @@ SciPy will now be automatically installed when users install your `imgcolorshine
 
 ---
 
+_**User**_
+
+In @cleanup.sh port `fd` usage to non-parallelized `find` usage
+
+---
+
+_**Assistant**_
+
+
+
+---
+
+I'll convert the `fd` commands in your cleanup script to use `find` instead. The `fd -e py -x` pattern will become `find . -name "*.py" -exec` pattern.
+
+---
+
+
+
+---
+
+Perfect! I've converted all the `fd` commands to use `find` instead. Here's what changed:
+
+- `fd -e py -x COMMAND {}` became `find . -name "*.py" -exec COMMAND {} \;`
+
+The key differences:
+- `fd -e py` → `find . -name "*.py"` (finds Python files)
+- `fd -x` → `find -exec` (executes command on each file)
+- `{}` → `{} \;` (the `\;` terminates the `-exec` command in find)
+
+This change makes the script run commands sequentially (non-parallelized) on each Python file found, which is what you requested. The functionality remains the same - it will still process all Python files with autoflake, pyupgrade, and ruff formatting tools.
+
+*Context improved by Giga AI*
+
+---
+
