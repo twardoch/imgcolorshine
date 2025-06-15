@@ -326,9 +326,7 @@ dev = [
     { name = "pre-commit" },
     { name = "pyupgrade" },
     { name = "ruff" },
-    { name = "scipy-stubs" },
     { name = "ty" },
-    { name = "types-pillow" },
 ]
 docs = [
     { name = "myst-parser" },
@@ -380,7 +378,6 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'all'", specifier = ">=0.9.7" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9.7" },
     { name = "scipy", specifier = ">=1.11.0" },
-    { name = "scipy-stubs", marker = "extra == 'dev'" },
     { name = "sphinx", marker = "extra == 'all'", specifier = ">=8.0.0" },
     { name = "sphinx", marker = "extra == 'docs'", specifier = ">=8.0.0" },
     { name = "sphinx-autodoc-typehints", marker = "extra == 'all'", specifier = ">=2.0.0" },
@@ -389,7 +386,6 @@ requires-dist = [
     { name = "sphinx-rtd-theme", marker = "extra == 'docs'", specifier = ">=3.0.2" },
     { name = "ty", marker = "extra == 'all'", specifier = ">=0.0.1a10" },
     { name = "ty", marker = "extra == 'dev'", specifier = ">=0.0.1a10" },
-    { name = "types-pillow", marker = "extra == 'dev'" },
 ]
 provides-extras = ["all", "dev", "docs", "test"]
 
@@ -751,43 +747,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/2c/8b/90eb44a40476fa0e71e05a0283947cfd74a5d36121a11d926ad6f3193cc4/opencv_python-4.11.0.86-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6b02611523803495003bd87362db3e1d2a0454a6a63025dc6658a9830570aa0d", size = 62986597, upload-time = "2025-01-16T13:52:08.836Z" },
     { url = "https://files.pythonhosted.org/packages/fb/d7/1d5941a9dde095468b288d989ff6539dd69cd429dbf1b9e839013d21b6f0/opencv_python-4.11.0.86-cp37-abi3-win32.whl", hash = "sha256:810549cb2a4aedaa84ad9a1c92fbfdfc14090e2749cedf2c1589ad8359aa169b", size = 29384337, upload-time = "2025-01-16T13:52:13.549Z" },
     { url = "https://files.pythonhosted.org/packages/a4/7d/f1c30a92854540bf789e9cd5dde7ef49bbe63f855b85a2e6b3db8135c591/opencv_python-4.11.0.86-cp37-abi3-win_amd64.whl", hash = "sha256:085ad9b77c18853ea66283e98affefe2de8cc4c1f43eda4c100cf9b2721142ec", size = 39488044, upload-time = "2025-01-16T13:52:21.928Z" },
-]
-
-[[package]]
-name = "optype"
-version = "0.9.3"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version < '3.11' and sys_platform == 'darwin'",
-    "python_full_version < '3.11' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "(python_full_version < '3.11' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.11' and sys_platform != 'darwin' and sys_platform != 'linux')",
-]
-dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/88/3c/9d59b0167458b839273ad0c4fc5f62f787058d8f5aed7f71294963a99471/optype-0.9.3.tar.gz", hash = "sha256:5f09d74127d316053b26971ce441a4df01f3a01943601d3712dd6f34cdfbaf48", size = 96143, upload-time = "2025-03-31T17:00:08.392Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/73/d8/ac50e2982bdc2d3595dc2bfe3c7e5a0574b5e407ad82d70b5f3707009671/optype-0.9.3-py3-none-any.whl", hash = "sha256:2935c033265938d66cc4198b0aca865572e635094e60e6e79522852f029d9e8d", size = 84357, upload-time = "2025-03-31T17:00:06.464Z" },
-]
-
-[[package]]
-name = "optype"
-version = "0.10.0"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version >= '3.12' and sys_platform == 'darwin'",
-    "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "(python_full_version >= '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version >= '3.12' and sys_platform != 'darwin' and sys_platform != 'linux')",
-    "python_full_version == '3.11.*' and sys_platform == 'darwin'",
-    "python_full_version == '3.11.*' and platform_machine == 'aarch64' and sys_platform == 'linux'",
-    "(python_full_version == '3.11.*' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version == '3.11.*' and sys_platform != 'darwin' and sys_platform != 'linux')",
-]
-dependencies = [
-    { name = "typing-extensions", marker = "python_full_version >= '3.11' and python_full_version < '3.13'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/11/11/5bc1ad8e4dd339783daec5299c9162eaa80ad072aaa1256561b336152981/optype-0.10.0.tar.gz", hash = "sha256:2b89a1b8b48f9d6dd8c4dd4f59e22557185c81823c6e2bfc43c4819776d5a7ca", size = 95630, upload-time = "2025-05-28T22:43:18.799Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/2b/98/7f97864d5b6801bc63c24e72c45a58417c344c563ca58134a43249ce8afa/optype-0.10.0-py3-none-any.whl", hash = "sha256:7e9ccc329fb65c326c6bd62c30c2ba03b694c28c378a96c2bcdd18a084f2c96b", size = 83825, upload-time = "2025-05-28T22:43:16.772Z" },
 ]
 
 [[package]]
@@ -1184,19 +1143,6 @@ wheels = [
 ]
 
 [[package]]
-name = "scipy-stubs"
-version = "1.15.3.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "optype", version = "0.9.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "optype", version = "0.10.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/0b/5f/35c43bd7d412add4adcd68475702571b2489b50c40b6564f808b2355e452/scipy_stubs-1.15.3.0.tar.gz", hash = "sha256:e8f76c9887461cf9424c1e2ad78ea5dac71dd4cbb383dc85f91adfe8f74d1e17", size = 275699, upload-time = "2025-05-08T16:58:35.139Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/6c/42/cd8dc81f8060de1f14960885ad5b2d2651f41de8b93d09f3f919d6567a5a/scipy_stubs-1.15.3.0-py3-none-any.whl", hash = "sha256:a251254cf4fd6e7fb87c55c1feee92d32ddbc1f542ecdf6a0159cdb81c2fb62d", size = 459062, upload-time = "2025-05-08T16:58:33.356Z" },
-]
-
-[[package]]
 name = "setuptools"
 version = "80.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1482,15 +1428,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/0c/b0/7f97a73ab1f0282e3b87215cacefabbdc6e19fa99d93e6931ec52fec28a4/ty-0.0.1a10-py3-none-win32.whl", hash = "sha256:9788bf5e55242b8bcb1d6f7111e75aa5bb8a56a30e25d97483abb8ae17bc802b", size = 6303169, upload-time = "2025-06-13T20:33:09.775Z" },
     { url = "https://files.pythonhosted.org/packages/13/ca/6cccb751923ccf73f74a4ea44e20e73ec80d1471915d06a199af350d4f9c/ty-0.0.1a10-py3-none-win_amd64.whl", hash = "sha256:12aded32a30e9e38310be7d409d5a4621dbc50637d333ffe441e5cb2e3eb0b33", size = 6837036, upload-time = "2025-06-13T20:33:11.09Z" },
     { url = "https://files.pythonhosted.org/packages/b5/30/19c6c8b9dbbbd60bfbe9a56941ad9f8ee09ad83cd08dd63145404959e953/ty-0.0.1a10-py3-none-win_arm64.whl", hash = "sha256:39c9483dcecde4bff0113a096afcec227e264fe60f2fcf925b9e65dbdbc78df3", size = 6461965, upload-time = "2025-06-13T20:33:13.074Z" },
-]
-
-[[package]]
-name = "types-pillow"
-version = "10.2.0.20240822"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/18/4a/4495264dddaa600d65d68bcedb64dcccf9d9da61adff51f7d2ffd8e4c9ce/types-Pillow-10.2.0.20240822.tar.gz", hash = "sha256:559fb52a2ef991c326e4a0d20accb3bb63a7ba8d40eb493e0ecb0310ba52f0d3", size = 35389, upload-time = "2024-08-22T02:32:48.15Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/66/23/e81a5354859831fcf54d488d33b80ba6133ea84f874a9c0ec40a4881e133/types_Pillow-10.2.0.20240822-py3-none-any.whl", hash = "sha256:d9dab025aba07aeb12fd50a6799d4eac52a9603488eca09d7662543983f16c5d", size = 54354, upload-time = "2024-08-22T02:32:46.664Z" },
 ]
 
 [[package]]
