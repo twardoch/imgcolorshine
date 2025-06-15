@@ -165,10 +165,9 @@ def oklab_to_srgb_single(oklab: np.ndarray) -> np.ndarray:
     # Step 5: Linear RGB to sRGB
     srgb = linear_to_srgb(linear)
 
-    # Clamp to valid range
-    for i in range(3):
-        srgb[i] = max(0.0, min(1.0, srgb[i]))
-
+    # No clamping here for internal checks; clamping is done by final consumer if needed.
+    # For example, batch_oklab_to_srgb (the public API for batch conversion) does clamp.
+    # Not clamping here allows is_in_gamut_srgb to correctly assess raw conversion.
     return srgb
 
 

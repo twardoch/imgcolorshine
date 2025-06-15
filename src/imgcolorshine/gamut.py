@@ -46,6 +46,9 @@ def binary_search_chroma(l: float, c: float, h: float, epsilon: float = 0.0001) 
     Returns:
         Maximum chroma that fits within gamut
     """
+    if l == 0.0 or l == 1.0:  # For pure black or white, max chroma is 0
+        return 0.0
+
     # Quick check if already in gamut
     oklch = np.array([l, c, h], dtype=np.float32)
     oklab = oklch_to_oklab_single(oklch)
@@ -307,6 +310,10 @@ def create_gamut_boundary_lut(hue_steps: int = 360, lightness_steps: int = 100) 
 
     for l_idx in range(lightness_steps):
         l = l_idx / (lightness_steps - 1)
+
+        if l == 0.0 or l == 1.0:  # Max chroma is 0 for pure black or white
+            lut[l_idx, :] = 0.0
+            continue
 
         for h_idx in range(hue_steps):
             h = (h_idx / hue_steps) * 360
