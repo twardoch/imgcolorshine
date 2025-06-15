@@ -48,6 +48,12 @@ process_params() {
     IFS=';' read -r color tolerance strength <<<"$params"
 
     echo "Processing: $color with tolerance=$tolerance, strength=$strength (l=$luminance,s=$saturation,h=$chroma)"
+
+    # Build and display the CLI command
+    local cmd="imgcolorshine shine louis.jpg \"$params\" --luminance $luminance --saturation $saturation --chroma $chroma --output_image=\"output/louis-$suffix-$color-$tolerance-$strength.jpg\""
+    echo "CLI: $cmd"
+
+    # Execute the command
     imgcolorshine shine louis.jpg "$params" \
         --luminance "$luminance" --saturation "$saturation" --chroma "$chroma" \
         --output_image="output/louis-$suffix-$color-$tolerance-$strength.jpg"

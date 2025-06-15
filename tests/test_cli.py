@@ -29,17 +29,25 @@ def test_basic_transformation(cli, test_image_path):
     """Test basic CLI transformation command."""
     with patch("imgcolorshine.cli.process_image") as mock_process:
         # Test with single attractor
-        cli.shine(test_image_path, "red;50;75")
+        cli.shine(
+            test_image_path,
+            "red;50;75",
+            output_image="output.jpg",
+            luminance=True,
+            chroma=True,
+            hue=True,
+            verbose=True,
+        )
 
         # Verify process_image was called with correct arguments
         mock_process.assert_called_once_with(
             input_image=test_image_path,
             attractors=("red;50;75",),
-            output_image=None,
-            luminance=False,
-            saturation=False,
-            chroma=False,
-            verbose=False,
+            output_image="output.jpg",
+            luminance=True,
+            saturation=True,  # chroma maps to saturation internally
+            chroma=True,  # hue maps to chroma internally
+            verbose=True,
             tile_size=1024,
             gpu=True,
             lut_size=0,
@@ -49,19 +57,24 @@ def test_basic_transformation(cli, test_image_path):
 
 
 def test_multiple_attractors(cli, test_image_path):
-    """Test CLI with multiple color attractors."""
+    """Test CLI with multiple attractors."""
     with patch("imgcolorshine.cli.process_image") as mock_process:
-        # Test with multiple attractors
-        cli.shine(test_image_path, "red;50;75", "blue;30;60", "green;40;50")
+        cli.shine(
+            test_image_path,
+            "red;50;75",
+            "blue;30;60",
+            luminance=False,
+            chroma=True,
+            hue=False,
+        )
 
-        # Verify process_image was called with all attractors
         mock_process.assert_called_once_with(
             input_image=test_image_path,
-            attractors=("red;50;75", "blue;30;60", "green;40;50"),
+            attractors=("red;50;75", "blue;30;60"),
             output_image=None,
             luminance=False,
-            saturation=False,
-            chroma=False,
+            saturation=True,  # chroma maps to saturation internally
+            chroma=False,  # hue maps to chroma internally
             verbose=False,
             tile_size=1024,
             gpu=True,

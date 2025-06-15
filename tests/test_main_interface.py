@@ -77,6 +77,7 @@ class TestMainInterface:
             patch("imgcolorshine.colorshine.ImageProcessor") as mock_processor_class,
             patch("imgcolorshine.colorshine.OKLCHEngine") as mock_engine_class,
             patch("imgcolorshine.colorshine.ColorTransformer") as mock_transformer_class,
+            patch("imgcolorshine.colorshine.process_with_optimizations") as mock_process_optimized,
             patch("imgcolorshine.colorshine.logger"),
         ):
             # Setup mocks
@@ -87,10 +88,14 @@ class TestMainInterface:
 
             mock_engine = Mock()
             mock_engine_class.return_value = mock_engine
+            mock_attractor = Mock()
+            mock_engine.create_attractor.return_value = mock_attractor
 
             mock_transformer = Mock()
             mock_transformer_class.return_value = mock_transformer
-            mock_transformer.process_with_attractors.return_value = test_image
+
+            # Mock the optimization function to return transformed image
+            mock_process_optimized.return_value = test_image
 
             # Create a temporary file for output
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
@@ -100,7 +105,7 @@ class TestMainInterface:
             process_image("test.png", ("red;50;75",), output_image=output_path)
 
             # Verify calls
-            mock_processor.load_image.assert_called_once_with("test.png")
+            mock_processor.load_image.assert_called_once_with(Path("test.png"))
             mock_processor.save_image.assert_called_once()
 
             # Cleanup
@@ -112,6 +117,7 @@ class TestMainInterface:
             patch("imgcolorshine.colorshine.ImageProcessor") as mock_processor_class,
             patch("imgcolorshine.colorshine.OKLCHEngine") as mock_engine_class,
             patch("imgcolorshine.colorshine.ColorTransformer") as mock_transformer_class,
+            patch("imgcolorshine.colorshine.process_with_optimizations") as mock_process_optimized,
             patch("imgcolorshine.colorshine.logger"),
         ):
             # Setup mocks
@@ -122,10 +128,14 @@ class TestMainInterface:
 
             mock_engine = Mock()
             mock_engine_class.return_value = mock_engine
+            mock_attractor = Mock()
+            mock_engine.create_attractor.return_value = mock_attractor
 
             mock_transformer = Mock()
             mock_transformer_class.return_value = mock_transformer
-            mock_transformer.process_with_attractors.return_value = test_image
+
+            # Mock the optimization function to return transformed image
+            mock_process_optimized.return_value = test_image
 
             # Create a temporary file for output
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
@@ -147,6 +157,7 @@ class TestMainInterface:
             patch("imgcolorshine.colorshine.ImageProcessor") as mock_processor_class,
             patch("imgcolorshine.colorshine.OKLCHEngine") as mock_engine_class,
             patch("imgcolorshine.colorshine.ColorTransformer") as mock_transformer_class,
+            patch("imgcolorshine.colorshine.process_with_optimizations") as mock_process_optimized,
             patch("imgcolorshine.colorshine.logger"),
         ):
             # Setup mocks
@@ -157,10 +168,14 @@ class TestMainInterface:
 
             mock_engine = Mock()
             mock_engine_class.return_value = mock_engine
+            mock_attractor = Mock()
+            mock_engine.create_attractor.return_value = mock_attractor
 
             mock_transformer = Mock()
             mock_transformer_class.return_value = mock_transformer
-            mock_transformer.process_with_attractors.return_value = test_image
+
+            # Mock the optimization function to return transformed image
+            mock_process_optimized.return_value = test_image
 
             # Test with specific channel settings
             process_image(
@@ -171,11 +186,13 @@ class TestMainInterface:
                 chroma=True,
             )
 
-            # Verify ColorTransformer was created with correct settings
-            mock_transformer_class.assert_called_once()
-            call_kwargs = mock_transformer_class.call_args[1]
-            assert call_kwargs["transform_lightness"] is True
-            assert call_kwargs["transform_chroma"] is True
+            # Verify process_with_optimizations was called with correct channel settings
+            mock_process_optimized.assert_called_once()
+            call_args = mock_process_optimized.call_args[0]
+            # Arguments: image, attractor_objects, luminance, saturation, chroma, fast_hierar, fast_spatial, transformer, engine
+            assert call_args[2] is True  # luminance
+            assert call_args[3] is False  # saturation
+            assert call_args[4] is True  # chroma
 
     def test_process_image_custom_output(self):
         """Test custom output path specification."""
@@ -183,6 +200,7 @@ class TestMainInterface:
             patch("imgcolorshine.colorshine.ImageProcessor") as mock_processor_class,
             patch("imgcolorshine.colorshine.OKLCHEngine") as mock_engine_class,
             patch("imgcolorshine.colorshine.ColorTransformer") as mock_transformer_class,
+            patch("imgcolorshine.colorshine.process_with_optimizations") as mock_process_optimized,
             patch("imgcolorshine.colorshine.logger"),
         ):
             # Setup mocks
@@ -193,10 +211,14 @@ class TestMainInterface:
 
             mock_engine = Mock()
             mock_engine_class.return_value = mock_engine
+            mock_attractor = Mock()
+            mock_engine.create_attractor.return_value = mock_attractor
 
             mock_transformer = Mock()
             mock_transformer_class.return_value = mock_transformer
-            mock_transformer.process_with_attractors.return_value = test_image
+
+            # Mock the optimization function to return transformed image
+            mock_process_optimized.return_value = test_image
 
             # Process with custom output
             custom_output = "/tmp/custom_output.png"

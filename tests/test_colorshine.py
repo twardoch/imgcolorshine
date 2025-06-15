@@ -55,7 +55,7 @@ def test_shine_function():
 
         # Verify the processing pipeline was called
         mock_processor.assert_called_once()
-        mock_img_proc.load_image.assert_called_once_with("test.png")
+        mock_img_proc.load_image.assert_called_once_with(Path("test.png"))
         mock_img_proc.save_image.assert_called_once()
         mock_color_engine.create_attractor.assert_called_once_with("red", 50.0, 75.0)
 
@@ -182,8 +182,13 @@ def test_process_image_channel_defaults():
             attractors=("red;50;75",),
         )
 
-        # Check that transformer was created with correct defaults
-        mock_transformer.assert_called_once()
-        transformer_args = mock_transformer.call_args[1]
-        assert transformer_args["transform_lightness"] is True
-        assert transformer_args["transform_chroma"] is True
+        # Check that transformer was created with engine only
+        mock_transformer.assert_called_once_with(mock_color_engine)
+
+        # Check that process_with_optimizations was called with correct channel defaults
+        mock_process_optimized.assert_called_once()
+        call_args = mock_process_optimized.call_args[0]
+        # Arguments: image, attractor_objects, luminance, saturation, chroma, fast_hierar, fast_spatial, transformer, engine
+        assert call_args[2] is True  # luminance
+        assert call_args[3] is True  # saturation
+        assert call_args[4] is True  # chroma

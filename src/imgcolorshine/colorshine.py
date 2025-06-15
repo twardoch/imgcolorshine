@@ -250,7 +250,7 @@ def process_with_optimizations(
     attractor_objects: list,
     luminance: bool,
     saturation: bool,
-    hue: bool,
+    chroma: bool,
     hierarchical: bool,
     spatial_accel: bool,
     transformer: "ColorTransformer",
@@ -267,7 +267,7 @@ def process_with_optimizations(
     attractors_lab = np.array([a.oklab_values for a in attractor_objects])
     tolerances = np.array([a.tolerance for a in attractor_objects])
     strengths = np.array([a.strength for a in attractor_objects])
-    channels = [luminance, saturation, hue]
+    channels = [luminance, saturation, chroma]
 
     # Import optimization modules
     if hierarchical:
@@ -394,7 +394,7 @@ def process_with_optimizations(
         )
     else:
         # Should not reach here, but fallback to standard processing
-        flags = {"luminance": luminance, "saturation": saturation, "chroma": hue}
+        flags = {"luminance": luminance, "saturation": saturation, "chroma": chroma}
         transformed = transformer.transform_image(image, attractor_objects, flags)
 
     return transformed

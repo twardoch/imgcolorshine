@@ -148,7 +148,7 @@ def blend_colors(
             if weights[i] > 0:
                 final_l += weights[i] * attractors_lch[i][0]
 
-    if flags[1]:  # Saturation (Chroma)
+    if flags[1]:  # Chroma (not saturation - we're in OKLCH space)
         final_c = src_weight * pixel_lch[1]
         for i in range(len(weights)):
             if weights[i] > 0:
@@ -273,6 +273,11 @@ class ColorTransformer:
         # Report dimensions in width×height order to match common conventions
         h, w = image.shape[:2]
         logger.info(f"Transforming {w}×{h} image with {len(attractors)} attractors")
+
+        # Handle empty attractors case
+        if not attractors:
+            logger.warning("No attractors provided, returning original image")
+            return image.copy()
 
         # Log attractor details
         for i, attractor in enumerate(attractors):
