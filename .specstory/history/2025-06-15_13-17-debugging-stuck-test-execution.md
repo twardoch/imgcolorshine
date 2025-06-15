@@ -1041,3 +1041,100 @@ All fixes maintain the existing functionality while ensuring tests run efficient
 
 ---
 
+_**User**_
+
+Run `./cleanup.py`, fix issues, re-run, fix more etc.
+
+---
+
+_**Assistant**_
+
+
+
+---
+
+I'll run the cleanup script and fix any issues it identifies, then iterate until everything is clean.
+
+---
+
+```bash
+./cleanup.py
+```
+
+```
+adam@Hamlet imgcolorshine % ./cleanup.py
+zsh: no such file or directory: ./cleanup.py
+adam@Hamlet imgcolorshine %
+```
+
+---
+
+Let me check what cleanup scripts are available:
+
+---
+
+<details>
+            <summary>Listed current directory • **34** results</summary>
+        
+| Name |
+|-------|
+| 📁 `.git` |
+| 📄 `.coverage` |
+| 📁 `.mypy_cache` |
+| 📄 `llms.txt` |
+| 📁 `dist` |
+| 📄 `cleanup.sh` |
+| 📄 `pyproject.toml` |
+| 📁 `.venv` |
+| 📄 `PLAN.md` |
+| 📄 `TODO.md` |
+| 📁 `.idea` |
+| 📁 `.benchmarks` |
+| 📁 `tests` |
+| 📁 `docs` |
+| 📄 `README.md` |
+| 📄 `CLAUDE.md` |
+| 📄 `AGENT.md` |
+| 📄 `CHANGELOG.md` |
+| 📄 `.cursorrules` |
+| 📁 `testdata` |
+| 📁 `.pytest_cache` |
+| 📁 `.ruff_cache` |
+| 📄 `.DS_Store` |
+| 📁 `src` |
+| 📁 `.cursor` |
+| 📁 `.giga` |
+| 📄 `pyrightconfig.json` |
+| 📁 `.specstory` |
+| 📄 `.cursorindexingignore` |
+| 📄 `package.toml` |
+| 📁 `.github` |
+| 📄 `.pre-commit-config.yaml` |
+| 📄 `LICENSE` |
+| 📄 `.gitignore` |
+
+</details>
+
+---
+
+I see there's a `cleanup.sh` script. Let me run that:
+
+---
+
+```bash
+./cleanup.sh
+```
+
+```
+adam@Hamlet imgcolorshine % ./cleanup.sh
+rm -rf dist/imgcolorshine*.*
+uv build
+Building source distribution...
+```
+
+---
+
+
+
+---
+

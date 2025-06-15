@@ -3768,309 +3768,6 @@ class SpatialAccelerator:
         logger.debug("Cleared tile cache")
 </file>
 
-<file path="src/imgcolorshine/trans_numba.py">
-#!/usr/bin/env -S uv run -s
-# /// script
-# dependencies = ["numpy", "numba"]
-# ///
-# this_file: src/imgcolorshine/trans_numba.py
-
-"""
-Numba-optimized color space transformations for high performance.
-
-Implements direct matrix multiplication for sRGB ↔ Oklab conversions
-and vectorized OKLCH operations. This module provides dramatic speedups
-over the ColorAide-based conversions in color.py.
-
-All transformations follow the CSS Color Module 4 and Oklab specifications.
-"""
-
-import numba
-import numpy as np
-
-# Color transformation matrices (from CSS Color Module 4 spec)
-# sRGB to linear RGB gamma correction is handled separately
-
-# Linear RGB to XYZ D65 matrix
-_LINEAR_RGB_TO_XYZ = np.array(
-    [
-        [0.4123907992659595, 0.3575843393838780, 0.1804807884018343],
-        [0.2126390058715104, 0.7151686787677559, 0.0721923153607337],
-        [0.0193308187155918, 0.1191947797946259, 0.9505321522496608],
-    ],
-    dtype=np.float32,
-)
-
-# XYZ D65 to Linear RGB matrix
-_XYZ_TO_LINEAR_RGB = np.array(
-    [
-        [3.2409699419045213, -1.5373831775700935, -0.4986107602930033],
-        [-0.9692436362808798, 1.8759675015077206, 0.0415550574071756],
-        [0.0556300796969936, -0.2039769588889765, 1.0569715142428784],
-    ],
-    dtype=np.float32,
-)
-
-# XYZ D65 to LMS matrix (for Oklab)
-_XYZ_TO_LMS = np.array(
-    [
-        [0.8189330101, 0.3618667424, -0.1288597137],
-        [0.0329845436, 0.9293118715, 0.0361456387],
-        [0.0482003018, 0.2643662691, 0.6338517070],
-    ],
-    dtype=np.float32,
-)
-
-# LMS to XYZ D65 matrix
-_LMS_TO_XYZ = np.array(
-    [
-        [1.2270138511035211, -0.5577999806518222, 0.2812561489664678],
-        [-0.0405801784232806, 1.1122568696168302, -0.0716766786656012],
-        [-0.0763812845057069, -0.4214819784180127, 1.5861632204407947],
-    ],
-    dtype=np.float32,
-)
-
-# LMS to Oklab matrix (after applying cbrt)
-_LMS_TO_OKLAB = np.array(
-    [
-        [0.2104542553, 0.7936177850, -0.0040720468],
-        [1.9779984951, -2.4285922050, 0.4505937099],
-        [0.0259040371, 0.7827717662, -0.8086757660],
-    ],
-    dtype=np.float32,
-)
-
-# Oklab to LMS matrix (before applying cube)
-_OKLAB_TO_LMS = np.array(
-    [
-        [1.0000000000, 0.3963377774, 0.2158037573],
-        [1.0000000000, -0.1055613458, -0.0638541728],
-        [1.0000000000, -0.0894841775, -1.2914855480],
-    ],
-    dtype=np.float32,
-)
-
-
-@numba.njit(cache=True)
-def srgb_to_linear_component(c: float) -> float:
-    """Apply inverse gamma correction to a single sRGB component."""
-    if c <= 0.04045:
-        return c / 12.92
-    return ((c + 0.055) / 1.055) ** 2.4
-
-
-@numba.njit(cache=True)
-def linear_to_srgb_component(c: float) -> float:
-    """Apply gamma correction to a single linear RGB component."""
-    if c <= 0.0031308:
-        return c * 12.92
-    return 1.055 * (c ** (1.0 / 2.4)) - 0.055
-
-
-@numba.njit(cache=True)
-def srgb_to_linear(rgb: np.ndarray) -> np.ndarray:
-    """Convert sRGB to linear RGB (inverse gamma correction)."""
-    linear = np.empty_like(rgb)
-    for i in range(3):
-        linear[i] = srgb_to_linear_component(rgb[i])
-    return linear
-
-
-@numba.njit(cache=True)
-def linear_to_srgb(linear: np.ndarray) -> np.ndarray:
-    """Convert linear RGB to sRGB (gamma correction)."""
-    srgb = np.empty_like(linear)
-    for i in range(3):
-        srgb[i] = linear_to_srgb_component(linear[i])
-    return srgb
-
-
-@numba.njit(cache=True)
-def matrix_multiply_3x3(mat: np.ndarray, vec: np.ndarray) -> np.ndarray:
-    """Multiply a 3x3 matrix by a vector."""
-    result = np.zeros(3, dtype=np.float32)
-    for i in range(3):
-        result[i] = mat[i, 0] * vec[0] + mat[i, 1] * vec[1] + mat[i, 2] * vec[2]
-    return result
-
-
-@numba.njit(cache=True)
-def srgb_to_oklab_single(rgb: np.ndarray) -> np.ndarray:
-    """Convert a single RGB pixel to Oklab."""
-    # Step 1: sRGB to linear RGB
-    linear = srgb_to_linear(rgb)
-
-    # Step 2: Linear RGB to XYZ
-    xyz = matrix_multiply_3x3(_LINEAR_RGB_TO_XYZ, linear)
-
-    # Step 3: XYZ to LMS
-    lms = matrix_multiply_3x3(_XYZ_TO_LMS, xyz)
-
-    # Step 4: Apply cube root
-    lms_cbrt = np.empty_like(lms)
-    for i in range(3):
-        lms_cbrt[i] = np.cbrt(lms[i])
-
-    # Step 5: LMS to Oklab
-    return matrix_multiply_3x3(_LMS_TO_OKLAB, lms_cbrt)
-
-
-@numba.njit(cache=True)
-def oklab_to_srgb_single(oklab: np.ndarray) -> np.ndarray:
-    """Convert a single Oklab pixel to sRGB."""
-    # Step 1: Oklab to LMS (cbrt space)
-    lms_cbrt = matrix_multiply_3x3(_OKLAB_TO_LMS, oklab)
-
-    # Step 2: Apply cube
-    lms = np.empty_like(lms_cbrt)
-    for i in range(3):
-        lms[i] = lms_cbrt[i] ** 3
-
-    # Step 3: LMS to XYZ
-    xyz = matrix_multiply_3x3(_LMS_TO_XYZ, lms)
-
-    # Step 4: XYZ to linear RGB
-    linear = matrix_multiply_3x3(_XYZ_TO_LINEAR_RGB, xyz)
-
-    # Step 5: Linear RGB to sRGB
-    srgb = linear_to_srgb(linear)
-
-    # Clamp to valid range
-    for i in range(3):
-        srgb[i] = max(0.0, min(1.0, srgb[i]))
-
-    return srgb
-
-
-@numba.njit(parallel=True, cache=True)
-def batch_srgb_to_oklab(rgb_image: np.ndarray) -> np.ndarray:
-    """Convert entire RGB image to Oklab using parallel processing."""
-    h, w = rgb_image.shape[:2]
-    oklab_image = np.empty_like(rgb_image)
-
-    for i in numba.prange(h):
-        for j in range(w):
-            oklab_image[i, j] = srgb_to_oklab_single(rgb_image[i, j])
-
-    return oklab_image
-
-
-@numba.njit(parallel=True, cache=True)
-def batch_oklab_to_srgb(oklab_image: np.ndarray) -> np.ndarray:
-    """Convert entire Oklab image to sRGB using parallel processing."""
-    h, w = oklab_image.shape[:2]
-    rgb_image = np.empty_like(oklab_image)
-
-    for i in numba.prange(h):
-        for j in range(w):
-            rgb_image[i, j] = oklab_to_srgb_single(oklab_image[i, j])
-
-    return rgb_image
-
-
-@numba.njit(cache=True)
-def oklab_to_oklch_single(oklab: np.ndarray) -> np.ndarray:
-    """Convert single Oklab pixel to OKLCH."""
-    l = oklab[0]
-    a = oklab[1]
-    b = oklab[2]
-
-    c = np.sqrt(a * a + b * b)
-    h = np.arctan2(b, a) * 180.0 / np.pi
-    if h < 0:
-        h += 360.0
-
-    return np.array([l, c, h], dtype=oklab.dtype)
-
-
-@numba.njit(cache=True)
-def oklch_to_oklab_single(oklch: np.ndarray) -> np.ndarray:
-    """Convert single OKLCH pixel to Oklab."""
-    l = oklch[0]
-    c = oklch[1]
-    h = oklch[2]
-
-    h_rad = h * np.pi / 180.0
-    a = c * np.cos(h_rad)
-    b = c * np.sin(h_rad)
-
-    return np.array([l, a, b], dtype=oklch.dtype)
-
-
-@numba.njit(parallel=True, cache=True)
-def batch_oklab_to_oklch(oklab_image: np.ndarray) -> np.ndarray:
-    """Convert entire Oklab image to OKLCH using parallel processing."""
-    h, w = oklab_image.shape[:2]
-    oklch_image = np.empty_like(oklab_image)
-
-    for i in numba.prange(h):
-        for j in range(w):
-            oklch_image[i, j] = oklab_to_oklch_single(oklab_image[i, j])
-
-    return oklch_image
-
-
-@numba.njit(parallel=True, cache=True)
-def batch_oklch_to_oklab(oklch_image: np.ndarray) -> np.ndarray:
-    """Convert entire OKLCH image to Oklab using parallel processing."""
-    h, w = oklch_image.shape[:2]
-    oklab_image = np.empty_like(oklch_image)
-
-    for i in numba.prange(h):
-        for j in range(w):
-            oklab_image[i, j] = oklch_to_oklab_single(oklch_image[i, j])
-
-    return oklab_image
-
-
-@numba.njit(cache=True)
-def is_in_gamut_srgb(rgb: np.ndarray) -> bool:
-    """Check if RGB values are within sRGB gamut."""
-    return np.all(rgb >= 0.0) and np.all(rgb <= 1.0)
-
-
-@numba.njit(cache=True)
-def gamut_map_oklch_single(oklch: np.ndarray, epsilon: float = 0.0001) -> np.ndarray:
-    """Gamut map a single OKLCH color to sRGB using binary search on chroma."""
-    l, c, h = oklch
-
-    # First check if already in gamut
-    oklab = oklch_to_oklab_single(oklch)
-    rgb = oklab_to_srgb_single(oklab)
-    if is_in_gamut_srgb(rgb):
-        return oklch
-
-    # Binary search for maximum valid chroma
-    c_min, c_max = 0.0, c
-
-    while c_max - c_min > epsilon:
-        c_mid = (c_min + c_max) / 2.0
-        test_oklch = np.array([l, c_mid, h], dtype=oklch.dtype)
-        test_oklab = oklch_to_oklab_single(test_oklch)
-        test_rgb = oklab_to_srgb_single(test_oklab)
-
-        if is_in_gamut_srgb(test_rgb):
-            c_min = c_mid
-        else:
-            c_max = c_mid
-
-    return np.array([l, c_min, h], dtype=oklch.dtype)
-
-
-@numba.njit(parallel=True, cache=True)
-def batch_gamut_map_oklch(oklch_image: np.ndarray) -> np.ndarray:
-    """Gamut map entire OKLCH image using parallel processing."""
-    h, w = oklch_image.shape[:2]
-    mapped_image = np.empty_like(oklch_image)
-
-    for i in numba.prange(h):
-        for j in range(w):
-            mapped_image[i, j] = gamut_map_oklch_single(oklch_image[i, j])
-
-    return mapped_image
-</file>
-
 <file path="src/imgcolorshine/transform.py">
 #!/usr/bin/env -S uv run -s
 # /// script
@@ -5302,8 +4999,321 @@ def process_image_gpu(
         return None
 </file>
 
+<file path="src/imgcolorshine/trans_numba.py">
+#!/usr/bin/env -S uv run -s
+# /// script
+# dependencies = ["numpy", "numba"]
+# ///
+# this_file: src/imgcolorshine/trans_numba.py
+
+"""
+Numba-optimized color space transformations for high performance.
+
+Implements direct matrix multiplication for sRGB ↔ Oklab conversions
+and vectorized OKLCH operations. This module provides dramatic speedups
+over the ColorAide-based conversions in color.py.
+
+All transformations follow the CSS Color Module 4 and Oklab specifications.
+"""
+
+import numba
+import numpy as np
+
+# Color transformation matrices (from CSS Color Module 4 spec)
+# sRGB to linear RGB gamma correction is handled separately
+
+# Linear RGB to XYZ D65 matrix
+_LINEAR_RGB_TO_XYZ = np.array(
+    [
+        [0.4123907992659595, 0.3575843393838780, 0.1804807884018343],
+        [0.2126390058715104, 0.7151686787677559, 0.0721923153607337],
+        [0.0193308187155918, 0.1191947797946259, 0.9505321522496608],
+    ],
+    dtype=np.float32,
+)
+
+# XYZ D65 to Linear RGB matrix
+_XYZ_TO_LINEAR_RGB = np.array(
+    [
+        [3.2409699419045213, -1.5373831775700935, -0.4986107602930033],
+        [-0.9692436362808798, 1.8759675015077206, 0.0415550574071756],
+        [0.0556300796969936, -0.2039769588889765, 1.0569715142428784],
+    ],
+    dtype=np.float32,
+)
+
+# XYZ D65 to LMS matrix (for Oklab)
+_XYZ_TO_LMS = np.array(
+    [
+        [0.8189330101, 0.3618667424, -0.1288597137],
+        [0.0329845436, 0.9293118715, 0.0361456387],
+        [0.0482003018, 0.2643662691, 0.6338517070],
+    ],
+    dtype=np.float32,
+)
+
+# LMS to XYZ D65 matrix
+_LMS_TO_XYZ = np.array(
+    [
+        [1.2270138511035211, -0.5577999806518222, 0.2812561489664678],
+        [-0.0405801784232806, 1.1122568696168302, -0.0716766786656012],
+        [-0.0763812845057069, -0.4214819784180127, 1.5861632204407947],
+    ],
+    dtype=np.float32,
+)
+
+# LMS to Oklab matrix (after applying cbrt)
+_LMS_TO_OKLAB = np.array(
+    [
+        [0.2104542553, 0.7936177850, -0.0040720468],
+        [1.9779984951, -2.4285922050, 0.4505937099],
+        [0.0259040371, 0.7827717662, -0.8086757660],
+    ],
+    dtype=np.float32,
+)
+
+# Oklab to LMS matrix (before applying cube)
+_OKLAB_TO_LMS = np.array(
+    [
+        [1.0000000000, 0.3963377774, 0.2158037573],
+        [1.0000000000, -0.1055613458, -0.0638541728],
+        [1.0000000000, -0.0894841775, -1.2914855480],
+    ],
+    dtype=np.float32,
+)
+
+
+@numba.njit(cache=True)
+def srgb_to_linear_component(c: float) -> float:
+    """Apply inverse gamma correction to a single sRGB component."""
+    if c <= 0.04045:
+        return c / 12.92
+    return ((c + 0.055) / 1.055) ** 2.4
+
+
+@numba.njit(cache=True)
+def linear_to_srgb_component(c: float) -> float:
+    """Apply gamma correction to a single linear RGB component."""
+    if c <= 0.0031308:
+        return c * 12.92
+    return 1.055 * (c ** (1.0 / 2.4)) - 0.055
+
+
+@numba.njit(cache=True)
+def srgb_to_linear(rgb: np.ndarray) -> np.ndarray:
+    """Convert sRGB to linear RGB (inverse gamma correction)."""
+    linear = np.empty_like(rgb)
+    for i in range(3):
+        linear[i] = srgb_to_linear_component(rgb[i])
+    return linear
+
+
+@numba.njit(cache=True)
+def linear_to_srgb(linear: np.ndarray) -> np.ndarray:
+    """Convert linear RGB to sRGB (gamma correction)."""
+    srgb = np.empty_like(linear)
+    for i in range(3):
+        srgb[i] = linear_to_srgb_component(linear[i])
+    return srgb
+
+
+@numba.njit(cache=True)
+def matrix_multiply_3x3(mat: np.ndarray, vec: np.ndarray) -> np.ndarray:
+    """Multiply a 3x3 matrix by a vector."""
+    result = np.zeros(3, dtype=np.float32)
+    for i in range(3):
+        result[i] = mat[i, 0] * vec[0] + mat[i, 1] * vec[1] + mat[i, 2] * vec[2]
+    return result
+
+
+@numba.njit(cache=True)
+def srgb_to_oklab_single(rgb: np.ndarray) -> np.ndarray:
+    """Convert a single RGB pixel to Oklab."""
+    # Step 1: sRGB to linear RGB
+    linear = srgb_to_linear(rgb)
+
+    # Step 2: Linear RGB to XYZ
+    xyz = matrix_multiply_3x3(_LINEAR_RGB_TO_XYZ, linear)
+
+    # Step 3: XYZ to LMS
+    lms = matrix_multiply_3x3(_XYZ_TO_LMS, xyz)
+
+    # Step 4: Apply cube root
+    lms_cbrt = np.empty_like(lms)
+    for i in range(3):
+        lms_cbrt[i] = np.cbrt(lms[i])
+
+    # Step 5: LMS to Oklab
+    return matrix_multiply_3x3(_LMS_TO_OKLAB, lms_cbrt)
+
+
+@numba.njit(cache=True)
+def oklab_to_srgb_single(oklab: np.ndarray) -> np.ndarray:
+    """Convert a single Oklab pixel to sRGB."""
+    # Step 1: Oklab to LMS (cbrt space)
+    lms_cbrt = matrix_multiply_3x3(_OKLAB_TO_LMS, oklab)
+
+    # Step 2: Apply cube
+    lms = np.empty_like(lms_cbrt)
+    for i in range(3):
+        lms[i] = lms_cbrt[i] ** 3
+
+    # Step 3: LMS to XYZ
+    xyz = matrix_multiply_3x3(_LMS_TO_XYZ, lms)
+
+    # Step 4: XYZ to linear RGB
+    linear = matrix_multiply_3x3(_XYZ_TO_LINEAR_RGB, xyz)
+
+    # Step 5: Linear RGB to sRGB
+    srgb = linear_to_srgb(linear)
+
+    # Clamp to valid range
+    for i in range(3):
+        srgb[i] = max(0.0, min(1.0, srgb[i]))
+
+    return srgb
+
+
+@numba.njit(parallel=True, cache=True)
+def batch_srgb_to_oklab(rgb_image: np.ndarray) -> np.ndarray:
+    """Convert entire RGB image to Oklab using parallel processing."""
+    h, w = rgb_image.shape[:2]
+    oklab_image = np.empty_like(rgb_image)
+
+    for i in numba.prange(h):
+        for j in range(w):
+            oklab_image[i, j] = srgb_to_oklab_single(rgb_image[i, j])
+
+    return oklab_image
+
+
+@numba.njit(parallel=True, cache=True)
+def batch_oklab_to_srgb(oklab_image: np.ndarray) -> np.ndarray:
+    """Convert entire Oklab image to sRGB using parallel processing."""
+    h, w = oklab_image.shape[:2]
+    rgb_image = np.empty_like(oklab_image)
+
+    for i in numba.prange(h):
+        for j in range(w):
+            rgb_image[i, j] = oklab_to_srgb_single(oklab_image[i, j])
+
+    return rgb_image
+
+
+@numba.njit(cache=True)
+def oklab_to_oklch_single(oklab: np.ndarray) -> np.ndarray:
+    """Convert single Oklab pixel to OKLCH."""
+    l = oklab[0]
+    a = oklab[1]
+    b = oklab[2]
+
+    c = np.sqrt(a * a + b * b)
+    h = np.arctan2(b, a) * 180.0 / np.pi
+    if h < 0:
+        h += 360.0
+
+    return np.array([l, c, h], dtype=oklab.dtype)
+
+
+@numba.njit(cache=True)
+def oklch_to_oklab_single(oklch: np.ndarray) -> np.ndarray:
+    """Convert single OKLCH pixel to Oklab."""
+    l = oklch[0]
+    c = oklch[1]
+    h = oklch[2]
+
+    h_rad = h * np.pi / 180.0
+    a = c * np.cos(h_rad)
+    b = c * np.sin(h_rad)
+
+    return np.array([l, a, b], dtype=oklch.dtype)
+
+
+@numba.njit(parallel=True, cache=True)
+def batch_oklab_to_oklch(oklab_image: np.ndarray) -> np.ndarray:
+    """Convert entire Oklab image to OKLCH using parallel processing."""
+    h, w = oklab_image.shape[:2]
+    oklch_image = np.empty_like(oklab_image)
+
+    for i in numba.prange(h):
+        for j in range(w):
+            oklch_image[i, j] = oklab_to_oklch_single(oklab_image[i, j])
+
+    return oklch_image
+
+
+@numba.njit(parallel=True, cache=True)
+def batch_oklch_to_oklab(oklch_image: np.ndarray) -> np.ndarray:
+    """Convert entire OKLCH image to Oklab using parallel processing."""
+    h, w = oklch_image.shape[:2]
+    oklab_image = np.empty_like(oklch_image)
+
+    for i in numba.prange(h):
+        for j in range(w):
+            oklab_image[i, j] = oklch_to_oklab_single(oklch_image[i, j])
+
+    return oklab_image
+
+
+@numba.njit(cache=True)
+def is_in_gamut_srgb(rgb: np.ndarray) -> bool:
+    """Check if RGB values are within sRGB gamut."""
+    return np.all(rgb >= 0.0) and np.all(rgb <= 1.0)
+
+
+@numba.njit(cache=True)
+def gamut_map_oklch_single(oklch: np.ndarray, epsilon: float = 0.0001) -> np.ndarray:
+    """Gamut map a single OKLCH color to sRGB using binary search on chroma."""
+    l, c, h = oklch
+
+    # First check if already in gamut
+    oklab = oklch_to_oklab_single(oklch)
+    rgb = oklab_to_srgb_single(oklab)
+    if is_in_gamut_srgb(rgb):
+        return oklch
+
+    # Binary search for maximum valid chroma
+    c_min, c_max = 0.0, c
+
+    while c_max - c_min > epsilon:
+        c_mid = (c_min + c_max) / 2.0
+        test_oklch = np.array([l, c_mid, h], dtype=oklch.dtype)
+        test_oklab = oklch_to_oklab_single(test_oklch)
+        test_rgb = oklab_to_srgb_single(test_oklab)
+
+        if is_in_gamut_srgb(test_rgb):
+            c_min = c_mid
+        else:
+            c_max = c_mid
+
+    return np.array([l, c_min, h], dtype=oklch.dtype)
+
+
+@numba.njit(parallel=True, cache=True)
+def batch_gamut_map_oklch(oklch_image: np.ndarray) -> np.ndarray:
+    """Gamut map entire OKLCH image using parallel processing."""
+    h, w = oklch_image.shape[:2]
+    mapped_image = np.empty_like(oklch_image)
+
+    for i in numba.prange(h):
+        for j in range(w):
+            mapped_image[i, j] = gamut_map_oklch_single(oklch_image[i, j])
+
+    return mapped_image
+
+
+# Aliases for backward compatibility with tests
+srgb_to_oklab_batch = batch_srgb_to_oklab
+oklab_to_srgb_batch = batch_oklab_to_srgb
+</file>
+
 <file path="tests/debug_transformation.py">
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run -s
+# /// script
+# dependencies = ["numpy", "loguru", "coloraide", "opencv-python", "pillow", "click", "numba"]
+# ///
+# this_file: tests/debug_transformation.py
+
 """
 Debug the actual transformation process to find why no changes are visible.
 """
@@ -5603,221 +5613,6 @@ if __name__ == "__main__":
     sys.exit(0 if success else 1)
 </file>
 
-<file path="tests/test_optimizations.py">
-#!/usr/bin/env -S uv run -s
-# /// script
-# dependencies = ["numpy", "loguru", "coloraide", "opencv-python", "pillow", "click", "numba"]
-# ///
-# this_file: tests/test_optimizations.py
-
-"""
-Test script for fast_hierar and spatial acceleration optimizations.
-"""
-
-import sys
-import time
-from pathlib import Path
-
-import numpy as np
-from loguru import logger
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-from imgcolorshine.color import OKLCHEngine
-from imgcolorshine.hierar import HierarchicalProcessor
-from imgcolorshine.io import ImageProcessor
-from imgcolorshine.spatial import SpatialAccelerator
-from imgcolorshine.transform import ColorTransformer
-
-
-def create_test_image(width: int, height: int) -> np.ndarray:
-    """Create a test image with gradient patterns."""
-    image = np.zeros((height, width, 3), dtype=np.uint8)
-
-    # Create gradient pattern
-    for y in range(height):
-        for x in range(width):
-            image[y, x] = [
-                int(255 * x / width),  # Red gradient left to right
-                int(255 * y / height),  # Green gradient top to bottom
-                128,  # Constant blue
-            ]
-
-    return image
-
-
-def test_hierarchical_processing():
-    """Test fast_hierar processing optimization."""
-    logger.info("Testing fast_hierar processing...")
-
-    # Create test image
-    image = create_test_image(512, 512)
-
-    # Initialize components
-    engine = OKLCHEngine()
-    transformer = ColorTransformer(engine)
-
-    # Create attractor
-    attractor = engine.create_attractor("red", 50.0, 75.0)
-
-    # Initialize fast_hierar processor
-    hier_processor = HierarchicalProcessor()
-
-    # Prepare data
-    attractors_lab = np.array([attractor.oklab_values])
-    attractors_lch = np.array([attractor.oklch_values])
-    tolerances = np.array([attractor.tolerance])
-    strengths = np.array([attractor.strength])
-    channels = [True, True, True]  # All channels enabled
-    flags_array = np.array(channels)
-
-    # Create transform function
-    def transform_func(img_rgb, *args):
-        """"""
-        return (
-            transformer._transform_tile(
-                img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
-            )
-            * 255.0
-        )
-
-    # Test fast_hierar processing
-    start_time = time.time()
-    result = hier_processor.process_hierarchical(image, transform_func, attractors_lab, tolerances, strengths, channels)
-    elapsed = time.time() - start_time
-
-    logger.info(f"Hierarchical processing completed in {elapsed:.3f}s")
-    logger.info(f"Result shape: {result.shape}, dtype: {result.dtype}")
-
-    # Verify result
-    assert result.shape == image.shape
-    # Result is float32, original is uint8 - convert for comparison
-    result_uint8 = np.clip(result, 0, 255).astype(np.uint8)
-    assert np.any(result_uint8 != image)  # Should have some changes
-
-    return result
-
-
-def test_spatial_acceleration():
-    """Test spatial acceleration optimization."""
-    logger.info("\nTesting spatial acceleration...")
-
-    # Create test image
-    image = create_test_image(512, 512)
-    image_float = image / 255.0
-
-    # Initialize components
-    engine = OKLCHEngine()
-    transformer = ColorTransformer(engine)
-
-    # Create attractor
-    attractor = engine.create_attractor("green", 40.0, 60.0)
-
-    # Initialize spatial accelerator
-    spatial_acc = SpatialAccelerator()
-
-    # Prepare data
-    attractors_lab = np.array([attractor.oklab_values])
-    attractors_lch = np.array([attractor.oklch_values])
-    tolerances = np.array([attractor.tolerance])
-    strengths = np.array([attractor.strength])
-    channels = [True, True, True]
-    flags_array = np.array(channels)
-
-    # Convert to Oklab for spatial queries
-    image_oklab = engine.batch_rgb_to_oklab(image_float)
-
-    # Create transform function
-    def transform_func(img_rgb, *args):
-        """"""
-        return (
-            transformer._transform_tile(
-                img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
-            )
-            * 255.0
-        )
-
-    # Test spatial acceleration
-    start_time = time.time()
-    result = spatial_acc.transform_with_spatial_accel(
-        image, image_oklab, attractors_lab, tolerances, strengths, transform_func, channels
-    )
-    elapsed = time.time() - start_time
-
-    logger.info(f"Spatial acceleration completed in {elapsed:.3f}s")
-    logger.info(f"Result shape: {result.shape}, dtype: {result.dtype}")
-
-    # Log statistics
-    if hasattr(spatial_acc, "uniform_tiles"):
-        logger.info(f"Uniform tiles: {spatial_acc.uniform_tiles}")
-        logger.info(f"Partial tiles: {spatial_acc.partial_tiles}")
-        logger.info(f"Skipped tiles: {spatial_acc.skipped_tiles}")
-
-    # Verify result
-    assert result.shape == image.shape
-    # Result may be float32 while original is uint8
-
-    return result
-
-
-def test_combined_optimizations():
-    """Test combined fast_hierar + spatial acceleration."""
-    logger.info("\nTesting combined optimizations...")
-
-    # Create larger test image
-    image = create_test_image(1024, 1024)
-
-    # Initialize components
-    engine = OKLCHEngine()
-    transformer = ColorTransformer(engine)
-
-    # Create multiple attractors
-    attractor1 = engine.create_attractor("blue", 60.0, 80.0)
-    attractor2 = engine.create_attractor("yellow", 40.0, 60.0)
-
-    attractor_objects = [attractor1, attractor2]
-
-    # Use the process_with_optimizations function
-    from imgcolorshine.colorshine import process_with_optimizations
-
-    start_time = time.time()
-    result = process_with_optimizations(
-        image,
-        attractor_objects,
-        luminance=True,
-        saturation=True,
-        hue=True,
-        hierarchical=True,
-        spatial_accel=True,
-        transformer=transformer,
-        engine=engine,
-    )
-    elapsed = time.time() - start_time
-
-    logger.info(f"Combined optimization completed in {elapsed:.3f}s")
-    logger.info(f"Result shape: {result.shape}, dtype: {result.dtype}")
-
-    # Verify result
-    assert result.shape == image.shape
-    assert np.any(result != image)  # Should have changes
-
-    return result
-
-
-if __name__ == "__main__":
-    logger.remove()
-    logger.add(sys.stderr, level="INFO")
-
-    logger.info("=== Testing imgcolorshine optimizations ===\n")
-
-    # Test individual optimizations
-    hier_result = test_hierarchical_processing()
-    spatial_result = test_spatial_acceleration()
-    combined_result = test_combined_optimizations()
-
-    logger.info("\n=== All tests completed successfully! ===")
-</file>
-
 <file path="src/imgcolorshine/utils.py">
 #!/usr/bin/env -S uv run -s
 # /// script
@@ -6006,11 +5801,15 @@ def validate_image(image: np.ndarray) -> None:
     Used in:
     - src/imgcolorshine/__init__.py
     """
-    if image.ndim != 3:
+    # Expected image dimensions
+    EXPECTED_NDIM = 3
+    EXPECTED_CHANNELS = 3
+
+    if image.ndim != EXPECTED_NDIM:
         msg = f"Image must be 3D (H, W, C), got shape {image.shape}"
         raise ValueError(msg)
 
-    if image.shape[2] != 3:
+    if image.shape[2] != EXPECTED_CHANNELS:
         msg = f"Image must have 3 channels (RGB), got {image.shape[2]}"
         raise ValueError(msg)
 
@@ -6052,10 +5851,10 @@ def batch_process_images(image_paths: list, output_dir: str, transform_func: Cal
     """
     from pathlib import Path
 
-    from colorshine.image_io import ImageProcessor
+    from imgcolorshine.io import ImageProcessor
 
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir_path = Path(output_dir)
+    output_dir_path.mkdir(parents=True, exist_ok=True)
 
     processor = ImageProcessor()
 
@@ -6069,151 +5868,220 @@ def batch_process_images(image_paths: list, output_dir: str, transform_func: Cal
         result = transform_func(image, **kwargs)
 
         # Save with same filename
-        output_path = output_dir / Path(image_path).name
+        output_path = output_dir_path / Path(image_path).name
         processor.save_image(result, output_path)
 
         logger.info(f"Saved: {output_path}")
 </file>
 
-<file path="tests/test_performance.py">
+<file path="tests/test_optimizations.py">
 #!/usr/bin/env -S uv run -s
 # /// script
-# dependencies = ["numpy", "pillow", "coloraide", "loguru", "click", "numba"]
+# dependencies = ["numpy", "loguru", "coloraide", "opencv-python", "pillow", "click", "numba"]
 # ///
-# this_file: test_performance.py
+# this_file: tests/test_optimizations.py
 
 """
-Performance benchmark for imgcolorshine optimizations.
-
-Compares the performance of ColorAide-based conversions vs Numba-optimized
-conversions on various image sizes.
+Test script for fast_hierar and spatial acceleration optimizations.
 """
 
-# Import both implementations
 import sys
 import time
 from pathlib import Path
-from typing import Any
 
 import numpy as np
-from coloraide import Color
 from loguru import logger
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-from imgcolorshine import trans_numba
 
-
-def benchmark_coloraide_conversion(rgb_image: np.ndarray) -> tuple[float, float]:
-    """Benchmark ColorAide-based RGB to Oklab and back conversion."""
-    h, w = rgb_image.shape[:2]
-    flat_rgb = rgb_image.reshape(-1, 3)
-
-    # RGB to Oklab
-    start = time.time()
-    oklab_list = []
-    for rgb in flat_rgb:
-        color = Color("srgb", list(rgb))
-        oklab = color.convert("oklab")
-        oklab_list.append([oklab["lightness"], oklab["a"], oklab["b"]])
-    oklab_image = np.array(oklab_list).reshape(h, w, 3)
-    rgb_to_oklab_time = time.time() - start
-
-    # Oklab to RGB
-    start = time.time()
-    flat_oklab = oklab_image.reshape(-1, 3)
-    rgb_list = []
-    for oklab in flat_oklab:
-        color = Color("oklab", list(oklab))
-        srgb = color.convert("srgb")
-        rgb_list.append([srgb["red"], srgb["green"], srgb["blue"]])
-    np.array(rgb_list).reshape(h, w, 3)
-    oklab_to_rgb_time = time.time() - start
-
-    return rgb_to_oklab_time, oklab_to_rgb_time
-
-
-def benchmark_numba_conversion(rgb_image: np.ndarray) -> tuple[float, float]:
-    """Benchmark Numba-optimized RGB to Oklab and back conversion."""
-    rgb_float32 = rgb_image.astype(np.float32)
-
-    # RGB to Oklab
-    start = time.time()
-    oklab_image = trans_numba.batch_srgb_to_oklab(rgb_float32)
-    rgb_to_oklab_time = time.time() - start
-
-    # Oklab to RGB (with gamut mapping)
-    start = time.time()
-    oklch_image = trans_numba.batch_oklab_to_oklch(oklab_image)
-    oklch_mapped = trans_numba.batch_gamut_map_oklch(oklch_image)
-    oklab_mapped = trans_numba.batch_oklch_to_oklab(oklch_mapped)
-    trans_numba.batch_oklab_to_srgb(oklab_mapped)
-    oklab_to_rgb_time = time.time() - start
-
-    return rgb_to_oklab_time, oklab_to_rgb_time
+from imgcolorshine.color import OKLCHEngine
+from imgcolorshine.hierar import HierarchicalProcessor
+from imgcolorshine.spatial import SpatialAccelerator
+from imgcolorshine.transform import ColorTransformer
 
 
 def create_test_image(width: int, height: int) -> np.ndarray:
-    """Create a test image with random colors."""
-    return np.random.rand(height, width, 3).astype(np.float32)
+    """Create a test image with gradient patterns."""
+    image = np.zeros((height, width, 3), dtype=np.uint8)
+
+    # Create gradient pattern
+    for y in range(height):
+        for x in range(width):
+            image[y, x] = [
+                int(255 * x / width),  # Red gradient left to right
+                int(255 * y / height),  # Green gradient top to bottom
+                128,  # Constant blue
+            ]
+
+    return image
 
 
-def test_performance_comparison() -> None:
-    """Compare performance between ColorAide and Numba implementations."""
-    # Test parameters
-    sizes = [(100, 100), (500, 500), (1000, 1000)]
-    results = []
+def test_hierarchical_processing():
+    """Test fast_hierar processing optimization."""
+    logger.info("Testing fast_hierar processing...")
 
-    # Test each image size
-    for width, height in sizes:
-        logger.info(f"\nBenchmarking {width}x{height} image...")
+    # Create test image
+    image = create_test_image(512, 512)
 
-        # Create test image
-        image: np.ndarray[Any, np.dtype[np.uint8]] = np.random.randint(0, 256, (height, width, 3), dtype=np.uint8)
+    # Initialize components
+    engine = OKLCHEngine()
+    transformer = ColorTransformer(engine)
 
-        # Convert to float32 [0,1]
-        image_float = image.astype(np.float32) / 255.0
+    # Create attractor
+    attractor = engine.create_attractor("red", 50.0, 75.0)
 
-        # Time ColorAide version
-        ca_time = None
-        try:
-            start_time = time.time()
-            for _ in range(3):  # Run multiple times for better timing
-                for y in range(height):
-                    for x in range(width):
-                        rgb = image_float[y, x]
-                        color = Color("srgb", rgb)
-                        _ = color.convert("oklab")
-                        _ = color.convert("oklch")
-            ca_time = (time.time() - start_time) / 3
-        except Exception as e:
-            logger.error(f"ColorAide error: {e}")
+    # Initialize fast_hierar processor
+    hier_processor = HierarchicalProcessor()
 
-        # Time Numba version
-        start_time = time.time()
-        for _ in range(3):  # Run multiple times for better timing
-            oklab = trans_numba.batch_srgb_to_oklab(image_float)
-            _ = trans_numba.batch_oklab_to_oklch(oklab)
-        nb_time = (time.time() - start_time) / 3
+    # Prepare data
+    attractors_lab = np.array([attractor.oklab_values])
+    attractors_lch = np.array([attractor.oklch_values])
+    tolerances = np.array([attractor.tolerance])
+    strengths = np.array([attractor.strength])
+    channels = [True, True, True]  # All channels enabled
+    flags_array = np.array(channels)
 
-        # Calculate speedup
-        speedup = ca_time / nb_time if ca_time else None
-        results.append((width, height, ca_time, nb_time, speedup))
+    # Create transform function
+    def transform_func(img_rgb, *_args):
+        """"""
+        return (
+            transformer._transform_tile(
+                img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
+            )
+            * 255.0
+        )
 
-    # Print results table
-    logger.info("\nPerformance Results:")
-    logger.info("Size      | ColorAide | Numba  | Speedup")
-    logger.info("-" * 40)
+    # Test fast_hierar processing
+    start_time = time.time()
+    result = hier_processor.process_hierarchical(image, transform_func, attractors_lab, tolerances, strengths, channels)
+    elapsed = time.time() - start_time
 
-    for width, height, ca_time, nb_time, speedup in results:
-        size_str = f"{width}x{height}"
-        ca_str = f"{ca_time:.3f}s" if ca_time else "N/A"
-        nb_str = f"{nb_time:.3f}s"
-        speedup_str = f"{speedup:.1f}x" if speedup else "N/A"
-        logger.info(f"{size_str:9} | {ca_str:9} | {nb_str:6} | {speedup_str}")
+    logger.info(f"Hierarchical processing completed in {elapsed:.3f}s")
+    logger.info(f"Result shape: {result.shape}, dtype: {result.dtype}")
+
+    # Verify result
+    assert result.shape == image.shape
+    # Result is float32, original is uint8 - convert for comparison
+    result_uint8 = np.clip(result, 0, 255).astype(np.uint8)
+    assert np.any(result_uint8 != image)  # Should have some changes
+
+
+def test_spatial_acceleration():
+    """Test spatial acceleration optimization."""
+    logger.info("\nTesting spatial acceleration...")
+
+    # Create test image
+    image = create_test_image(512, 512)
+    image_float = image / 255.0
+
+    # Initialize components
+    engine = OKLCHEngine()
+    transformer = ColorTransformer(engine)
+
+    # Create attractor
+    attractor = engine.create_attractor("green", 40.0, 60.0)
+
+    # Initialize spatial accelerator
+    spatial_acc = SpatialAccelerator()
+
+    # Prepare data
+    attractors_lab = np.array([attractor.oklab_values])
+    attractors_lch = np.array([attractor.oklch_values])
+    tolerances = np.array([attractor.tolerance])
+    strengths = np.array([attractor.strength])
+    channels = [True, True, True]
+    flags_array = np.array(channels)
+
+    # Convert to Oklab for spatial queries
+    image_oklab = engine.batch_rgb_to_oklab(image_float)
+
+    # Create transform function
+    def transform_func(img_rgb, *_args):
+        """"""
+        return (
+            transformer._transform_tile(
+                img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
+            )
+            * 255.0
+        )
+
+    # Test spatial acceleration
+    start_time = time.time()
+    result = spatial_acc.transform_with_spatial_accel(
+        image, image_oklab, attractors_lab, tolerances, strengths, transform_func, channels
+    )
+    elapsed = time.time() - start_time
+
+    logger.info(f"Spatial acceleration completed in {elapsed:.3f}s")
+    logger.info(f"Result shape: {result.shape}, dtype: {result.dtype}")
+
+    # Log statistics
+    if hasattr(spatial_acc, "uniform_tiles"):
+        logger.info(f"Uniform tiles: {spatial_acc.uniform_tiles}")
+        if hasattr(spatial_acc, "partial_tiles"):
+            logger.info(f"Partial tiles: {spatial_acc.partial_tiles}")
+        if hasattr(spatial_acc, "skipped_tiles"):
+            logger.info(f"Skipped tiles: {spatial_acc.skipped_tiles}")
+
+    # Verify result
+    assert result.shape == image.shape
+    # Result may be float32 while original is uint8
+
+
+def test_combined_optimizations():
+    """Test combined fast_hierar + spatial acceleration."""
+    logger.info("\nTesting combined optimizations...")
+
+    # Create larger test image
+    image = create_test_image(1024, 1024)
+
+    # Initialize components
+    engine = OKLCHEngine()
+    transformer = ColorTransformer(engine)
+
+    # Create multiple attractors
+    attractor1 = engine.create_attractor("blue", 60.0, 80.0)
+    attractor2 = engine.create_attractor("yellow", 40.0, 60.0)
+
+    attractor_objects = [attractor1, attractor2]
+
+    # Use the process_with_optimizations function
+    from imgcolorshine.colorshine import process_with_optimizations
+
+    start_time = time.time()
+    result = process_with_optimizations(
+        image,
+        attractor_objects,
+        luminance=True,
+        saturation=True,
+        hue=True,
+        hierarchical=True,
+        spatial_accel=True,
+        transformer=transformer,
+        engine=engine,
+    )
+    elapsed = time.time() - start_time
+
+    logger.info(f"Combined optimization completed in {elapsed:.3f}s")
+    logger.info(f"Result shape: {result.shape}, dtype: {result.dtype}")
+
+    # Verify result
+    assert result.shape == image.shape
+    assert np.any(result != image)  # Should have changes
 
 
 if __name__ == "__main__":
-    test_performance_comparison()
+    logger.remove()
+    logger.add(sys.stderr, level="INFO")
+
+    logger.info("=== Testing imgcolorshine optimizations ===\n")
+
+    # Test individual optimizations
+    test_hierarchical_processing()
+    test_spatial_acceleration()
+    test_combined_optimizations()
+
+    logger.info("\n=== All tests completed successfully! ===")
 </file>
 
 <file path="tests/test_tolerance.py">
@@ -6789,6 +6657,148 @@ def benchmark_image():
     return create_test_image(1920, 1080, "rainbow")
 </file>
 
+<file path="tests/test_performance.py">
+#!/usr/bin/env -S uv run -s
+# /// script
+# dependencies = ["numpy", "pillow", "coloraide", "loguru", "click", "numba"]
+# ///
+# this_file: test_performance.py
+
+"""
+Performance benchmark for imgcolorshine optimizations.
+
+Compares the performance of ColorAide-based conversions vs Numba-optimized
+conversions on various image sizes.
+"""
+
+# Import both implementations
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+from coloraide import Color
+from loguru import logger
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+from imgcolorshine import trans_numba
+
+
+def benchmark_coloraide_conversion(rgb_image: np.ndarray) -> tuple[float, float]:
+    """Benchmark ColorAide-based RGB to Oklab and back conversion."""
+    h, w = rgb_image.shape[:2]
+    flat_rgb = rgb_image.reshape(-1, 3)
+
+    # RGB to Oklab
+    start = time.time()
+    oklab_list = []
+    for rgb in flat_rgb:
+        color = Color("srgb", list(rgb))
+        oklab = color.convert("oklab")
+        oklab_list.append([oklab["lightness"], oklab["a"], oklab["b"]])
+    oklab_image = np.array(oklab_list).reshape(h, w, 3)
+    rgb_to_oklab_time = time.time() - start
+
+    # Oklab to RGB
+    start = time.time()
+    flat_oklab = oklab_image.reshape(-1, 3)
+    rgb_list = []
+    for oklab in flat_oklab:
+        color = Color("oklab", list(oklab))
+        srgb = color.convert("srgb")
+        rgb_list.append([srgb["red"], srgb["green"], srgb["blue"]])
+    np.array(rgb_list).reshape(h, w, 3)
+    oklab_to_rgb_time = time.time() - start
+
+    return rgb_to_oklab_time, oklab_to_rgb_time
+
+
+def benchmark_numba_conversion(rgb_image: np.ndarray) -> tuple[float, float]:
+    """Benchmark Numba-optimized RGB to Oklab and back conversion."""
+    rgb_float32 = rgb_image.astype(np.float32)
+
+    # RGB to Oklab
+    start = time.time()
+    oklab_image = trans_numba.batch_srgb_to_oklab(rgb_float32)
+    rgb_to_oklab_time = time.time() - start
+
+    # Oklab to RGB (with gamut mapping)
+    start = time.time()
+    oklch_image = trans_numba.batch_oklab_to_oklch(oklab_image)
+    oklch_mapped = trans_numba.batch_gamut_map_oklch(oklch_image)
+    oklab_mapped = trans_numba.batch_oklch_to_oklab(oklch_mapped)
+    trans_numba.batch_oklab_to_srgb(oklab_mapped)
+    oklab_to_rgb_time = time.time() - start
+
+    return rgb_to_oklab_time, oklab_to_rgb_time
+
+
+def create_test_image(width: int, height: int) -> np.ndarray:
+    """Create a test image with random colors."""
+    return np.random.rand(height, width, 3).astype(np.float32)
+
+
+def test_performance_comparison() -> None:
+    """Compare performance between ColorAide and Numba implementations."""
+    # Test parameters
+    sizes = [(100, 100), (500, 500), (1000, 1000)]
+    results = []
+
+    # Test each image size
+    for width, height in sizes:
+        logger.info(f"\nBenchmarking {width}x{height} image...")
+
+        # Create test image
+        image: np.ndarray[Any, np.dtype[np.uint8]] = np.random.randint(0, 256, (height, width, 3), dtype=np.uint8)
+
+        # Convert to float32 [0,1]
+        image_float = image.astype(np.float32) / 255.0
+
+        # Time ColorAide version (simplified to avoid hang)
+        ca_time = None
+        try:
+            start_time = time.time()
+            # Use a much smaller subset for ColorAide to avoid hanging
+            for _ in range(min(100, height * width // 100)):  # Limit iterations
+                rgb = image_float[0, 0]  # Just use first pixel
+                color = Color("srgb", rgb)
+                _ = color.convert("oklab")
+                _ = color.convert("oklch")
+            ca_time = time.time() - start_time
+            # Scale up the time estimate
+            ca_time = ca_time * (height * width) / min(100, height * width // 100)
+        except Exception as e:
+            logger.error(f"ColorAide error: {e}")
+
+        # Time Numba version
+        start_time = time.time()
+        for _ in range(3):  # Run multiple times for better timing
+            oklab = trans_numba.batch_srgb_to_oklab(image_float)
+            _ = trans_numba.batch_oklab_to_oklch(oklab)
+        nb_time = (time.time() - start_time) / 3
+
+        # Calculate speedup
+        speedup = ca_time / nb_time if ca_time else None
+        results.append((width, height, ca_time, nb_time, speedup))
+
+    # Print results table
+    logger.info("\nPerformance Results:")
+    logger.info("Size      | ColorAide | Numba  | Speedup")
+    logger.info("-" * 40)
+
+    for width, height, ca_time, nb_time, speedup in results:
+        size_str = f"{width}x{height}"
+        ca_str = f"{ca_time:.3f}s" if ca_time else "N/A"
+        nb_str = f"{nb_time:.3f}s"
+        speedup_str = f"{speedup:.1f}x" if speedup else "N/A"
+        logger.info(f"{size_str:9} | {ca_str:9} | {nb_str:6} | {speedup_str}")
+
+
+if __name__ == "__main__":
+    test_performance_comparison()
+</file>
+
 <file path="CHANGELOG.md">
 # Changelog
 
@@ -6929,32 +6939,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dependencies: click, coloraide, opencv-python, numpy, numba, pillow, loguru, rich
 - Modular architecture with separate modules for each concern
 - JIT compilation for performance-critical code paths
-</file>
-
-<file path="cleanup.sh">
-#!/usr/bin/env bash
-echo "rm -rf dist/imgcolorshine*.*"
-rm -rf dist/imgcolorshine*.*
-echo "uv build"
-uv build
-echo "python -m uzpy run -e src"
-python -m uzpy run -e src
-echo "find . -name '*.py' -exec uvx autoflake -i {} +"
-for p in src tests; do find "$p" -name "*.py" -exec uvx autoflake -i {} +; done
-echo "find . -name '*.py' -exec uvx pyupgrade --py311-plus {} +"
-for p in src tests; do find "$p" -exec uvx pyupgrade --py311-plus {} +; done
-echo "find . -name '*.py' -exec uvx ruff check --output-format=github --fix --unsafe-fixes {} +"
-for p in src tests; do find "$p" -name "*.py" -exec uvx ruff check --output-format=github --fix --unsafe-fixes {} +; done
-echo "find . -name '*.py' -exec uvx ruff format --respect-gitignore --target-version py311 {} +"
-for p in src tests; do find "$p" -name "*.py" -exec uvx ruff format --respect-gitignore --target-version py311 {} +; done
-echo "uvx ty check"
-uvx ty check
-echo "PYTHONPATH=src mypy -p imgcolorshine"
-PYTHONPATH=src mypy -p imgcolorshine
-echo "repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules,docs -o llms.txt ."
-repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules,docs -o llms.txt .
-echo "python -m pytest"
-python -m pytest
 </file>
 
 <file path="pyproject.toml">
@@ -7328,6 +7312,32 @@ ban-relative-imports = 'all'
     'S101',
     'TID252',
 ]
+</file>
+
+<file path="cleanup.sh">
+#!/usr/bin/env bash
+echo "rm -rf dist/imgcolorshine*.*"
+rm -rf dist/imgcolorshine*.*
+echo "uv build"
+uv build
+echo "python -m uzpy run -e src"
+python -m uzpy run -e src
+echo "find . -name '*.py' -exec uvx autoflake -i {} +"
+for p in src tests; do find "$p" -name "*.py" -exec uvx autoflake -i {} +; done
+echo "find . -name '*.py' -exec uvx pyupgrade --py311-plus {} +"
+for p in src tests; do find "$p" -exec uvx pyupgrade --py311-plus {} +; done
+echo "find . -name '*.py' -exec uvx ruff check --output-format=github --fix --unsafe-fixes {} +"
+for p in src tests; do find "$p" -name "*.py" -exec uvx ruff check --output-format=github --fix --unsafe-fixes {} +; done
+echo "find . -name '*.py' -exec uvx ruff format --respect-gitignore --target-version py311 {} +"
+for p in src tests; do find "$p" -name "*.py" -exec uvx ruff format --respect-gitignore --target-version py311 {} +; done
+echo "uvx ty check"
+uvx ty check
+echo "PYTHONPATH=src mypy -p imgcolorshine"
+PYTHONPATH=src mypy -p imgcolorshine
+echo "repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules,docs -o llms.txt ."
+repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules,docs -o llms.txt .
+echo "python -m pytest"
+python -m pytest
 </file>
 
 <file path="README.md">

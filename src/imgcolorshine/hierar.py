@@ -20,6 +20,79 @@ import numba
 import numpy as np
 from loguru import logger
 
+from imgcolorshine.trans_numba import batch_srgb_to_oklab
+
+
+@numba.njit(cache=True, parallel=True)
+def compute_perceptual_distance_mask(fine_lab: np.ndarray, coarse_lab: np.ndarray, threshold: float) -> np.ndarray:
+    """
+    Numba-optimized perceptual difference mask computation.
+
+    Computes perceptual distance in Oklab space and creates a mask of pixels
+    that exceed the threshold. Uses parallel processing for maximum performance.
+
+    Args:
+        fine_lab: Fine resolution image in Oklab space (H, W, 3)
+        coarse_lab: Upsampled coarse result in Oklab space (H, W, 3)
+        threshold: Perceptual distance threshold (0-2.5 range)
+
+    Returns:
+        Boolean mask where True indicates pixels needing refinement
+    """
+    h, w = fine_lab.shape[:2]
+    mask = np.empty((h, w), dtype=np.bool_)
+
+    # Process pixels in parallel
+    for i in numba.prange(h):
+        for j in range(w):
+            # Perceptual distance in Oklab space (Euclidean distance)
+            dl = fine_lab[i, j, 0] - coarse_lab[i, j, 0]
+            da = fine_lab[i, j, 1] - coarse_lab[i, j, 1]
+            db = fine_lab[i, j, 2] - coarse_lab[i, j, 2]
+            distance = np.sqrt(dl * dl + da * da + db * db)
+            mask[i, j] = distance > threshold
+
+    return mask
+
+
+@numba.njit(cache=True)
+def compute_gradient_magnitude(gray: np.ndarray) -> np.ndarray:
+    """
+    Numba-optimized gradient magnitude computation using Sobel operators.
+
+    Computes gradient magnitude efficiently without using OpenCV functions.
+
+    Args:
+        gray: Grayscale image
+
+    Returns:
+        Gradient magnitude array
+    """
+    h, w = gray.shape
+    grad_mag = np.zeros((h, w), dtype=np.float32)
+
+    # Sobel kernels
+    sobel_x = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=np.float32)
+    sobel_y = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=np.float32)
+
+    # Apply Sobel operators (skip borders)
+    for i in range(1, h - 1):
+        for j in range(1, w - 1):
+            gx = 0.0
+            gy = 0.0
+
+            # Convolve with Sobel kernels
+            for ki in range(3):
+                for kj in range(3):
+                    pixel = gray[i + ki - 1, j + kj - 1]
+                    gx += pixel * sobel_x[ki, kj]
+                    gy += pixel * sobel_y[ki, kj]
+
+            # Gradient magnitude
+            grad_mag[i, j] = np.sqrt(gx * gx + gy * gy)
+
+    return grad_mag
+
 
 @dataclass
 class PyramidLevel:
@@ -125,56 +198,59 @@ class HierarchicalProcessor:
         self, fine_level: np.ndarray, coarse_upsampled: np.ndarray, threshold: float
     ) -> np.ndarray:
         """
-        Create mask of pixels that need refinement.
+        Create mask of pixels that need refinement using perceptual color distance.
 
-        Compares fine level with upsampled coarse result to identify
-        pixels that differ significantly and need reprocessing.
+        Compares fine level with upsampled coarse result in Oklab color space
+        to identify pixels that differ significantly and need reprocessing.
+        This provides more accurate refinement decisions based on human perception.
 
         Args:
-            fine_level: Fine resolution image (RGB)
-            coarse_upsampled: Upsampled coarse result (RGB)
-            threshold: Perceptual distance threshold
+            fine_level: Fine resolution image (RGB, 0-255)
+            coarse_upsampled: Upsampled coarse result (RGB, 0-255)
+            threshold: Perceptual distance threshold (0-1 maps to 0-2.5 in Oklab)
 
         Returns:
             Boolean mask where True indicates pixels needing refinement
         """
-        # For now, use simple RGB distance
-        # In production, should convert to Lab/OKLCH for perceptual accuracy
-        diff = np.abs(fine_level.astype(np.float32) - coarse_upsampled.astype(np.float32))
-        distance = np.sqrt(np.sum(diff**2, axis=2))
+        # Normalize RGB to 0-1 range for color space conversion
+        fine_norm = fine_level.astype(np.float32) / 255.0
+        coarse_norm = coarse_upsampled.astype(np.float32) / 255.0
 
-        # Normalize by max possible distance (sqrt(3) for RGB)
-        normalized_distance = distance / (255.0 * np.sqrt(3))
+        # Convert to Oklab for perceptual distance calculation
+        # This is ~77-115x faster than using ColorAide
+        fine_lab = batch_srgb_to_oklab(fine_norm)
+        coarse_lab = batch_srgb_to_oklab(coarse_norm)
 
-        # Create binary mask
-        return normalized_distance > threshold
+        # Map threshold from 0-1 range to Oklab distance range (0-2.5)
+        oklab_threshold = threshold * 2.5
+
+        # Use Numba-optimized function for mask computation
+        return compute_perceptual_distance_mask(fine_lab, coarse_lab, oklab_threshold)
 
     def detect_gradient_regions(self, image: np.ndarray, gradient_threshold: float) -> np.ndarray:
         """
-        Detect regions with high color gradients.
+        Detect regions with high color gradients using Numba-optimized Sobel operators.
 
-        Uses Sobel edge detection to find areas with rapid color changes
-        that benefit from fine-resolution processing.
+        Finds areas with rapid color changes that benefit from fine-resolution
+        processing. Uses optimized gradient computation for better performance.
 
         Args:
-            image: Input image (RGB)
-            gradient_threshold: Threshold for gradient magnitude
+            image: Input image (RGB, 0-255)
+            gradient_threshold: Threshold for gradient magnitude (0-1)
 
         Returns:
             Boolean mask of high-gradient regions
         """
         # Convert to grayscale for edge detection
-        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY).astype(np.float32)
 
-        # Calculate gradients
-        grad_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
-        grad_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+        # Use Numba-optimized gradient computation
+        gradient_magnitude = compute_gradient_magnitude(gray)
 
-        # Gradient magnitude
-        gradient_magnitude = np.sqrt(grad_x**2 + grad_y**2)
-
-        # Normalize
-        gradient_magnitude = gradient_magnitude / gradient_magnitude.max()
+        # Normalize gradient magnitude
+        max_grad = gradient_magnitude.max()
+        if max_grad > 0:
+            gradient_magnitude = gradient_magnitude / max_grad
 
         # Create mask
         gradient_mask = gradient_magnitude > gradient_threshold

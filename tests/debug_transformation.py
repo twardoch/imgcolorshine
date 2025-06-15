@@ -1,4 +1,9 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run -s
+# /// script
+# dependencies = ["numpy", "loguru", "coloraide", "opencv-python", "pillow", "click", "numba"]
+# ///
+# this_file: tests/debug_transformation.py
+
 """
 Debug the actual transformation process to find why no changes are visible.
 """

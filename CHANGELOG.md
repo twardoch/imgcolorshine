@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2025-06-15
 
+### Documentation
+- **Comprehensive Development Plan** (`PLAN.md`)
+  - Created detailed optimization roadmap for Numba and mypyc
+  - Analyzed full codebase structure and optimization opportunities
+  - Identified performance bottlenecks in `hierar.py`, `spatial.py`, and `gamut.py`
+  - Documented test coverage gaps (20% overall, 0% for critical modules)
+  - Created test implementation strategy for missing coverage
+  - Added clear testing and iteration instructions
+  - Established 4-phase execution plan with success metrics
+
 ### Fixed
 - **NumPy 2.x Compatibility** 
   - Fixed JAX import errors when using NumPy 2.x with JAX compiled for NumPy 1.x

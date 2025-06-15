@@ -19,7 +19,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from imgcolorshine.color import OKLCHEngine
 from imgcolorshine.hierar import HierarchicalProcessor
-from imgcolorshine.io import ImageProcessor
 from imgcolorshine.spatial import SpatialAccelerator
 from imgcolorshine.transform import ColorTransformer
 
@@ -66,7 +65,7 @@ def test_hierarchical_processing():
     flags_array = np.array(channels)
 
     # Create transform function
-    def transform_func(img_rgb, *args):
+    def transform_func(img_rgb, *_args):
         """"""
         return (
             transformer._transform_tile(
@@ -120,7 +119,7 @@ def test_spatial_acceleration():
     image_oklab = engine.batch_rgb_to_oklab(image_float)
 
     # Create transform function
-    def transform_func(img_rgb, *args):
+    def transform_func(img_rgb, *_args):
         """"""
         return (
             transformer._transform_tile(
@@ -142,8 +141,10 @@ def test_spatial_acceleration():
     # Log statistics
     if hasattr(spatial_acc, "uniform_tiles"):
         logger.info(f"Uniform tiles: {spatial_acc.uniform_tiles}")
-        logger.info(f"Partial tiles: {spatial_acc.partial_tiles}")
-        logger.info(f"Skipped tiles: {spatial_acc.skipped_tiles}")
+        if hasattr(spatial_acc, "partial_tiles"):
+            logger.info(f"Partial tiles: {spatial_acc.partial_tiles}")
+        if hasattr(spatial_acc, "skipped_tiles"):
+            logger.info(f"Skipped tiles: {spatial_acc.skipped_tiles}")
 
     # Verify result
     assert result.shape == image.shape

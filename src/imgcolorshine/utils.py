@@ -185,11 +185,15 @@ def validate_image(image: np.ndarray) -> None:
     Used in:
     - src/imgcolorshine/__init__.py
     """
-    if image.ndim != 3:
+    # Expected image dimensions
+    EXPECTED_NDIM = 3
+    EXPECTED_CHANNELS = 3
+
+    if image.ndim != EXPECTED_NDIM:
         msg = f"Image must be 3D (H, W, C), got shape {image.shape}"
         raise ValueError(msg)
 
-    if image.shape[2] != 3:
+    if image.shape[2] != EXPECTED_CHANNELS:
         msg = f"Image must have 3 channels (RGB), got {image.shape[2]}"
         raise ValueError(msg)
 
@@ -231,10 +235,10 @@ def batch_process_images(image_paths: list, output_dir: str, transform_func: Cal
     """
     from pathlib import Path
 
-    from colorshine.image_io import ImageProcessor
+    from imgcolorshine.io import ImageProcessor
 
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir_path = Path(output_dir)
+    output_dir_path.mkdir(parents=True, exist_ok=True)
 
     processor = ImageProcessor()
 
@@ -248,7 +252,7 @@ def batch_process_images(image_paths: list, output_dir: str, transform_func: Cal
         result = transform_func(image, **kwargs)
 
         # Save with same filename
-        output_path = output_dir / Path(image_path).name
+        output_path = output_dir_path / Path(image_path).name
         processor.save_image(result, output_path)
 
         logger.info(f"Saved: {output_path}")
