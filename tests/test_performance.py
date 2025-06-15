@@ -20,11 +20,9 @@ from typing import Any
 import numpy as np
 from coloraide import Color
 from loguru import logger
-from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from imgcolorshine import color_transforms_numba as ct_numba
-from imgcolorshine.color_engine import OKLCHEngine
 
 
 def benchmark_coloraide_conversion(rgb_image: np.ndarray) -> tuple[float, float]:
@@ -115,8 +113,8 @@ def test_performance_comparison() -> None:
         # Time Numba version
         start_time = time.time()
         for _ in range(3):  # Run multiple times for better timing
-            oklab = ct_numba.srgb_to_oklab_single(image_float)
-            _ = ct_numba.oklab_to_oklch_single(oklab)
+            oklab = ct_numba.batch_srgb_to_oklab(image_float)
+            _ = ct_numba.batch_oklab_to_oklch(oklab)
         nb_time = (time.time() - start_time) / 3
 
         # Calculate speedup

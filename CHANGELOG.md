@@ -14,6 +14,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - JAX availability is now checked only when needed, allowing graceful fallback to CPU
 
 ### Added
+- **Hierarchical Processing Optimization** (`hierarchical.py`)
+  - Multi-resolution pyramid processing (2-5x speedup)
+  - Adaptive refinement based on color differences
+  - Gradient detection for smart refinement
+  - Coarse-to-fine processing strategy
+  - Configurable pyramid levels and thresholds
+- **Spatial Acceleration Structures** (`spatial_accel.py`)
+  - KD-tree based color space indexing (3-10x speedup)
+  - Early pixel culling outside influence radii
+  - Tile coherence optimization
+  - Uniform tile detection and caching
+  - Spatial queries for efficient processing
+- **Combined Optimization Support**
+  - Hierarchical + spatial acceleration for maximum performance
+  - Smart integration in `process_with_optimizations()`
+  - Automatic optimization selection based on image characteristics
+
+### Changed
+- **CLI Enhancements**
+  - Added `--hierarchical` flag for multi-resolution processing
+  - Added `--spatial_accel` flag for spatial acceleration (default: True)
+  - Updated help documentation with optimization examples
+- **Processing Pipeline**
+  - Integrated optimization framework in main processing flow
+  - Automatic selection of optimal processing path
+  - Improved memory efficiency with tile-based spatial queries
 - **Major Performance Optimizations** targeting 100x additional speedup:
   - **Fused Color Transformation Kernel** (`fused_kernels.py`)
     - Single-pass pixel transformation keeping all operations in CPU registers

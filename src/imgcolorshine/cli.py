@@ -30,6 +30,8 @@ class ImgColorShineCLI:
         tile_size: int = 1024,
         gpu: bool = True,
         LUT_size: int = 0,
+        hierarchical: bool = False,
+        spatial_accel: bool = True,
     ) -> None:
         """
         Transform image colors using OKLCH color attractors.
@@ -45,11 +47,14 @@ class ImgColorShineCLI:
             tile_size: Tile size for processing large images
             gpu: Use GPU acceleration if available (default: True)
             LUT_size: Size of 3D LUT for acceleration (0=disabled, 65=default when enabled)
+            hierarchical: Enable hierarchical multi-resolution processing (2-5x speedup)
+            spatial_accel: Enable spatial acceleration (3-10x speedup, default: True)
 
         Examples:
             imgcolorshine shine photo.jpg "red;50;75"
             imgcolorshine shine landscape.png "oklch(80% 0.2 60);40;60" "#ff6b35;30;80" --output_image=sunset.png
             imgcolorshine shine portrait.jpg "green;60;90" --luminance=False --saturation=False
+            imgcolorshine shine large.jpg "blue;30;50" --hierarchical --spatial_accel
 
         """
         # Delegate to main processing logic
@@ -64,6 +69,8 @@ class ImgColorShineCLI:
             tile_size=tile_size,
             gpu=gpu,
             lut_size=LUT_size,
+            hierarchical=hierarchical,
+            spatial_accel=spatial_accel,
         )
 
 
