@@ -90,10 +90,10 @@ The core performance drag is per-pixel processing in Python. Our strategy is two
 
 ### 3.2. **Target 1: Migrate Build System from `setup.py` to `pyproject.toml` + Hatch**
 
-- [ ] **3.2.1. Delete `setup.py` and `build_ext.py`**
-- [ ] **3.2.2. Move mypy config from `mypy.ini` to `pyproject.toml`**
-- [ ] **3.2.3. Configure mypyc modules in `pyproject.toml`**
-- [ ] **3.2.4. Configure Hatchling build hook**
+- [x] **3.2.1. Delete `setup.py` and `build_ext.py`**
+- [x] **3.2.2. Move mypy config from `mypy.ini` to `pyproject.toml`**
+- [x] **3.2.3. Configure mypyc modules in `pyproject.toml`**
+- [x] **3.2.4. Configure Hatchling build hook**
 - [ ] **3.2.5. Verify `uv run hatch build` creates wheels with `.so`/`.pyd` files**
 
 -   **Current State**: A legacy `setup.py` exists, which complicates modern packaging workflows and mypyc integration. `build_ext.py` is an unused artifact. `mypy.ini` is separate.
