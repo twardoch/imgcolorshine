@@ -130,7 +130,7 @@ Example: If only `--luminance` and `--hue` are active, the final color will be:
 ```bash
 imgcolorshine --input_image <path> \
               [--output_image <path>] \
-              [--luminance] [--saturation] [--hue] \
+              [--luminance] [--saturation] [--chroma] \
               "color1;tol1;str1" ["color2;tol2;str2" ...]
 ```
 
@@ -150,85 +150,88 @@ imgcolorshine --input_image <path> \
 10. **Save Image:** Save the final sRGB pixel data to the output file.
 
 #### 2.4.3. Pseudocode for Core Transformation
+
 ```python
 # Constants
-IDW_POWER = 2.0 # For future extension, not used in this simplified blend
+IDW_POWER = 2.0  # For future extension, not used in this simplified blend
 
-function transform_pixel(p_src_oklab, attractors, flags):
-    p_src_oklch = convert_oklab_to_oklch(p_src_oklab)
-    
-    influential_proposals = []
-    influential_weights = []
-    total_weight = 0.0
+function
+transform_pixel(p_src_oklab, attractors, flags):
+p_src_oklch = convert_oklab_to_oklch(p_src_oklab)
 
-    for attractor in attractors:
-        # 1. Calculate distance and check if in tolerance
-        delta_e = calculate_delta_e_ok(p_src_oklab, attractor.oklab_color)
-        delta_e_max = 1.0 * (attractor.tolerance / 100.0) ** 2
+influential_proposals = []
+influential_weights = []
+total_weight = 0.0
 
-        if delta_e <= delta_e_max:
-            # 2. Calculate falloff and final weight (t_interp)
-            d_norm = delta_e / delta_e_max
-            attraction_factor = 0.5 * (cos(d_norm * PI) + 1.0)
-            weight = (attractor.strength / 100.0) * attraction_factor
+for attractor in attractors:
+    # 1. Calculate distance and check if in tolerance
+    delta_e = calculate_delta_e_ok(p_src_oklab, attractor.oklab_color)
+    delta_e_max = 1.0 * (attractor.tolerance / 100.0) ** 2
 
-            influential_proposals.append(attractor.oklch_color)
-            influential_weights.append(weight)
-            total_weight += weight
+    if delta_e <= delta_e_max:
+        # 2. Calculate falloff and final weight (t_interp)
+        d_norm = delta_e / delta_e_max
+        attraction_factor = 0.5 * (cos(d_norm * PI) + 1.0)
+        weight = (attractor.strength / 100.0) * attraction_factor
 
-    if not influential_proposals:
-        return p_src_oklch # No change
+        influential_proposals.append(attractor.oklch_color)
+        influential_weights.append(weight)
+        total_weight += weight
 
-    # 3. Normalize weights and add source color's weight
-    final_weights = influential_weights
-    src_weight = 0.0
-    
-    if total_weight > 1.0:
-        # Normalize all proposal weights to sum to 1
-        final_weights = [w / total_weight for w in influential_weights]
-    else:
-        # Keep proposal weights and add source color's weight
-        src_weight = 1.0 - total_weight
+if not influential_proposals:
+    return p_src_oklch  # No change
 
-    # 4. Calculate weighted average for each enabled channel
-    final_l, final_c, final_h = p_src_oklch.l, p_src_oklch.c, p_src_oklch.h
-    
-    # --- Lightness ---
-    if flags.luminance:
-        l_sum = src_weight * p_src_oklch.l
-        for i, proposal in enumerate(influential_proposals):
-            l_sum += final_weights[i] * proposal.l
-        final_l = l_sum
-        
-    # --- Chroma ---
-    if flags.saturation:
-        c_sum = src_weight * p_src_oklch.c
-        for i, proposal in enumerate(influential_proposals):
-            c_sum += final_weights[i] * proposal.c
-        final_c = c_sum
+# 3. Normalize weights and add source color's weight
+final_weights = influential_weights
+src_weight = 0.0
 
-    # --- Hue (using weighted circular mean) ---
-    if flags.hue:
-        all_colors = [p_src_oklch] + influential_proposals
-        all_weights = [src_weight] + final_weights
-        final_h = calculate_weighted_circular_mean(all_colors, all_weights)
-        
-    return OklchColor(final_l, final_c, final_h)
+if total_weight > 1.0:
+    # Normalize all proposal weights to sum to 1
+    final_weights = [w / total_weight for w in influential_weights]
+else:
+    # Keep proposal weights and add source color's weight
+    src_weight = 1.0 - total_weight
 
-function calculate_weighted_circular_mean(colors, weights):
-    sum_sin = 0.0
-    sum_cos = 0.0
-    total_w = sum(weights)
-    
-    for i, color in enumerate(colors):
-        hue_rad = to_radians(color.h)
-        sum_sin += sin(hue_rad) * weights[i]
-        sum_cos += cos(hue_rad) * weights[i]
-    
-    avg_sin = sum_sin / total_w
-    avg_cos = sum_cos / total_w
-    
-    return to_degrees(atan2(avg_sin, avg_cos))
+# 4. Calculate weighted average for each enabled channel
+final_l, final_c, final_h = p_src_oklch.l, p_src_oklch.c, p_src_oklch.h
+
+# --- Lightness ---
+if flags.luminance:
+    l_sum = src_weight * p_src_oklch.l
+    for i, proposal in enumerate(influential_proposals):
+        l_sum += final_weights[i] * proposal.l
+    final_l = l_sum
+
+# --- Chroma ---
+if flags.saturation:
+    c_sum = src_weight * p_src_oklch.c
+    for i, proposal in enumerate(influential_proposals):
+        c_sum += final_weights[i] * proposal.c
+    final_c = c_sum
+
+# --- Hue (using weighted circular mean) ---
+if flags.chroma:
+    all_colors = [p_src_oklch] + influential_proposals
+    all_weights = [src_weight] + final_weights
+    final_h = calculate_weighted_circular_mean(all_colors, all_weights)
+
+return OklchColor(final_l, final_c, final_h)
+
+function
+calculate_weighted_circular_mean(colors, weights):
+sum_sin = 0.0
+sum_cos = 0.0
+total_w = sum(weights)
+
+for i, color in enumerate(colors):
+    hue_rad = to_radians(color.h)
+    sum_sin += sin(hue_rad) * weights[i]
+    sum_cos += cos(hue_rad) * weights[i]
+
+avg_sin = sum_sin / total_w
+avg_cos = sum_cos / total_w
+
+return to_degrees(atan2(avg_sin, avg_cos))
 ```
 
 # Proposal by Claude
@@ -382,7 +385,7 @@ When flags restrict transformation to specific channels:
 
 ```bash
 imgcolorshine --input_image <path> [--output_image <path>]
-              [--luminance] [--saturation] [--hue]
+              [--luminance] [--saturation] [--chroma]
               <color>;<tolerance>;<strength> [...]
 ```
 
@@ -401,7 +404,7 @@ imgcolorshine --input_image <path> [--output_image <path>]
 
 ```bash
 # Warm color grade - attract to orange, preserve luminance
-imgcolorshine --input_image photo.jpg --saturation --hue \
+imgcolorshine --input_image photo.jpg --saturation --chroma \
               "oklch(0.75 0.15 50);40;60"
 
 # Color harmonization - multiple attractors
@@ -497,7 +500,7 @@ Re‑colour an input image by **attracting each pixel’s colour toward one or m
 imgcolorshine \
   --input_image  INPUT_PATH                  # required
   [--output_image OUTPUT_PATH]               # auto‑name if omitted
-  [--luminance] [--saturation] [--hue]       # at least one required
+  [--luminance] [--saturation] [--chroma]       # at least one required
   [--falloff {linear|cosine|gauss}]          # default: cosine
   [--idw-power P]                            # default: 2
   ATTR1 ATTR2 ... ATTRN
@@ -509,7 +512,7 @@ Each *ATTR* argument is:
 Examples
 
 ```bash
-imgcolorshine photo.jpg --luminance --hue \
+imgcolorshine photo.jpg --luminance --chroma \
   "red;40;80"  "oklch(70% 0.20 260);25;60"
 ```
 
@@ -630,7 +633,7 @@ A pixel **p = oklch(0.60 0.12 40°)**, two attractors
 # /// script
 # dependencies = ["pillow", "numpy", "coloraide>=3.0"]
 # ///
-# this_file: imgcolorshine.py
+# this_file: colorshine.py
 
 import fire, numpy as np
 from PIL import Image
@@ -653,7 +656,7 @@ def main(
     *attractors: str
 ) -> None:
     if not (luminance or saturation or hue):
-        raise SystemExit("choose at least one of --luminance | --saturation | --hue")
+        raise SystemExit("choose at least one of --luminance | --saturation | --chroma")
 
     # load + linearise
     img = Image.open(input_image).convert("RGB")

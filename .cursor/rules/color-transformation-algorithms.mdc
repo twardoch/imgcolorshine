@@ -1,51 +1,48 @@
 ---
-description: Analysis of color transformation algorithms, focusing on perceptually uniform color space operations and attractor-based color transformations
-globs: src/imgcolorshine/color_engine.py,src/imgcolorshine/transforms.py,src/imgcolorshine/falloff.py,src/imgcolorshine/gamut.py
+description: Documentation for core color transformation algorithms and models in image processing applications
+globs: src/imgcolorshine/trans_*.py,src/imgcolorshine/color.py,src/imgcolorshine/kernel.py
 alwaysApply: false
 ---
 
 
 # color-transformation-algorithms
 
-## Core Algorithm Components
+Core color transformation algorithms implementing physics-inspired color attractors in perceptually uniform color space.
 
-### Color Attraction Model (Importance: 95)
-- Gravitational-inspired color transformation in OKLCH space
-- Each attractor defined by target color, tolerance radius, and strength
-- Distance-based influence calculation in perceptually uniform space
-- File: `src/imgcolorshine/color_engine.py`
+## Attraction Model (Importance: 95)
+- Physics-inspired "pull" model where attractor colors exert gravitational-like influence
+- Distance-based attraction using perceptual ΔE in Oklab space
+- Tolerance parameter (0-100) maps to maximum influence radius (0-2.5 ΔE)
+- Strength parameter (0-100) controls maximum pull at zero distance
+- Raised cosine falloff ensures smooth color transitions
 
-### Falloff Functions (Importance: 85)
-- Raised cosine curve for smooth color transitions
-- Controls attraction strength decay with distance
-- Multiple falloff options (cosine, linear, quadratic, gaussian)
-- File: `src/imgcolorshine/falloff.py`
+Location: src/imgcolorshine/color.py
 
-### Gamut Mapping (Importance: 90)
-- CSS Color Module 4 compliant mapping
-- Preserves lightness and hue while reducing chroma
-- Ensures displayable colors within sRGB gamut
-- File: `src/imgcolorshine/gamut.py`
+## Channel-Specific Transformations (Importance: 90)
+- Independent control over luminance, saturation and hue channels
+- Circular weighted averaging for hue blending
+- Normalized multi-attractor influence blending
+- Selective channel enabling/disabling with integrity preservation
 
-### Multi-Attractor Blending (Importance: 92)
-- Normalized weighted averaging of multiple color influences
-- Independent channel control (luminance, saturation, hue)
-- Perceptually uniform blending in OKLCH space
-- File: `src/imgcolorshine/transforms.py`
+Location: src/imgcolorshine/kernel.py
 
-## Key Transformations
+## Color Space Pipeline (Importance: 85)
+- Complete transformation chain: sRGB ↔ Oklab ↔ OKLCH
+- CSS Color Module 4 compliant gamut mapping
+- Binary search chroma reduction for out-of-gamut colors
+- Perceptual uniformity preservation throughout pipeline
 
-### OKLCH Color Space Operations (Importance: 88)
-- Conversion between RGB, Oklab, and OKLCH spaces
-- Perceptually uniform color distance calculations
-- Channel-specific transformations
-- File: `src/imgcolorshine/color_engine.py`
+Location: src/imgcolorshine/trans_numba.py
 
-### Attraction Parameters (Importance: 85)
-- Tolerance (0-100): Controls radius of influence
-- Strength (0-100): Defines transformation intensity
-- Color target: Supports all CSS color formats
-- File: `src/imgcolorshine/transforms.py`
+## Falloff Functions (Importance: 80)
+- Raised cosine default for natural color transitions
+- Gaussian option for centered influence
+- Linear/quadratic/cubic alternatives for different attraction behaviors
+- Distance-weighted influence calculation
+
+Location: src/imgcolorshine/falloff.py
+
+The core innovation lies in combining physical attraction models with perceptually uniform color spaces to create natural-looking color transformations while preserving visual relationships between colors.
 
 $END$
 

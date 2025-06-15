@@ -126,7 +126,7 @@ def apply_color_transform(pixels, target_l, target_c, target_h,
 
 @jit(nopython=True)
 def interpolate_hue(h1, h2, t):
-    """Correct hue interpolation handling wraparound"""
+    """Correct chroma interpolation handling wraparound"""
     diff = ((h2 - h1 + 180) % 360) - 180
     return (h1 + t * diff) % 360
 ```

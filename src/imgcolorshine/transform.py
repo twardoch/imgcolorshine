@@ -2,7 +2,7 @@
 # /// script
 # dependencies = ["numpy", "numba", "loguru"]
 # ///
-# this_file: src/imgcolorshine/transforms.py
+# this_file: src/imgcolorshine/transform.py
 
 """
 High-performance color transformation algorithms using NumPy and Numba.
@@ -19,8 +19,8 @@ import numba
 import numpy as np
 from loguru import logger
 
-from imgcolorshine import color_transforms_numba as ct_numba
-from imgcolorshine.color_engine import Attractor, OKLCHEngine
+from imgcolorshine import trans_numba
+from imgcolorshine.color import Attractor, OKLCHEngine
 from imgcolorshine.utils import process_large_image
 
 
@@ -232,7 +232,7 @@ class ColorTransformer:
     - old/imgcolorshine/imgcolorshine_main.py
     - old/imgcolorshine/test_imgcolorshine.py
     - src/imgcolorshine/__init__.py
-    - src/imgcolorshine/imgcolorshine.py
+    - src/imgcolorshine/colorshine.py
     """
 
     def __init__(self, engine: OKLCHEngine):
@@ -268,7 +268,7 @@ class ColorTransformer:
         Used in:
         - old/imgcolorshine/imgcolorshine_main.py
         - old/imgcolorshine/test_imgcolorshine.py
-        - src/imgcolorshine/imgcolorshine.py
+        - src/imgcolorshine/colorshine.py
         """
         # Report dimensions in width×height order to match common conventions
         h, w = image.shape[:2]
@@ -308,7 +308,7 @@ class ColorTransformer:
         strengths = np.array([a.strength for a in attractors])
 
         # Check if we should use tiling
-        from imgcolorshine.image_io import ImageProcessor
+        from colorshine.image_io import ImageProcessor
 
         processor = ImageProcessor()
 
@@ -362,7 +362,7 @@ class ColorTransformer:
 
         # Also need OKLCH for channel-specific operations
         # Use Numba-optimized batch conversion
-        tile_lch = ct_numba.batch_oklab_to_oklch(tile_lab.astype(np.float32))
+        tile_lch = trans_numba.batch_oklab_to_oklch(tile_lab.astype(np.float32))
 
         # Apply transformation
         transformed_lab = transform_pixels(

@@ -1,6 +1,6 @@
 ---
-description: Technical specification for OKLCH, Oklab, and RGB color space models and their transformations in image processing
-globs: src/imgcolorshine/color_engine.py,src/imgcolorshine/transforms.py,src/imgcolorshine/gamut.py
+description: Documentation of specialized color space models and transformations used in image processing applications
+globs: **/color/*.{py,cpp,h},**/colorspace/*.{py,cpp,h},**/transform/*.{py,cpp,h}
 alwaysApply: false
 ---
 
@@ -8,42 +8,44 @@ alwaysApply: false
 # color-space-models
 
 ## Core Color Space Models
-
-### OKLCH Color Space (Importance: 95)
-- Perceptually uniform color space using Lightness, Chroma, and Hue coordinates
-- Primary working space for all color transformations
-- Enables natural-looking color adjustments due to perceptual uniformity
-- Implemented in `color_engine.py` with bidirectional conversions to/from Oklab
-
-### Oklab Color Space (Importance: 90)
-- Linear transformation of OKLCH used for accurate distance calculations
-- Provides perceptually uniform color differences
-- Used for calculating attraction influence between colors
-- Core transformations in `transforms.py` handle Oklab-based color operations
-
-### RGB Color Space (Importance: 85)
-- Input/output color space for image processing
-- Gamut mapping ensures colors remain within displayable sRGB range
-- Implemented in `gamut.py` with CSS Color Module 4 compliant mapping
+- OKLCH (Perceptually uniform polar color space)
+  - Lightness (L): 0-100%
+  - Chroma (C): 0-0.4 typical range
+  - Hue (H): 0-360 degrees
+- Oklab (Perceptually uniform cartesian color space)
+  - L: Lightness
+  - a: Green-red axis
+  - b: Blue-yellow axis
 
 ## Color Space Transformations
+- Direct transformations between sRGB and Oklab
+- Polar/cartesian conversions between Oklab and OKLCH
+- CSS Color Module 4 compliant gamut mapping
 
-### Bidirectional Conversions (Importance: 92)
-- RGB ↔ Oklab: Linear transformation preserving perceptual uniformity
-- Oklab ↔ OKLCH: Polar coordinate conversion for intuitive color manipulation
-- Located in `color_engine.py`
+## Multi-Space Processing
+- Color attraction calculations in OKLCH space
+- Perceptual distance metrics in Oklab space
+- Final output conversion to sRGB with gamut preservation
 
-### Gamut Mapping (Importance: 88)
-- Maps out-of-gamut colors back to displayable sRGB range
-- Preserves lightness and hue while reducing chroma
-- Implements CSS Color Module 4 specification
-- Core functionality in `gamut.py`
+## Domain-Specific Color Logic
+Importance: 95
+- Physics-inspired color attraction model
+  - Distance-weighted influence in perceptual space
+  - Separate channel control (L,C,H)
+  - Raised cosine falloff for natural transitions
 
-### Multi-Space Operations (Importance: 86)
-- Color attraction calculations performed in Oklab space
-- Visual transformations applied in OKLCH space
-- Final output converted to RGB space
-- Implemented across `transforms.py` and `color_engine.py`
+## Color Space Integration 
+Importance: 85
+- Unified transformation pipeline:
+  sRGB → Oklab → OKLCH → Transform → OKLCH → Oklab → sRGB
+- Gamut mapping via binary search
+- Perceptual uniformity preservation
+
+## Relevant Files:
+- src/imgcolorshine/color.py
+- src/imgcolorshine/trans_numba.py
+- src/imgcolorshine/transform.py
+- src/imgcolorshine/gamut.py
 
 $END$
 

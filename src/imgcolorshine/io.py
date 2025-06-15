@@ -2,7 +2,7 @@
 # /// script
 # dependencies = ["numpy", "loguru", "opencv-python", "pillow"]
 # ///
-# this_file: src/imgcolorshine/image_io.py
+# this_file: src/imgcolorshine/io.py
 
 """
 High-performance image I/O with OpenCV and PIL fallback.
@@ -40,13 +40,13 @@ class ImageProcessor:
 
     Used in:
     - old/imgcolorshine/imgcolorshine/__init__.py
-    - old/imgcolorshine/imgcolorshine/transforms.py
+    - old/imgcolorshine/imgcolorshine/transform.py
     - old/imgcolorshine/imgcolorshine/utils.py
     - old/imgcolorshine/imgcolorshine_main.py
     - old/imgcolorshine/test_imgcolorshine.py
     - src/imgcolorshine/__init__.py
-    - src/imgcolorshine/imgcolorshine.py
-    - src/imgcolorshine/transforms.py
+    - src/imgcolorshine/colorshine.py
+    - src/imgcolorshine/transform.py
     - src/imgcolorshine/utils.py
     """
 
@@ -77,7 +77,7 @@ class ImageProcessor:
         Used in:
         - old/imgcolorshine/imgcolorshine/utils.py
         - old/imgcolorshine/imgcolorshine_main.py
-        - src/imgcolorshine/imgcolorshine.py
+        - src/imgcolorshine/colorshine.py
         - src/imgcolorshine/utils.py
         """
         path = Path(path)
@@ -107,7 +107,7 @@ class ImageProcessor:
         - old/imgcolorshine/imgcolorshine/utils.py
         - old/imgcolorshine/imgcolorshine_main.py
         - old/imgcolorshine/test_imgcolorshine.py
-        - src/imgcolorshine/imgcolorshine.py
+        - src/imgcolorshine/colorshine.py
         - src/imgcolorshine/utils.py
         """
         path = Path(path)
@@ -250,11 +250,11 @@ class ImageProcessor:
         Returns:
             True if tiling should be used
 
-        Used by transforms.py to decide on processing strategy.
+        Used by transform.py to decide on processing strategy.
 
         Used in:
-        - old/imgcolorshine/imgcolorshine/transforms.py
-        - src/imgcolorshine/transforms.py
+        - old/imgcolorshine/imgcolorshine/transform.py
+        - src/imgcolorshine/transform.py
         """
         estimated_mb = self.estimate_memory_usage(width, height)
         should_tile = estimated_mb > max_memory_mb

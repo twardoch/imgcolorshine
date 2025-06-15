@@ -95,7 +95,7 @@ imgcolorshine shine photo.jpg \
 **Process large images with optimizations:**
 ```bash
 imgcolorshine shine large_photo.jpg "blue;40;60" \
-  --hierarchical --spatial_accel
+  --fast_hierar --fast_spatial
 ```
 
 

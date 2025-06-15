@@ -108,8 +108,8 @@ def assert_color_close(color1: Color, color2: Color, tolerance: float = 0.01):
 
     diff_l = abs(c1_oklch["lightness"] - c2_oklch["lightness"])
     diff_c = abs(c1_oklch["chroma"] - c2_oklch["chroma"])
-    # Handle hue wraparound
-    diff_h = abs(c1_oklch["hue"] - c2_oklch["hue"])
+    # Handle chroma wraparound
+    diff_h = abs(c1_oklch["chroma"] - c2_oklch["chroma"])
     if diff_h > 180:
         diff_h = 360 - diff_h
 

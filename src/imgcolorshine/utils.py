@@ -39,12 +39,12 @@ def process_large_image(
     Returns:
         Processed image
 
-    Used by transforms.py for processing images that exceed memory limits.
+    Used by transform.py for processing images that exceed memory limits.
 
     Used in:
     - old/imgcolorshine/imgcolorshine/__init__.py
-    - old/imgcolorshine/imgcolorshine/transforms.py
-    - src/imgcolorshine/transforms.py
+    - old/imgcolorshine/imgcolorshine/transform.py
+    - src/imgcolorshine/transform.py
     """
     h, w = image.shape[:2]
     result = np.zeros_like(image)
@@ -231,7 +231,7 @@ def batch_process_images(image_paths: list, output_dir: str, transform_func: Cal
     """
     from pathlib import Path
 
-    from imgcolorshine.image_io import ImageProcessor
+    from colorshine.image_io import ImageProcessor
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

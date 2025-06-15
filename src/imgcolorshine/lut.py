@@ -107,7 +107,7 @@ class ColorLUT:
             attractors_lab: Attractor colors in Oklab space
             tolerances: Tolerance values [0, 100]
             strengths: Strength values [0, 100]
-            channels: Channel flags (luminance, saturation, hue)
+            channels: Channel flags (luminance, saturation, chroma)
         """
         # Check cache first
         cache_key = self._get_cache_key(attractors_lab, tolerances, strengths, channels)
@@ -273,7 +273,7 @@ def transform_pixel_for_lut(
 
     This is a wrapper around the fused kernel that handles the single pixel case.
     """
-    from imgcolorshine.fused_kernels import transform_pixel_fused
+    from colorshine.fused_kernels import transform_pixel_fused
 
     # Transform and return
     r_out, g_out, b_out = transform_pixel_fused(

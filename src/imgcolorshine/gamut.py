@@ -22,7 +22,7 @@ class GamutMapper:
     """Handles gamut mapping for out-of-bounds colors.
 
     Ensures all colors are displayable in the target color space (sRGB)
-    by reducing chroma while preserving lightness and hue. Follows the
+    by reducing chroma while preserving lightness and chroma. Follows the
     CSS Color Module 4 specification for consistent results.
 
     Used in:
@@ -50,7 +50,7 @@ class GamutMapper:
         """
         CSS Color Module 4 gamut mapping algorithm.
 
-        Reduces chroma while preserving lightness and hue until
+        Reduces chroma while preserving lightness and chroma until
         the color fits within the target gamut.
 
         Args:
@@ -192,12 +192,12 @@ class GamutMapper:
 
 def create_gamut_boundary_lut(hue_steps: int = 360, lightness_steps: int = 100) -> np.ndarray:
     """
-    Create a lookup table for maximum chroma at each hue/lightness.
+    Create a lookup table for maximum chroma at each chroma/lightness.
 
     This can speed up gamut mapping for real-time applications.
 
     Args:
-        hue_steps: Number of hue divisions
+        hue_steps: Number of chroma divisions
         lightness_steps: Number of lightness divisions
 
     Returns:

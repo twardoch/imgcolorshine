@@ -397,7 +397,7 @@ The lack of visible changes in `louis-blue-80-80.jpg` despite parameters suggest
 
 - **Chrominance Limitation**: The jacket in the original image appears near-achromatic (low chroma). Since we're only modifying hue (while keeping luminance/saturation disabled), there's limited visible effect because:
   ```python
-  # transforms.py line 246
+  # transform.py line 246
   if flags[[1]](https://pypi.org/project/repomix/):  # Saturation (Chroma)
       final_c = src_weight * pixel_lch[[1]](https://pypi.org/project/repomix/)  # Preserves original chroma when disabled
   ```
@@ -417,7 +417,7 @@ Key limitations in the current approach:
 
 - **Color Difference Metric**: The current ΔE calculation in Oklab:
   ```python
-  # color_engine.py line 115
+  # color.py line 115
   return np.sqrt(np.sum((color1 - color2) ** 2))
   ```
   Might benefit from CIEDE2000 [[4]](https://gitee.com/wuqiang57/repomix) for better perceptual accuracy, though at computational cost.
@@ -434,7 +434,7 @@ Comparative analysis with similar projects:
 Proposed optimizations:
 1. **Batched Color Conversions**:
    ```python
-   # Current per-pixel approach (color_engine.py line 296)
+   # Current per-pixel approach (color.py line 296)
    for rgb in flat_rgb:
        color = Color("srgb", list(rgb))
    ```
@@ -451,7 +451,7 @@ Proposed optimizations:
 - **Immediate Fixes**:
   - Add chroma boost in hue transformations:
     ```python
-    if flags[[2]](https://github.com/AndersonBY/python-repomix/blob/main/README.md) and final_c < 0.1:  # Minimum chroma for hue visibility
+    if flags[[2]](https://github.com/AndersonBY/python-repomix/blob/main/README.md) and final_c < 0.1:  # Minimum chroma for chroma visibility
         final_c = 0.1
     ```
   - Introduce nonlinear strength mapping: `effective_strength = (strength/100)**2`
@@ -590,7 +590,7 @@ def optimize_tile_size(image_size, cache_size=6e6):
 
 **3. Lookup Tables for Frequent Operations**
 ```python
-# Precompute hue rotation factors
+# Precompute chroma rotation factors
 HUE_LUT = np.exp(1j * np.deg2rad(np.linspace(0,360,1024)))
 ```
 
@@ -808,7 +808,7 @@ pip install cupy
 ```
 
 ```python
-# In transforms.py
+# In transform.py
 import cupy as cp
 
 @cp.fuse()
@@ -919,7 +919,7 @@ When applying the blue attractor with varying parameters to `louis.jpg`, the out
 
 ### 20.1. Current Approach
 ```python
-# Pseudocode from transforms.py
+# Pseudocode from transform.py
 def calculate_weights(pixel_lab, attractors):
     for i in range(num_attractors):
         delta_e = euclidean_distance(pixel_lab, attractor_lab)
@@ -1013,10 +1013,10 @@ if flags[1]:  # Saturation
 # In blend_colors
 if flags[2]:  # Hue
     # Use weighted circular mean with chroma weighting
-    chroma_weight = pixel_lch[1]  # Current chroma affects hue perception
+    chroma_weight = pixel_lch[1]  # Current chroma affects chroma perception
     attractor_chroma = attractors_lch[i][1]
     
-    # Calculate weight based on chroma (more saturated colors have stronger hue)
+    # Calculate weight based on chroma (more saturated colors have stronger chroma)
     h_weight = weights[i] * (attractor_chroma / max(0.01, chroma_weight))
     
     sin_sum += h_weight * np.sin(np.deg2rad(attractors_lch[i][2]))
@@ -1089,7 +1089,7 @@ def should_use_tiling(self, width, height, available_memory_mb=2048):
 ### 24.1. Visual Test Cases
 Create controlled test images:
 ```python
-# For hue testing
+# For chroma testing
 def create_hue_test(width=1000, height=100):
     image = np.zeros((height, width, 3))
     for x in range(width):
@@ -1112,7 +1112,7 @@ def test_performance(benchmark):
     attractors = [engine.create_attractor("blue", 70, 90)]
     
     # Benchmark transformation
-    result = benchmark(transformer.transform_image, image, attractors, {"luminance": True, "saturation": True, "hue": True})
+    result = benchmark(transformer.transform_image, image, attractors, {"luminance": True, "saturation": True, "chroma": True})
 ```
 
 ### 24.3. Regression Testing
@@ -1127,7 +1127,7 @@ def test_color_transformation():
     attractors = [engine.create_attractor("blue", 100, 100)]
     
     # Apply transformation
-    result = transformer.transform_image(test_image, attractors, {"luminance": True, "saturation": True, "hue": True})
+    result = transformer.transform_image(test_image, attractors, {"luminance": True, "saturation": True, "chroma": True})
     
     # Convert to Color object for comparison
     result_color = Color("srgb", list(result[0, 0]))
@@ -1407,7 +1407,7 @@ The issue with the similar-looking outputs stems from how the hue transformation
    After transformation:
    ```python
    # With tolerance=80, strength=80
-   # Only shifts hue by ~5° - barely perceptible
+   # Only shifts chroma by ~5° - barely perceptible
    ```
 
 3. **Visual Effect**:
@@ -1433,7 +1433,7 @@ The fundamental issue is that our attraction model doesn't sufficiently differen
 
 **Core Issue**: 
 ```python
-# In transforms.py blend_colors()
+# In transform.py blend_colors()
 if total_weight > 1.0:
     weights = weights / total_weight
     src_weight = 0.0  # Only when weights exceed 1.0
@@ -1475,8 +1475,8 @@ With single attractor at strength=100, `total_weight=1.0`, so `src_weight=0` - b
    ```python
    def blend_colors(..., colorize=False):
        if colorize:
-           # Complete hue replacement
-           return attractor_lch[2]  # Use attractor hue directly
+           # Complete chroma replacement
+           return attractor_lch[2]  # Use attractor chroma directly
    ```
 
 2. **Improved Weight Calculation**:
@@ -1488,7 +1488,7 @@ With single attractor at strength=100, `total_weight=1.0`, so `src_weight=0` - b
 
 3. **Distance Metric Enhancement**:
    ```python
-   # Weight by hue similarity
+   # Weight by chroma similarity
    hue_weight = 1 - abs(pixel_hue - attractor_hue)/180
    delta_e *= hue_weight
    ```

@@ -2,7 +2,7 @@
 # /// script
 # dependencies = ["loguru", "numpy"]
 # ///
-# this_file: src/imgcolorshine/imgcolorshine.py
+# this_file: src/imgcolorshine/colorshine.py
 
 """
 Core processing logic for imgcolorshine.
@@ -16,9 +16,9 @@ from pathlib import Path
 import numpy as np
 from loguru import logger
 
-from imgcolorshine.color_engine import OKLCHEngine
-from imgcolorshine.image_io import ImageProcessor
-from imgcolorshine.transforms import ColorTransformer
+from imgcolorshine.color import OKLCHEngine
+from imgcolorshine.io import ImageProcessor
+from imgcolorshine.transform import ColorTransformer
 
 
 def setup_logging(verbose: bool = False):
@@ -68,13 +68,13 @@ def process_image(
     output_image: str | None = None,
     luminance: bool = True,
     saturation: bool = True,
-    hue: bool = True,
+    chroma: bool = True,
     verbose: bool = False,
     tile_size: int = 1024,
     gpu: bool = True,
     lut_size: int = 0,
-    hierarchical: bool = False,
-    spatial_accel: bool = True,
+    fast_hierar: bool = False,
+    fast_spatial: bool = True,
 ) -> None:
     """
     Process an image with color attractors.
@@ -88,13 +88,13 @@ def process_image(
         output_image: Output path (auto-generated if None)
         luminance: Enable lightness transformation
         saturation: Enable chroma transformation
-        hue: Enable chroma transformation
+        chroma: Enable chroma transformation
         verbose: Enable verbose logging
         tile_size: Tile size for large image processing
         gpu: Use GPU acceleration if available
         lut_size: Size of 3D LUT (0=disabled)
-        hierarchical: Enable hierarchical multi-resolution processing
-        spatial_accel: Enable spatial acceleration
+        fast_hierar: Enable fast_hierar multi-resolution processing
+        fast_spatial: Enable spatial acceleration
 
     Used in:
     - src/imgcolorshine/cli.py
@@ -109,7 +109,7 @@ def process_image(
         msg = "At least one attractor must be provided"
         raise ValueError(msg)
 
-    if not any([luminance, saturation, hue]):
+    if not any([luminance, saturation, chroma]):
         msg = "At least one channel (luminance, saturation, chroma) must be enabled"
         raise ValueError(msg)
 
@@ -151,8 +151,8 @@ def process_image(
             logger.info(f"Building {lut_size}³ color LUT...")
             import numpy as np
 
-            from imgcolorshine.fused_kernels import transform_pixel_fused
-            from imgcolorshine.lut import ColorLUT
+            from colorshine.fused_kernels import transform_pixel_fused
+            from colorshine.lut import ColorLUT
 
             # Create LUT
             lut = ColorLUT(size=lut_size if lut_size > 0 else 65)
@@ -161,7 +161,7 @@ def process_image(
             attractors_lab = np.array([a.oklab_values for a in attractor_objects])
             tolerances = np.array([a.tolerance for a in attractor_objects])
             strengths = np.array([a.strength for a in attractor_objects])
-            channels = [luminance, saturation, hue]
+            channels = [luminance, saturation, chroma]
 
             # Build LUT using fused kernel
             def transform_func(rgb, attr_lab, tol, str_vals, l, s, h):
@@ -181,13 +181,13 @@ def process_image(
     # Try GPU transformation if LUT failed or disabled
     if transformed is None and gpu:
         try:
-            from imgcolorshine.gpu_backend import GPU_AVAILABLE
+            from colorshine.gpu import GPU_AVAILABLE
 
             if GPU_AVAILABLE:
                 logger.info("Attempting GPU acceleration...")
                 import numpy as np
 
-                from imgcolorshine.gpu_transforms import process_image_gpu
+                from colorshine.gpu_transforms import process_image_gpu
 
                 # Prepare attractor data
                 attractors_lab = np.array([a.oklab_values for a in attractor_objects])
@@ -196,7 +196,7 @@ def process_image(
 
                 # Process on GPU
                 transformed = process_image_gpu(
-                    image, attractors_lab, tolerances, strengths, luminance, saturation, hue
+                    image, attractors_lab, tolerances, strengths, luminance, saturation, chroma
                 )
 
                 if transformed is not None:
@@ -214,14 +214,14 @@ def process_image(
     # CPU processing (fallback or if GPU disabled)
     if not gpu or transformed is None:
         # Check if we should use optimizations
-        if hierarchical or spatial_accel:
+        if fast_hierar or fast_spatial:
             logger.info("Using optimized CPU processing...")
             transformed = process_with_optimizations(
-                image, attractor_objects, luminance, saturation, hue, hierarchical, spatial_accel, transformer, engine
+                image, attractor_objects, luminance, saturation, chroma, fast_hierar, fast_spatial, transformer, engine
             )
         else:
             logger.info("Transforming colors on CPU...")
-            flags = {"luminance": luminance, "saturation": saturation, "chroma": hue}
+            flags = {"luminance": luminance, "saturation": saturation, "chroma": chroma}
             transformed = transformer.transform_image(image, attractor_objects, flags)
 
     # Save image
@@ -243,7 +243,7 @@ def process_with_optimizations(
     engine: "OKLCHEngine",
 ) -> np.ndarray:
     """
-    Process image with hierarchical and/or spatial optimizations.
+    Process image with fast_hierar and/or spatial optimizations.
 
     Combines both optimizations when both are enabled for maximum performance.
     """
@@ -257,13 +257,13 @@ def process_with_optimizations(
 
     # Import optimization modules
     if hierarchical:
-        from imgcolorshine.hierarchical import HierarchicalProcessor
+        from imgcolorshine.hierar import HierarchicalProcessor
     if spatial_accel:
-        from imgcolorshine.spatial_accel import SpatialAccelerator
+        from imgcolorshine.spatial import SpatialAccelerator
 
     # Combined optimization path
     if hierarchical and spatial_accel:
-        logger.info("Using combined hierarchical + spatial acceleration")
+        logger.info("Using combined fast_hierar + spatial acceleration")
 
         # Initialize processors
         hier_processor = HierarchicalProcessor()
@@ -301,7 +301,7 @@ def process_with_optimizations(
         )
 
     elif hierarchical:
-        logger.info("Using hierarchical processing")
+        logger.info("Using fast_hierar processing")
 
         hier_processor = HierarchicalProcessor()
 

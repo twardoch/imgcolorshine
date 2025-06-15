@@ -22,7 +22,7 @@ from coloraide import Color
 from loguru import logger
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-from imgcolorshine import color_transforms_numba as ct_numba
+from imgcolorshine import trans_numba
 
 
 def benchmark_coloraide_conversion(rgb_image: np.ndarray) -> tuple[float, float]:
@@ -60,15 +60,15 @@ def benchmark_numba_conversion(rgb_image: np.ndarray) -> tuple[float, float]:
 
     # RGB to Oklab
     start = time.time()
-    oklab_image = ct_numba.batch_srgb_to_oklab(rgb_float32)
+    oklab_image = trans_numba.batch_srgb_to_oklab(rgb_float32)
     rgb_to_oklab_time = time.time() - start
 
     # Oklab to RGB (with gamut mapping)
     start = time.time()
-    oklch_image = ct_numba.batch_oklab_to_oklch(oklab_image)
-    oklch_mapped = ct_numba.batch_gamut_map_oklch(oklch_image)
-    oklab_mapped = ct_numba.batch_oklch_to_oklab(oklch_mapped)
-    ct_numba.batch_oklab_to_srgb(oklab_mapped)
+    oklch_image = trans_numba.batch_oklab_to_oklch(oklab_image)
+    oklch_mapped = trans_numba.batch_gamut_map_oklch(oklch_image)
+    oklab_mapped = trans_numba.batch_oklch_to_oklab(oklch_mapped)
+    trans_numba.batch_oklab_to_srgb(oklab_mapped)
     oklab_to_rgb_time = time.time() - start
 
     return rgb_to_oklab_time, oklab_to_rgb_time
@@ -113,8 +113,8 @@ def test_performance_comparison() -> None:
         # Time Numba version
         start_time = time.time()
         for _ in range(3):  # Run multiple times for better timing
-            oklab = ct_numba.batch_srgb_to_oklab(image_float)
-            _ = ct_numba.batch_oklab_to_oklch(oklab)
+            oklab = trans_numba.batch_srgb_to_oklab(image_float)
+            _ = trans_numba.batch_oklab_to_oklch(oklab)
         nb_time = (time.time() - start_time) / 3
 
         # Calculate speedup

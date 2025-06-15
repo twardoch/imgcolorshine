@@ -1,68 +1,71 @@
 ---
-description: Handles efficient image data processing using tiled memory management and pipeline orchestration
-globs: src/imgcolorshine/transforms.py,src/imgcolorshine/utils.py,src/imgcolorshine/image_io.py
+description: Data processing and memory management for image color transformations using tiled processing and acceleration strategies
+globs: src/imgcolorshine/*.py
 alwaysApply: false
 ---
 
 
 # data-flow-processing
 
-## Core Data Pipeline Components
+## Core Processing Pipeline
 
-### Tiled Image Processing (Importance: 95)
-- Located in `src/imgcolorshine/transforms.py`
-- Processes large images in memory-efficient tiles 
-- Each tile undergoes color space conversion -> transformation -> gamut mapping
-- Adjacent tiles are processed with overlap to prevent edge artifacts
-- Automatic tile size calculation based on available system memory
+The image processing pipeline implements a multi-stage color transformation system:
 
-### Memory Management System (Importance: 90)
-- Located in `src/imgcolorshine/utils.py`
-- Implements dynamic memory allocation for image tiles
-- Estimates optimal tile dimensions based on:
-  - Input image dimensions
-  - Color channel count
-  - Available system memory
-  - Processing overhead requirements
+1. Image Tiling System
+- Automatic tile size determination (default 1024x1024)
+- Overlap handling for seamless tile boundaries
+- Memory-aware tiling for images >2GB
 
-### Data Flow Orchestration (Importance: 85)
-Located in `src/imgcolorshine/transforms.py`:
-- Controls pipeline stages:
-  1. Image loading and validation
-  2. Color space conversion (RGB -> OKLCH)
-  3. Per-tile attractor application
-  4. Gamut mapping
-  5. Color space reversion (OKLCH -> RGB)
-  6. Result composition
+2. Color Processing Stages 
+- Color space conversion: sRGB → Oklab → OKLCH
+- Attraction calculation per pixel/tile
+- Gamut mapping and back-conversion
+- Result assembly from processed tiles
 
-### Image I/O Stream Management (Importance: 80)
-Located in `src/imgcolorshine/image_io.py`:
-- Handles streaming of image data between disk and memory
-- Implements progressive loading for large images
-- Manages intermediate buffer allocation
-- Controls output stream writing with proper synchronization
+3. Acceleration Methods
+- GPU acceleration with CuPy for parallel tile processing
+- 3D Color LUT with caching for repeated transformations
+- Hierarchical multi-resolution for large images
+- Spatial acceleration for local coherence
 
-### Pipeline-Specific Data Structures
-Located in `src/imgcolorshine/transforms.py`:
-- TileDescriptor: Manages tile metadata and processing state
-- TransformBuffer: Handles intermediate color transformation results
-- ProcessingContext: Maintains pipeline state and configuration
+## Memory Management
 
-### Key Data Flows
+1. Tile Management
+- Automatic tile sizing based on available memory
+- Overlap regions for continuous color transitions
+- Progressive tile loading/unloading
 
-1. Input Stream:
+2. Cache Systems
+- LUT caching for repeated transformations 
+- Tile analysis results caching
+- Intermediate color conversion caching
+
+## Data Flow Components
+
+1. Input Processing
+- Image loading and color space conversion
+- Tile generation and scheduling
+- Parameter validation and normalization
+
+2. Color Transformation
+- Per-tile parallel processing
+- Multi-attractor influence calculation
+- Channel-specific transformations
+- Result merging and boundary handling
+
+3. Output Assembly
+- Tile recombination with overlap handling
+- Final color space conversion
+- Memory-efficient result writing
+
+File Paths:
 ```
-Disk -> Image Loader -> Tile Generator -> Processing Queue
-```
-
-2. Processing Stream:
-```
-Tile -> Color Transform -> Attractor Application -> Gamut Mapping -> Result Buffer
-```
-
-3. Output Stream:
-```
-Result Buffer -> Tile Composer -> Image Writer -> Disk
+src/imgcolorshine/
+  spatial.py    - Spatial acceleration and tiling
+  hierar.py     - Hierarchical processing
+  trans_gpu.py  - GPU acceleration
+  kernel.py     - Core processing kernels
+  lut.py        - LUT acceleration
 ```
 
 $END$

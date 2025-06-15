@@ -2,7 +2,7 @@
 # /// script
 # dependencies = ["numpy", "numba"]
 # ///
-# this_file: src/imgcolorshine/fused_kernels.py
+# this_file: src/imgcolorshine/kernel.py
 
 """
 Fused color transformation kernels for maximum performance.
@@ -14,7 +14,7 @@ that keep all intermediate values in CPU registers, eliminating memory traffic.
 import numba
 import numpy as np
 
-from imgcolorshine.color_transforms_numba import (
+from imgcolorshine.trans_numba import (
     _LINEAR_RGB_TO_XYZ,
     _LMS_TO_OKLAB,
     _LMS_TO_XYZ,

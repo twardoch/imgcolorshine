@@ -18,7 +18,7 @@ from coloraide import Color
 from loguru import logger
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-from imgcolorshine import color_transforms_numba as ct_numba
+from imgcolorshine import trans_numba
 
 
 def test_single_pixel_conversion():
@@ -47,7 +47,7 @@ def test_single_pixel_conversion():
         oklab_ca_arr = np.array([oklab_ca["lightness"], oklab_ca["a"], oklab_ca["b"]])
 
         # Convert using Numba
-        oklab_nb = ct_numba.srgb_to_oklab_single(np.array(rgb))
+        oklab_nb = trans_numba.srgb_to_oklab_single(np.array(rgb))
 
         # Compare
         diff = np.abs(oklab_ca_arr - oklab_nb).max()
@@ -57,7 +57,7 @@ def test_single_pixel_conversion():
         logger.debug(f"RGB {rgb} → Oklab CA: {oklab_ca_arr}, NB: {oklab_nb}, diff: {diff:.6f}")
 
         # Test round trip
-        rgb_back = ct_numba.oklab_to_srgb_single(oklab_nb)
+        rgb_back = trans_numba.oklab_to_srgb_single(oklab_nb)
         roundtrip_diff = np.abs(rgb - rgb_back).max()
         max_roundtrip_diff = max(max_roundtrip_diff, roundtrip_diff)
 
@@ -79,8 +79,8 @@ def test_batch_conversion():
     image = np.random.rand(height, width, 3).astype(np.float32)
 
     # Convert using Numba
-    oklab = ct_numba.srgb_to_oklab_batch(image)
-    rgb_back = ct_numba.oklab_to_srgb_batch(oklab)
+    oklab = trans_numba.srgb_to_oklab_batch(image)
+    rgb_back = trans_numba.oklab_to_srgb_batch(oklab)
 
     # Check RGB values are in valid range
     valid_range = np.logical_and(rgb_back >= 0, rgb_back <= 1).all()
@@ -111,10 +111,10 @@ def test_oklch_conversions():
 
     for oklab in test_cases:
         # Convert to OKLCH
-        oklch = ct_numba.oklab_to_oklch_single(np.array(oklab))
+        oklch = trans_numba.oklab_to_oklch_single(np.array(oklab))
 
         # Convert back to Oklab
-        oklab_back = ct_numba.oklch_to_oklab_single(oklch)
+        oklab_back = trans_numba.oklch_to_oklab_single(oklch)
 
         # Compare (allowing for small numerical errors)
         diff = np.abs(oklab - oklab_back).max()

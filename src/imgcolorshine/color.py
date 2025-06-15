@@ -2,7 +2,7 @@
 # /// script
 # dependencies = ["coloraide", "numpy", "loguru"]
 # ///
-# this_file: src/imgcolorshine/color_engine.py
+# this_file: src/imgcolorshine/color.py
 
 """
 OKLCH color space operations and attractor management.
@@ -20,7 +20,7 @@ from coloraide import Color
 from loguru import logger
 
 # Import Numba-optimized color transforms
-from imgcolorshine import color_transforms_numba as ct_numba
+from imgcolorshine import trans_numba
 
 
 @dataclass
@@ -28,14 +28,14 @@ class Attractor:
     """Represents a color attractor with its parameters.
 
     Stores color information in both OKLCH and Oklab formats for
-    efficient processing. Used by transforms.py for applying color
+    efficient processing. Used by transform.py for applying color
     attractions to images.
 
     Used in:
     - old/imgcolorshine/imgcolorshine/__init__.py
-    - old/imgcolorshine/imgcolorshine/transforms.py
+    - old/imgcolorshine/imgcolorshine/transform.py
     - src/imgcolorshine/__init__.py
-    - src/imgcolorshine/transforms.py
+    - src/imgcolorshine/transform.py
     """
 
     color: Color  # In OKLCH space
@@ -70,12 +70,12 @@ class OKLCHEngine:
 
     Used in:
     - old/imgcolorshine/imgcolorshine/__init__.py
-    - old/imgcolorshine/imgcolorshine/transforms.py
+    - old/imgcolorshine/imgcolorshine/transform.py
     - old/imgcolorshine/imgcolorshine_main.py
     - old/imgcolorshine/test_imgcolorshine.py
     - src/imgcolorshine/__init__.py
-    - src/imgcolorshine/imgcolorshine.py
-    - src/imgcolorshine/transforms.py
+    - src/imgcolorshine/colorshine.py
+    - src/imgcolorshine/transform.py
     """
 
     def __init__(self):
@@ -119,7 +119,7 @@ class OKLCHEngine:
         Used in:
         - old/imgcolorshine/imgcolorshine_main.py
         - old/imgcolorshine/test_imgcolorshine.py
-        - src/imgcolorshine/imgcolorshine.py
+        - src/imgcolorshine/colorshine.py
         """
         color = self.parse_color(color_str)
         oklch_color = color.convert("oklch")
@@ -150,11 +150,11 @@ class OKLCHEngine:
     def oklab_to_oklch(self, l: float, a: float, b: float) -> tuple[float, float, float]:  # noqa: E741
         """Convert Oklab to OKLCH coordinates.
 
-        Used by transforms.py for color space conversions.
+        Used by transform.py for color space conversions.
 
         Used in:
-        - old/imgcolorshine/imgcolorshine/transforms.py
-        - src/imgcolorshine/transforms.py
+        - old/imgcolorshine/imgcolorshine/transform.py
+        - src/imgcolorshine/transform.py
         """
         c = np.sqrt(a**2 + b**2)
         h = np.rad2deg(np.arctan2(b, a))
@@ -249,15 +249,15 @@ class OKLCHEngine:
         Returns:
             Array of shape (H, W, 3) with Oklab values
 
-        Used by transforms.py for batch image processing.
+        Used by transform.py for batch image processing.
 
         Used in:
-        - old/imgcolorshine/imgcolorshine/transforms.py
-        - src/imgcolorshine/transforms.py
+        - old/imgcolorshine/imgcolorshine/transform.py
+        - src/imgcolorshine/transform.py
         """
         # Use Numba-optimized batch conversion
         logger.debug("Using Numba-optimized RGB to Oklab conversion")
-        return ct_numba.batch_srgb_to_oklab(rgb_image.astype(np.float32))
+        return trans_numba.batch_srgb_to_oklab(rgb_image.astype(np.float32))
 
     def batch_oklab_to_rgb(self, oklab_image: np.ndarray) -> np.ndarray:
         """
@@ -269,21 +269,21 @@ class OKLCHEngine:
         Returns:
             Array of shape (H, W, 3) with sRGB values in [0, 1]
 
-        Used by transforms.py for batch image processing.
+        Used by transform.py for batch image processing.
 
         Used in:
-        - old/imgcolorshine/imgcolorshine/transforms.py
-        - src/imgcolorshine/transforms.py
+        - old/imgcolorshine/imgcolorshine/transform.py
+        - src/imgcolorshine/transform.py
         """
         # Use Numba-optimized batch conversion with gamut mapping
         logger.debug("Using Numba-optimized Oklab to RGB conversion")
 
         # First convert to OKLCH for gamut mapping
-        oklch_image = ct_numba.batch_oklab_to_oklch(oklab_image.astype(np.float32))
+        oklch_image = trans_numba.batch_oklab_to_oklch(oklab_image.astype(np.float32))
 
         # Apply gamut mapping
-        oklch_mapped = ct_numba.batch_gamut_map_oklch(oklch_image)
+        oklch_mapped = trans_numba.batch_gamut_map_oklch(oklch_image)
 
         # Convert back to Oklab then to sRGB
-        oklab_mapped = ct_numba.batch_oklch_to_oklab(oklch_mapped)
-        return ct_numba.batch_oklab_to_srgb(oklab_mapped)
+        oklab_mapped = trans_numba.batch_oklch_to_oklab(oklch_mapped)
+        return trans_numba.batch_oklab_to_srgb(oklab_mapped)

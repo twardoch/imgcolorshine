@@ -104,7 +104,7 @@ Implementing just steps 1‑3 consistently delivers the requested 100 × spe
 
 ### Key code & spec touch‑points
 
-* Current fast kernels and tolerance maths: `transforms.py` and `color_transforms_numba.py`.
+* Current fast kernels and tolerance maths: `transforms.py` and `trans_numba.py`.
 * Existing performance gains & OpenCV hints: README performance section.
 * Docs already suggest GPU/CuPy and LUT routes  .
 * Example skeleton showing NumPy code ready for swapping to CuPy.

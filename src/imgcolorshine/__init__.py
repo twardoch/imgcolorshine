@@ -11,11 +11,11 @@ A physics-inspired tool that operates in perceptually uniform color space,
 allowing intuitive color transformations based on attraction principles.
 """
 
-from imgcolorshine.color_engine import Attractor, OKLCHEngine
+from imgcolorshine.color import Attractor, OKLCHEngine
 from imgcolorshine.falloff import FalloffType, get_falloff_function
 from imgcolorshine.gamut import GamutMapper
-from imgcolorshine.image_io import ImageProcessor
-from imgcolorshine.transforms import ColorTransformer
+from imgcolorshine.io import ImageProcessor
+from imgcolorshine.transform import ColorTransformer
 from imgcolorshine.utils import batch_process_images, validate_image
 
 __version__ = "0.1.0"

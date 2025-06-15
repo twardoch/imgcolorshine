@@ -2054,7 +2054,7 @@ src/imgcolorshine/__main__.py                     1      1      0      0     0%
 src/imgcolorshine/__version__.py                  9      9      0      0     0%
 src/imgcolorshine/cli.py                          7      7      0      0     0%
 src/imgcolorshine/color_engine.py                98     62     16      0    33%
-src/imgcolorshine/color_transforms_numba.py     131     93     42      0    22%
+src/imgcolorshine/trans_numba.py     131     93     42      0    22%
 src/imgcolorshine/falloff.py                     65     38     16      0    33%
 src/imgcolorshine/gamut.py                       73     61     22      0    13%
 src/imgcolorshine/image_io.py                    92     74     22      0    16%
@@ -2520,7 +2520,7 @@ src/imgcolorshine/__main__.py                     1      1      0      0     0%
 src/imgcolorshine/__version__.py                  9      9      0      0     0%
 src/imgcolorshine/cli.py                          7      7      0      0     0%
 src/imgcolorshine/color_engine.py                85     49     10      0    40%
-src/imgcolorshine/color_transforms_numba.py     131     93     42      0    22%
+src/imgcolorshine/trans_numba.py     131     93     42      0    22%
 src/imgcolorshine/falloff.py                     65     38     16      0    33%
 src/imgcolorshine/gamut.py                       73     61     22      0    13%
 src/imgcolorshine/image_io.py                    92     74     22      0    16%
@@ -2773,7 +2773,7 @@ src/imgcolorshine/__main__.py                     1      1      0      0     0%
 src/imgcolorshine/__version__.py                  9      9      0      0     0%
 src/imgcolorshine/cli.py                          7      7      0      0     0%
 src/imgcolorshine/color_engine.py                85     58     10      0    28%
-src/imgcolorshine/color_transforms_numba.py     131     93     42      0    22%
+src/imgcolorshine/trans_numba.py     131     93     42      0    22%
 src/imgcolorshine/falloff.py                     65     38     16      0    33%
 src/imgcolorshine/gamut.py                       73     61     22      0    13%
 src/imgcolorshine/image_io.py                    92     74     22      0    16%
@@ -3132,7 +3132,7 @@ src/imgcolorshine/__main__.py                     1      1      0      0     0%
 src/imgcolorshine/__version__.py                  9      9      0      0     0%
 src/imgcolorshine/cli.py                          7      7      0      0     0%
 src/imgcolorshine/color_engine.py                85     58     10      0    28%
-src/imgcolorshine/color_transforms_numba.py     137     97     44      0    22%
+src/imgcolorshine/trans_numba.py     137     97     44      0    22%
 src/imgcolorshine/falloff.py                     65     38     16      0    33%
 src/imgcolorshine/gamut.py                       73     61     22      0    13%
 src/imgcolorshine/image_io.py                    92     74     22      0    16%
@@ -3323,7 +3323,7 @@ src/imgcolorshine/__main__.py                     1      1      0      0     0%
 src/imgcolorshine/__version__.py                  9      9      0      0     0%
 src/imgcolorshine/cli.py                          7      7      0      0     0%
 src/imgcolorshine/color_engine.py                85     58     10      0    28%
-src/imgcolorshine/color_transforms_numba.py     137     97     44      0    22%
+src/imgcolorshine/trans_numba.py     137     97     44      0    22%
 src/imgcolorshine/falloff.py                     65     38     16      0    33%
 src/imgcolorshine/gamut.py                       73     61     22      0    13%
 src/imgcolorshine/image_io.py                    92     74     22      0    16%

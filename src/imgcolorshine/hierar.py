@@ -2,7 +2,7 @@
 # /// script
 # dependencies = ["numpy", "opencv-python", "loguru", "numba"]
 # ///
-# this_file: src/imgcolorshine/hierarchical.py
+# this_file: src/imgcolorshine/fast_hierar.py
 
 """
 Hierarchical multi-resolution image processing for imgcolorshine.
@@ -43,7 +43,7 @@ class HierarchicalProcessor:
         gradient_threshold: float = 0.05,
     ):
         """
-        Initialize hierarchical processor.
+        Initialize fast_hierar processor.
 
         Args:
             min_size: Minimum dimension for coarsest pyramid level
@@ -295,7 +295,7 @@ class HierarchicalProcessor:
         """
         Hierarchical processing with tiling for very large images.
 
-        Combines hierarchical processing with tile-based memory management
+        Combines fast_hierar processing with tile-based memory management
         for processing images that don't fit in memory.
 
         Args:
@@ -316,7 +316,7 @@ class HierarchicalProcessor:
         if h <= tile_size * 2 and w <= tile_size * 2:
             return self.process_hierarchical(image, transform_func, attractors, tolerances, strengths, channels)
 
-        logger.info(f"Processing large image ({h}x{w}) with tiled hierarchical approach")
+        logger.info(f"Processing large image ({h}x{w}) with tiled fast_hierar approach")
 
         # Create output array
         result = np.zeros_like(image)

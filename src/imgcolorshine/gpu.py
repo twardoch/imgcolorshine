@@ -2,7 +2,7 @@
 # /// script
 # dependencies = ["numpy", "loguru"]
 # ///
-# this_file: src/imgcolorshine/gpu_backend.py
+# this_file: src/imgcolorshine/gpu.py
 
 """
 GPU backend selection and management for imgcolorshine.

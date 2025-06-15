@@ -2,14 +2,14 @@
 # /// script
 # dependencies = ["numpy", "numba"]
 # ///
-# this_file: src/imgcolorshine/color_transforms_numba.py
+# this_file: src/imgcolorshine/trans_numba.py
 
 """
 Numba-optimized color space transformations for high performance.
 
 Implements direct matrix multiplication for sRGB ↔ Oklab conversions
 and vectorized OKLCH operations. This module provides dramatic speedups
-over the ColorAide-based conversions in color_engine.py.
+over the ColorAide-based conversions in color.py.
 
 All transformations follow the CSS Color Module 4 and Oklab specifications.
 """

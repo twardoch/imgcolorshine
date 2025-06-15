@@ -1,59 +1,56 @@
 ---
-description: Analyzing attractor-based color transformation models in OKLCH color space, ideal for physics-inspired image color processing systems
-globs: **/color_engine.py,**/falloff.py,**/transforms.py,**/attractor*.{py,cpp,h}
+description: Specification for the color attractor model that handles color transformations using physics-inspired attraction in OKLCH space
+globs: src/imgcolorshine/trans_*.py,src/imgcolorshine/color.py,src/imgcolorshine/colorshine.py
 alwaysApply: false
 ---
 
 
 # attractor-model
 
-## Core Color Attraction Model
-The attractor model implements a physics-inspired color transformation system operating in OKLCH color space:
+The attractor model implements a physics-inspired color transformation system operating in OKLCH perceptual color space.
 
-1. Attractor Definition (Score: 95)
-- Each attractor specified by target color, tolerance radius, and strength
-- Target colors defined in any CSS format, converted to OKLCH coordinates
-- Tolerance controls maximum influence distance (0-100)
-- Strength determines transformation intensity (0-100)
+## Core Components
 
-2. Distance-Based Influence (Score: 90)
-- OKLCH perceptual distance calculations between pixels and attractors
-- Raised cosine falloff curve for smooth influence transitions
-- Independent channel control (lightness, chroma, hue)
-- Normalized distance calculations in perceptually uniform space
+### Color Attraction System
+Importance Score: 95
+- Each attractor color acts as a gravitational center in OKLCH space
+- Influence determined by perceptual color distance (ΔE in Oklab)
+- Tolerance radius maps 0-100 to 0-2.5 ΔE for influence range
+- Strength parameter (0-100) controls maximum pull intensity
+- Raised cosine falloff ensures smooth color transitions
 
-3. Multi-Attractor Blending (Score: 85)
-- Weighted influence blending from multiple attractors
-- Normalized weights based on distance and strength
-- Channel-specific transformation enabling/disabling
-- Cumulative effect calculation with falloff curves
+### Multi-Attractor Blending 
+Importance Score: 90
+- Multiple attractors blend influences through normalized weighted averaging
+- Weights determined by:
+  - Perceptual distance to target color
+  - Attractor strength
+  - Tolerance radius
+- Channel-specific transformations for luminance, saturation, and hue
+- Special handling for circular hue blending using trigonometric means
 
-Relevant Files:
-- src/imgcolorshine/color_engine.py
-- src/imgcolorshine/falloff.py
-- src/imgcolorshine/transforms.py
+### Channel Control
+Importance Score: 85
+- Independent control over luminance, saturation, and hue channels
+- Selective channel transformation with others preserved
+- Grayscale preservation for hue-only transformations
+- Weight normalization system maintains color integrity
 
-## Key Components
+### Distance Calculations
+Importance Score: 80
+- Uses perceptual color difference (ΔE) in Oklab space
+- Maximum influence threshold at 2.5 ΔE
+- Linear mapping of tolerance values to perceptual distance
+- Smooth falloff based on normalized distance
 
-### Attractor Parameters
-- Color: Target OKLCH coordinates
-- Tolerance: Influence radius (0-100)
-- Strength: Pull intensity (0-100)
+### Gamut Mapping
+Importance Score: 75
+- CSS Color Module 4 compliant gamut mapping
+- Binary search on chroma to find displayable colors
+- Preserves perceptual attributes during gamut correction
+- Maintains color relationships while ensuring display validity
 
-### Distance Calculation
-- Perceptual distance in OKLCH space
-- Channel-specific delta calculations
-- Normalized distance mapping
-
-### Influence Blending
-- Weighted average of attractor influences
-- Smooth falloff transitions
-- Channel-selective transformations
-
-### Gamut Protection
-- CSS Color Module 4 compliant mapping
-- Preserves perceptual relationships
-- Maintains channel independence
+The model implements a "pull" rather than "replace" approach, creating natural color transitions based on perceptual similarity and specified parameters. This ensures smooth, intuitive color transformations while maintaining visual coherence.
 
 $END$
 

@@ -66,7 +66,7 @@ def debug_transformation():
     weights = np.array([weight])
     attractors_lab = np.array([attractor.oklab_values])
     attractors_lch = np.array([attractor.oklch_values])
-    flags = np.array([False, False, True])  # Only hue transformation
+    flags = np.array([False, False, True])  # Only chroma transformation
 
     original_lab = center_pixel_lab.copy()
     blended_lab = blend_colors(center_pixel_lab, center_pixel_lch, attractors_lab, attractors_lch, weights, flags)

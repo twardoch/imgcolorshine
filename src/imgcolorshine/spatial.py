@@ -2,7 +2,7 @@
 # /// script
 # dependencies = ["numpy", "scipy", "loguru", "numba"]
 # ///
-# this_file: src/imgcolorshine/fast_spatial.py
+# this_file: src/imgcolorshine/spatial.py
 
 """
 Spatial acceleration structures for imgcolorshine.
@@ -78,7 +78,7 @@ class SpatialAccelerator:
             tolerances: Tolerance values (0-100) for each attractor
         """
         # Import MAX_DELTA_E from transforms module
-        from imgcolorshine.transforms import MAX_DELTA_E
+        from imgcolorshine.transform import MAX_DELTA_E
 
         # Map tolerances to perceptual distances
         max_distances = MAX_DELTA_E * (tolerances / 100.0)

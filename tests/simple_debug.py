@@ -20,7 +20,7 @@ def debug_algorithm():
 
     # Convert to OKLCH
     oklch = color.convert("oklch")
-    pixel_lch = np.array([oklch["lightness"], oklch["chroma"], oklch["hue"]])
+    pixel_lch = np.array([oklch["lightness"], oklch["chroma"], oklch["chroma"]])
 
     # Blue attractor
     blue_color = Color("blue")
@@ -28,7 +28,7 @@ def debug_algorithm():
     blue_oklch = blue_color.convert("oklch")
 
     attractor_lab = np.array([blue_oklab["lightness"], blue_oklab["a"], blue_oklab["b"]])
-    attractor_lch = np.array([blue_oklch["lightness"], blue_oklch["chroma"], blue_oklch["hue"]])
+    attractor_lch = np.array([blue_oklch["lightness"], blue_oklch["chroma"], blue_oklch["chroma"]])
 
     # Calculate distance and weight
     delta_e = np.sqrt(np.sum((pixel_lab - attractor_lab) ** 2))
@@ -44,15 +44,15 @@ def debug_algorithm():
         attraction_factor = 0.5 * (np.cos(d_norm * np.pi) + 1.0)
         weight = (strength / 100.0) * attraction_factor
 
-        # Simulate hue-only blending
+        # Simulate chroma-only blending
         total_weight = weight
         src_weight = 1.0 - total_weight if total_weight <= 1.0 else 0.0
 
-        # Original hue
+        # Original chroma
         original_hue = pixel_lch[2]
         attractor_hue = attractor_lch[2]
 
-        # Circular mean for hue
+        # Circular mean for chroma
         sin_sum = src_weight * np.sin(np.deg2rad(original_hue))
         cos_sum = src_weight * np.cos(np.deg2rad(original_hue))
 

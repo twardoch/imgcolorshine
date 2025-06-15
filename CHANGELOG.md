@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **NumPy 2.x Compatibility** 
   - Fixed JAX import errors when using NumPy 2.x with JAX compiled for NumPy 1.x
-  - Made JAX imports lazy in `gpu_backend.py` to prevent module-level import failures
+  - Made JAX imports lazy in `gpu.py` to prevent module-level import failures
   - JAX availability is now checked only when needed, allowing graceful fallback to CPU
 
 ### Added
@@ -48,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Integrated gamut mapping with binary search
     - Parallel image processing with `numba.prange`
   - **GPU Acceleration Support** with automatic fallback
-    - CuPy backend for NVIDIA GPUs (`gpu_backend.py`, `gpu_transforms.py`)
+    - CuPy backend for NVIDIA GPUs (`gpu.py`, `gpu_transforms.py`)
     - JAX backend support (experimental)
     - Automatic memory management and device selection
     - GPU memory estimation and pooling
@@ -94,7 +94,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Vectorized OKLCH ↔ Oklab batch conversions
   - Parallel processing with `numba.prange`
   - Optimized gamut mapping with binary search
-- New module `color_transforms_numba.py` with all performance-critical color operations
+- New module `trans_numba.py` with all performance-critical color operations
 - Performance benchmark script (`test_performance.py`)
 - Correctness test suite for validating optimizations
 

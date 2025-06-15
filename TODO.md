@@ -1,14 +1,11 @@
-# imgcolorshine Performance Optimization Plan
 
-### [x] 1 Hierarchical Processing ✅
+# TODO
 
-- [x] Process at 1/4 resolution first
-- [x] Use low-res result as influence map
-- [x] Only process pixels that differ significantly from influence map
-- [x] Implement adaptive subdivision for gradients
+Use `uv` or `hatch` or `python`, not `python3`. 
 
-### [x] 2 Spatial Acceleration Structures ✅
+- [ ] Analyze full codebase from llms.txt
+- [ ] Identify which tests are not covered
+- [ ] Identify which tests are not working
+- [ ] Write into `PLAN.md` a detailed plan for writing additional tests, and for fixing the failing tests. 
+- [ ] Also write into `PLAN.md` very clear instructions that encourage to run tests, review, revise, improve, iterate. 
 
-- [x] Build KD-tree of attractor influence regions
-- [x] Early-exit pixels outside all influence radii
-- [x] Use spatial coherence for tile-based processing

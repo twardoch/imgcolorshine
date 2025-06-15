@@ -2,7 +2,7 @@
 # /// script
 # dependencies = ["numpy", "loguru"]
 # ///
-# this_file: src/imgcolorshine/gpu_transforms.py
+# this_file: src/imgcolorshine/trans_gpu.py
 
 """
 GPU-accelerated color transformations using CuPy.
@@ -14,7 +14,7 @@ with automatic memory management and optimized kernels.
 import numpy as np
 from loguru import logger
 
-from imgcolorshine.gpu_backend import check_gpu_memory_available, estimate_gpu_memory_required, get_array_module
+from colorshine.gpu import check_gpu_memory_available, estimate_gpu_memory_required, get_array_module
 
 # Try to import CuPy
 try:
