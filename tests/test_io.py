@@ -56,7 +56,9 @@ class TestImageIO:
 
             tmp_path.unlink()
 
-    @pytest.mark.skipif(not hasattr(ImageProcessor, "HAS_OPENCV"), reason="OpenCV not available")
+    @pytest.mark.skipif(
+        not hasattr(ImageProcessor, "HAS_OPENCV"), reason="OpenCV not available"
+    )
     def test_jpeg_format_support(self):
         """Test JPEG format loading and saving."""
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
@@ -109,7 +111,9 @@ class TestImageIO:
 
         # Mock available memory
         with patch("imgcolorshine.io.psutil") as mock_psutil:
-            mock_psutil.virtual_memory.return_value.available = 100 * 1024 * 1024  # 100MB
+            mock_psutil.virtual_memory.return_value.available = (
+                100 * 1024 * 1024
+            )  # 100MB
 
             # Large image should need tiling if it uses too much memory
             large_shape = (4096, 4096, 3)

@@ -12,7 +12,11 @@ with automatic memory management and optimized kernels.
 """
 
 import numpy as np
-from imgcolorshine.gpu import check_gpu_memory_available, estimate_gpu_memory_required, get_array_module
+from imgcolorshine.gpu import (
+    check_gpu_memory_available,
+    estimate_gpu_memory_required,
+    get_array_module,
+)
 from loguru import logger
 
 # Try to import CuPy
@@ -104,7 +108,9 @@ def srgb_to_linear_gpu(srgb, xp):
 
 def linear_to_srgb_gpu(linear, xp):
     """GPU version of linear to sRGB conversion."""
-    return xp.where(linear <= 0.0031308, linear * 12.92, 1.055 * (linear ** (1.0 / 2.4)) - 0.055)
+    return xp.where(
+        linear <= 0.0031308, linear * 12.92, 1.055 * (linear ** (1.0 / 2.4)) - 0.055
+    )
 
 
 def batch_srgb_to_oklab_gpu(rgb_image, xp=None):
@@ -219,7 +225,14 @@ def batch_oklch_to_oklab_gpu(oklch_image, xp=None):
 
 
 def transform_pixels_gpu(
-    oklab_image, oklch_image, attractors_lab, attractors_lch, tolerances, strengths, flags, xp=None
+    oklab_image,
+    oklch_image,
+    attractors_lab,
+    attractors_lch,
+    tolerances,
+    strengths,
+    flags,
+    xp=None,
 ):
     """
     GPU version of pixel transformation.
@@ -286,13 +299,17 @@ def transform_pixels_gpu(
     if flags[0]:  # Luminance
         weighted_l = xp.sum(weights * attr_lch[:, 0][None, :], axis=1)
         result_lch[:, 0] = xp.where(
-            has_weight.squeeze(), source_weights.squeeze() * pixels_lch[:, 0] + weighted_l, pixels_lch[:, 0]
+            has_weight.squeeze(),
+            source_weights.squeeze() * pixels_lch[:, 0] + weighted_l,
+            pixels_lch[:, 0],
         )
 
     if flags[1]:  # Saturation
         weighted_c = xp.sum(weights * attr_lch[:, 1][None, :], axis=1)
         result_lch[:, 1] = xp.where(
-            has_weight.squeeze(), source_weights.squeeze() * pixels_lch[:, 1] + weighted_c, pixels_lch[:, 1]
+            has_weight.squeeze(),
+            source_weights.squeeze() * pixels_lch[:, 1] + weighted_c,
+            pixels_lch[:, 1],
         )
 
     if flags[2]:  # Hue
@@ -315,7 +332,12 @@ def transform_pixels_gpu(
     # Convert back to Oklab
     h_rad = result_lch[:, 2] * xp.pi / 180.0
     result_lab = xp.stack(
-        [result_lch[:, 0], result_lch[:, 1] * xp.cos(h_rad), result_lch[:, 1] * xp.sin(h_rad)], axis=1
+        [
+            result_lch[:, 0],
+            result_lch[:, 1] * xp.cos(h_rad),
+            result_lch[:, 1] * xp.sin(h_rad),
+        ],
+        axis=1,
     )
 
     # Reshape back to image dimensions
@@ -323,7 +345,13 @@ def transform_pixels_gpu(
 
 
 def process_image_gpu(
-    rgb_image, attractors_lab, tolerances, strengths, enable_luminance=True, enable_saturation=True, enable_hue=True
+    rgb_image,
+    attractors_lab,
+    tolerances,
+    strengths,
+    enable_luminance=True,
+    enable_saturation=True,
+    enable_hue=True,
 ):
     """
     Complete GPU pipeline for image processing.
@@ -345,7 +373,9 @@ def process_image_gpu(
     has_memory, free_mb, total_mb = check_gpu_memory_available(required_mb)
 
     if not has_memory:
-        logger.warning(f"Insufficient GPU memory: need {required_mb:.1f}MB, have {free_mb:.1f}MB")
+        logger.warning(
+            f"Insufficient GPU memory: need {required_mb:.1f}MB, have {free_mb:.1f}MB"
+        )
         return None
 
     xp = get_array_module(use_gpu=True)
@@ -359,11 +389,15 @@ def process_image_gpu(
 
         # Also convert attractors to OKLCH
         attr_lab_gpu = xp.asarray(attractors_lab, dtype=xp.float32)
-        attr_lch = batch_oklab_to_oklch_gpu(attr_lab_gpu.reshape(-1, 1, 3), xp).reshape(-1, 3)
+        attr_lch = batch_oklab_to_oklch_gpu(attr_lab_gpu.reshape(-1, 1, 3), xp).reshape(
+            -1, 3
+        )
 
         # Transform
         flags = xp.array([enable_luminance, enable_saturation, enable_hue])
-        transformed_lab = transform_pixels_gpu(oklab, oklch, attractors_lab, attr_lch, tolerances, strengths, flags, xp)
+        transformed_lab = transform_pixels_gpu(
+            oklab, oklch, attractors_lab, attr_lch, tolerances, strengths, flags, xp
+        )
 
         # Gamut mapping in OKLCH space
         batch_oklab_to_oklch_gpu(transformed_lab, xp)

@@ -14,7 +14,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from imgcolorshine.colorshine import generate_output_path, parse_attractor, process_image
+from imgcolorshine.colorshine import (
+    generate_output_path,
+    parse_attractor,
+    process_image,
+)
 
 
 class TestMainInterface:
@@ -113,7 +117,9 @@ class TestMainInterface:
         mock_io.return_value = mock_processor
 
         # Test with only hue enabled
-        output = process_image("test.png", ("green;60;90",), luminance=False, saturation=False, hue=True)
+        output = process_image(
+            "test.png", ("green;60;90",), luminance=False, saturation=False, hue=True
+        )
 
         assert output is not None
 

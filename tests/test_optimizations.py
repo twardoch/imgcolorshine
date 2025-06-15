@@ -69,14 +69,21 @@ def test_hierarchical_processing():
         """"""
         return (
             transformer._transform_tile(
-                img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
+                img_rgb / 255.0,
+                attractors_lab,
+                attractors_lch,
+                tolerances,
+                strengths,
+                flags_array,
             )
             * 255.0
         )
 
     # Test fast_hierar processing
     start_time = time.time()
-    result = hier_processor.process_hierarchical(image, transform_func, attractors_lab, tolerances, strengths, channels)
+    result = hier_processor.process_hierarchical(
+        image, transform_func, attractors_lab, tolerances, strengths, channels
+    )
     elapsed = time.time() - start_time
 
     logger.info(f"Hierarchical processing completed in {elapsed:.3f}s")
@@ -123,7 +130,12 @@ def test_spatial_acceleration():
         """"""
         return (
             transformer._transform_tile(
-                img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
+                img_rgb / 255.0,
+                attractors_lab,
+                attractors_lch,
+                tolerances,
+                strengths,
+                flags_array,
             )
             * 255.0
         )
@@ -131,7 +143,13 @@ def test_spatial_acceleration():
     # Test spatial acceleration
     start_time = time.time()
     result = spatial_acc.transform_with_spatial_accel(
-        image, image_oklab, attractors_lab, tolerances, strengths, transform_func, channels
+        image,
+        image_oklab,
+        attractors_lab,
+        tolerances,
+        strengths,
+        transform_func,
+        channels,
     )
     elapsed = time.time() - start_time
 

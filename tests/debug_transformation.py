@@ -13,13 +13,10 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from coloraide import Color
-from loguru import logger
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from imgcolorshine.color_engine import OKLCHEngine
-from imgcolorshine.falloff import calculate_weights as falloff_calculate_weights
 from imgcolorshine.image_io import ImageProcessor
 from imgcolorshine.transforms import blend_colors, calculate_weights
 
@@ -74,7 +71,14 @@ def debug_transformation():
     flags = np.array([False, False, True])  # Only chroma transformation
 
     original_lab = center_pixel_lab.copy()
-    blended_lab = blend_colors(center_pixel_lab, center_pixel_lch, attractors_lab, attractors_lch, weights, flags)
+    blended_lab = blend_colors(
+        center_pixel_lab,
+        center_pixel_lch,
+        attractors_lab,
+        attractors_lch,
+        weights,
+        flags,
+    )
 
     # Convert back to RGB and see the difference
     engine.oklab_to_rgb(original_lab)
@@ -91,14 +95,23 @@ def debug_transformation():
             pixel_lch = sample_lch[y, x]
 
             # Calculate weight
-            weights_array = calculate_weights(pixel_lab, attractors_lab, np.array([tolerance]), np.array([80]))
+            weights_array = calculate_weights(
+                pixel_lab, attractors_lab, np.array([tolerance]), np.array([80])
+            )
 
             if weights_array[0] > 0:
                 affected_count += 1
                 total_weight_sum += weights_array[0]
 
                 # Test the change
-                blended = blend_colors(pixel_lab, pixel_lch, attractors_lab, attractors_lch, weights_array, flags)
+                blended = blend_colors(
+                    pixel_lab,
+                    pixel_lch,
+                    attractors_lab,
+                    attractors_lch,
+                    weights_array,
+                    flags,
+                )
 
                 orig_rgb = engine.oklab_to_rgb(pixel_lab)
                 blend_rgb = engine.oklab_to_rgb(blended)

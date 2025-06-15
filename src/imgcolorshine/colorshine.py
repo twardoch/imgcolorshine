@@ -25,7 +25,9 @@ def setup_logging(verbose: bool = False):
     """Configure loguru logging based on verbosity."""
     logger.remove()
     if verbose:
-        logger.add(sys.stderr, level="DEBUG", format="{time:HH:mm:ss} | {level} | {message}")
+        logger.add(
+            sys.stderr, level="DEBUG", format="{time:HH:mm:ss} | {level} | {message}"
+        )
     else:
         logger.add(sys.stderr, level="INFO", format="{message}")
 
@@ -119,7 +121,9 @@ def process_image(
     for attr_str in attractors:
         color, tolerance, strength = parse_attractor(attr_str)
         parsed_attractors.append((color, tolerance, strength))
-        logger.debug(f"Attractor: color={color}, tolerance={tolerance}, strength={strength}")
+        logger.debug(
+            f"Attractor: color={color}, tolerance={tolerance}, strength={strength}"
+        )
 
     # Set output path
     if output_image is None:
@@ -138,7 +142,9 @@ def process_image(
     for color_str, tolerance, strength in parsed_attractors:
         attractor = engine.create_attractor(color_str, tolerance, strength)
         attractor_objects.append(attractor)
-        logger.info(f"Created attractor: {color_str} (tolerance={tolerance}, strength={strength})")
+        logger.info(
+            f"Created attractor: {color_str} (tolerance={tolerance}, strength={strength})"
+        )
 
     # Load image
     logger.info(f"Loading image: {input_path}")
@@ -164,9 +170,15 @@ def process_image(
 
             # Build LUT using fused kernel
             def transform_func(rgb, attr_lab, tol, str_vals, l, s, h):
-                return np.array(transform_pixel_fused(rgb[0], rgb[1], rgb[2], attr_lab, tol, str_vals, l, s, h))
+                return np.array(
+                    transform_pixel_fused(
+                        rgb[0], rgb[1], rgb[2], attr_lab, tol, str_vals, l, s, h
+                    )
+                )
 
-            lut.build_lut(transform_func, attractors_lab, tolerances, strengths, channels)
+            lut.build_lut(
+                transform_func, attractors_lab, tolerances, strengths, channels
+            )
 
             # Apply LUT
             logger.info("Applying LUT transformation...")
@@ -174,7 +186,9 @@ def process_image(
             logger.info("LUT processing successful")
 
         except Exception as e:
-            logger.warning(f"LUT processing failed: {e}, falling back to standard processing")
+            logger.warning(
+                f"LUT processing failed: {e}, falling back to standard processing"
+            )
             transformed = None
 
     # Try GPU transformation if LUT failed or disabled
@@ -194,7 +208,13 @@ def process_image(
 
                 # Process on GPU
                 transformed = process_image_gpu(
-                    image, attractors_lab, tolerances, strengths, luminance, saturation, chroma
+                    image,
+                    attractors_lab,
+                    tolerances,
+                    strengths,
+                    luminance,
+                    saturation,
+                    chroma,
                 )
 
                 if transformed is not None:
@@ -215,7 +235,15 @@ def process_image(
         if fast_hierar or fast_spatial:
             logger.info("Using optimized CPU processing...")
             transformed = process_with_optimizations(
-                image, attractor_objects, luminance, saturation, chroma, fast_hierar, fast_spatial, transformer, engine
+                image,
+                attractor_objects,
+                luminance,
+                saturation,
+                chroma,
+                fast_hierar,
+                fast_spatial,
+                transformer,
+                engine,
             )
         else:
             logger.info("Transforming colors on CPU...")
@@ -283,19 +311,35 @@ def process_with_optimizations(
             def transform_wrapper(img_rgb, *args):
                 return (
                     transformer._transform_tile(
-                        img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
+                        img_rgb / 255.0,
+                        attractors_lab,
+                        attractors_lch,
+                        tolerances,
+                        strengths,
+                        flags_array,
                     )
                     * 255.0
                 )
 
             # Use spatial acceleration
             return spatial_acc.transform_with_spatial_accel(
-                img, img_oklab, attractors_lab, tolerances, strengths, transform_wrapper, channels
+                img,
+                img_oklab,
+                attractors_lab,
+                tolerances,
+                strengths,
+                transform_wrapper,
+                channels,
             )
 
         # Process hierarchically with spatial optimization
         transformed = hier_processor.process_hierarchical(
-            image, spatial_transform_func, attractors_lab, tolerances, strengths, channels
+            image,
+            spatial_transform_func,
+            attractors_lab,
+            tolerances,
+            strengths,
+            channels,
         )
 
     elif hierarchical:
@@ -341,13 +385,24 @@ def process_with_optimizations(
         def transform_func(img_rgb, *args):
             return (
                 transformer._transform_tile(
-                    img_rgb / 255.0, attractors_lab, attractors_lch, tolerances, strengths, flags_array
+                    img_rgb / 255.0,
+                    attractors_lab,
+                    attractors_lch,
+                    tolerances,
+                    strengths,
+                    flags_array,
                 )
                 * 255.0
             )
 
         transformed = spatial_acc.transform_with_spatial_accel(
-            image, image_oklab, attractors_lab, tolerances, strengths, transform_func, channels
+            image,
+            image_oklab,
+            attractors_lab,
+            tolerances,
+            strengths,
+            transform_func,
+            channels,
         )
     else:
         # Should not reach here, but fallback to standard processing

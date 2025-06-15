@@ -30,7 +30,15 @@ from imgcolorshine.trans_numba import (
 
 @numba.njit(cache=True, inline="always")
 def transform_pixel_fused(
-    r, g, b, attractors_lab, tolerances, strengths, enable_luminance, enable_saturation, enable_hue
+    r,
+    g,
+    b,
+    attractors_lab,
+    tolerances,
+    strengths,
+    enable_luminance,
+    enable_saturation,
+    enable_hue,
 ):
     """
     Single fused kernel for complete pixel transformation.
@@ -58,9 +66,21 @@ def transform_pixel_fused(
     b_lin = srgb_to_linear_component(b)
 
     # Step 2: Linear RGB to XYZ (matrix multiply inline)
-    x = _LINEAR_RGB_TO_XYZ[0, 0] * r_lin + _LINEAR_RGB_TO_XYZ[0, 1] * g_lin + _LINEAR_RGB_TO_XYZ[0, 2] * b_lin
-    y = _LINEAR_RGB_TO_XYZ[1, 0] * r_lin + _LINEAR_RGB_TO_XYZ[1, 1] * g_lin + _LINEAR_RGB_TO_XYZ[1, 2] * b_lin
-    z = _LINEAR_RGB_TO_XYZ[2, 0] * r_lin + _LINEAR_RGB_TO_XYZ[2, 1] * g_lin + _LINEAR_RGB_TO_XYZ[2, 2] * b_lin
+    x = (
+        _LINEAR_RGB_TO_XYZ[0, 0] * r_lin
+        + _LINEAR_RGB_TO_XYZ[0, 1] * g_lin
+        + _LINEAR_RGB_TO_XYZ[0, 2] * b_lin
+    )
+    y = (
+        _LINEAR_RGB_TO_XYZ[1, 0] * r_lin
+        + _LINEAR_RGB_TO_XYZ[1, 1] * g_lin
+        + _LINEAR_RGB_TO_XYZ[1, 2] * b_lin
+    )
+    z = (
+        _LINEAR_RGB_TO_XYZ[2, 0] * r_lin
+        + _LINEAR_RGB_TO_XYZ[2, 1] * g_lin
+        + _LINEAR_RGB_TO_XYZ[2, 2] * b_lin
+    )
 
     # Step 3: XYZ to LMS
     l = _XYZ_TO_LMS[0, 0] * x + _XYZ_TO_LMS[0, 1] * y + _XYZ_TO_LMS[0, 2] * z
@@ -73,9 +93,21 @@ def transform_pixel_fused(
     s_cbrt = np.cbrt(s)
 
     # Step 5: LMS to Oklab
-    lab_l = _LMS_TO_OKLAB[0, 0] * l_cbrt + _LMS_TO_OKLAB[0, 1] * m_cbrt + _LMS_TO_OKLAB[0, 2] * s_cbrt
-    lab_a = _LMS_TO_OKLAB[1, 0] * l_cbrt + _LMS_TO_OKLAB[1, 1] * m_cbrt + _LMS_TO_OKLAB[1, 2] * s_cbrt
-    lab_b = _LMS_TO_OKLAB[2, 0] * l_cbrt + _LMS_TO_OKLAB[2, 1] * m_cbrt + _LMS_TO_OKLAB[2, 2] * s_cbrt
+    lab_l = (
+        _LMS_TO_OKLAB[0, 0] * l_cbrt
+        + _LMS_TO_OKLAB[0, 1] * m_cbrt
+        + _LMS_TO_OKLAB[0, 2] * s_cbrt
+    )
+    lab_a = (
+        _LMS_TO_OKLAB[1, 0] * l_cbrt
+        + _LMS_TO_OKLAB[1, 1] * m_cbrt
+        + _LMS_TO_OKLAB[1, 2] * s_cbrt
+    )
+    lab_b = (
+        _LMS_TO_OKLAB[2, 0] * l_cbrt
+        + _LMS_TO_OKLAB[2, 1] * m_cbrt
+        + _LMS_TO_OKLAB[2, 2] * s_cbrt
+    )
 
     # Step 6: Oklab to OKLCH
     lch_l = lab_l
@@ -147,7 +179,9 @@ def transform_pixel_fused(
         if enable_saturation:
             lch_c = (1.0 - total_weight) * lch_c + weighted_c
         if enable_hue and lch_c > 1e-8:
-            target_h = np.arctan2(weighted_h_sin * inv_weight, weighted_h_cos * inv_weight)
+            target_h = np.arctan2(
+                weighted_h_sin * inv_weight, weighted_h_cos * inv_weight
+            )
             lch_h = (1.0 - total_weight) * lch_h + total_weight * target_h
 
     # Step 8: OKLCH back to Oklab
@@ -163,9 +197,21 @@ def transform_pixel_fused(
     for _ in range(1):  # Single check first
         # Continue conversion to check gamut
         # Oklab to LMS
-        l_cbrt = _OKLAB_TO_LMS[0, 0] * lch_l + _OKLAB_TO_LMS[0, 1] * lab_a + _OKLAB_TO_LMS[0, 2] * lab_b
-        m_cbrt = _OKLAB_TO_LMS[1, 0] * lch_l + _OKLAB_TO_LMS[1, 1] * lab_a + _OKLAB_TO_LMS[1, 2] * lab_b
-        s_cbrt = _OKLAB_TO_LMS[2, 0] * lch_l + _OKLAB_TO_LMS[2, 1] * lab_a + _OKLAB_TO_LMS[2, 2] * lab_b
+        l_cbrt = (
+            _OKLAB_TO_LMS[0, 0] * lch_l
+            + _OKLAB_TO_LMS[0, 1] * lab_a
+            + _OKLAB_TO_LMS[0, 2] * lab_b
+        )
+        m_cbrt = (
+            _OKLAB_TO_LMS[1, 0] * lch_l
+            + _OKLAB_TO_LMS[1, 1] * lab_a
+            + _OKLAB_TO_LMS[1, 2] * lab_b
+        )
+        s_cbrt = (
+            _OKLAB_TO_LMS[2, 0] * lch_l
+            + _OKLAB_TO_LMS[2, 1] * lab_a
+            + _OKLAB_TO_LMS[2, 2] * lab_b
+        )
 
         l = l_cbrt * l_cbrt * l_cbrt
         m = m_cbrt * m_cbrt * m_cbrt
@@ -177,11 +223,30 @@ def transform_pixel_fused(
         z = _LMS_TO_XYZ[2, 0] * l + _LMS_TO_XYZ[2, 1] * m + _LMS_TO_XYZ[2, 2] * s
 
         # XYZ to Linear RGB
-        r_lin = _XYZ_TO_LINEAR_RGB[0, 0] * x + _XYZ_TO_LINEAR_RGB[0, 1] * y + _XYZ_TO_LINEAR_RGB[0, 2] * z
-        g_lin = _XYZ_TO_LINEAR_RGB[1, 0] * x + _XYZ_TO_LINEAR_RGB[1, 1] * y + _XYZ_TO_LINEAR_RGB[1, 2] * z
-        b_lin = _XYZ_TO_LINEAR_RGB[2, 0] * x + _XYZ_TO_LINEAR_RGB[2, 1] * y + _XYZ_TO_LINEAR_RGB[2, 2] * z
+        r_lin = (
+            _XYZ_TO_LINEAR_RGB[0, 0] * x
+            + _XYZ_TO_LINEAR_RGB[0, 1] * y
+            + _XYZ_TO_LINEAR_RGB[0, 2] * z
+        )
+        g_lin = (
+            _XYZ_TO_LINEAR_RGB[1, 0] * x
+            + _XYZ_TO_LINEAR_RGB[1, 1] * y
+            + _XYZ_TO_LINEAR_RGB[1, 2] * z
+        )
+        b_lin = (
+            _XYZ_TO_LINEAR_RGB[2, 0] * x
+            + _XYZ_TO_LINEAR_RGB[2, 1] * y
+            + _XYZ_TO_LINEAR_RGB[2, 2] * z
+        )
 
-        if r_lin >= 0 and r_lin <= 1 and g_lin >= 0 and g_lin <= 1 and b_lin >= 0 and b_lin <= 1:
+        if (
+            r_lin >= 0
+            and r_lin <= 1
+            and g_lin >= 0
+            and g_lin <= 1
+            and b_lin >= 0
+            and b_lin <= 1
+        ):
             in_gamut = True
 
     # If not in gamut, binary search for valid chroma
@@ -200,9 +265,21 @@ def transform_pixel_fused(
             test_b = c_mid * np.sin(lch_h)
 
             # Oklab to LMS
-            l_cbrt = _OKLAB_TO_LMS[0, 0] * lch_l + _OKLAB_TO_LMS[0, 1] * test_a + _OKLAB_TO_LMS[0, 2] * test_b
-            m_cbrt = _OKLAB_TO_LMS[1, 0] * lch_l + _OKLAB_TO_LMS[1, 1] * test_a + _OKLAB_TO_LMS[1, 2] * test_b
-            s_cbrt = _OKLAB_TO_LMS[2, 0] * lch_l + _OKLAB_TO_LMS[2, 1] * test_a + _OKLAB_TO_LMS[2, 2] * test_b
+            l_cbrt = (
+                _OKLAB_TO_LMS[0, 0] * lch_l
+                + _OKLAB_TO_LMS[0, 1] * test_a
+                + _OKLAB_TO_LMS[0, 2] * test_b
+            )
+            m_cbrt = (
+                _OKLAB_TO_LMS[1, 0] * lch_l
+                + _OKLAB_TO_LMS[1, 1] * test_a
+                + _OKLAB_TO_LMS[1, 2] * test_b
+            )
+            s_cbrt = (
+                _OKLAB_TO_LMS[2, 0] * lch_l
+                + _OKLAB_TO_LMS[2, 1] * test_a
+                + _OKLAB_TO_LMS[2, 2] * test_b
+            )
 
             l = l_cbrt * l_cbrt * l_cbrt
             m = m_cbrt * m_cbrt * m_cbrt
@@ -214,11 +291,30 @@ def transform_pixel_fused(
             z = _LMS_TO_XYZ[2, 0] * l + _LMS_TO_XYZ[2, 1] * m + _LMS_TO_XYZ[2, 2] * s
 
             # XYZ to Linear RGB
-            r_test = _XYZ_TO_LINEAR_RGB[0, 0] * x + _XYZ_TO_LINEAR_RGB[0, 1] * y + _XYZ_TO_LINEAR_RGB[0, 2] * z
-            g_test = _XYZ_TO_LINEAR_RGB[1, 0] * x + _XYZ_TO_LINEAR_RGB[1, 1] * y + _XYZ_TO_LINEAR_RGB[1, 2] * z
-            b_test = _XYZ_TO_LINEAR_RGB[2, 0] * x + _XYZ_TO_LINEAR_RGB[2, 1] * y + _XYZ_TO_LINEAR_RGB[2, 2] * z
+            r_test = (
+                _XYZ_TO_LINEAR_RGB[0, 0] * x
+                + _XYZ_TO_LINEAR_RGB[0, 1] * y
+                + _XYZ_TO_LINEAR_RGB[0, 2] * z
+            )
+            g_test = (
+                _XYZ_TO_LINEAR_RGB[1, 0] * x
+                + _XYZ_TO_LINEAR_RGB[1, 1] * y
+                + _XYZ_TO_LINEAR_RGB[1, 2] * z
+            )
+            b_test = (
+                _XYZ_TO_LINEAR_RGB[2, 0] * x
+                + _XYZ_TO_LINEAR_RGB[2, 1] * y
+                + _XYZ_TO_LINEAR_RGB[2, 2] * z
+            )
 
-            if r_test >= 0 and r_test <= 1 and g_test >= 0 and g_test <= 1 and b_test >= 0 and b_test <= 1:
+            if (
+                r_test >= 0
+                and r_test <= 1
+                and g_test >= 0
+                and g_test <= 1
+                and b_test >= 0
+                and b_test <= 1
+            ):
                 c_min = c_mid
             else:
                 c_max = c_mid
@@ -230,9 +326,21 @@ def transform_pixel_fused(
 
     # Step 10: Final conversion back to sRGB
     # Oklab to LMS
-    l_cbrt = _OKLAB_TO_LMS[0, 0] * lch_l + _OKLAB_TO_LMS[0, 1] * lab_a + _OKLAB_TO_LMS[0, 2] * lab_b
-    m_cbrt = _OKLAB_TO_LMS[1, 0] * lch_l + _OKLAB_TO_LMS[1, 1] * lab_a + _OKLAB_TO_LMS[1, 2] * lab_b
-    s_cbrt = _OKLAB_TO_LMS[2, 0] * lch_l + _OKLAB_TO_LMS[2, 1] * lab_a + _OKLAB_TO_LMS[2, 2] * lab_b
+    l_cbrt = (
+        _OKLAB_TO_LMS[0, 0] * lch_l
+        + _OKLAB_TO_LMS[0, 1] * lab_a
+        + _OKLAB_TO_LMS[0, 2] * lab_b
+    )
+    m_cbrt = (
+        _OKLAB_TO_LMS[1, 0] * lch_l
+        + _OKLAB_TO_LMS[1, 1] * lab_a
+        + _OKLAB_TO_LMS[1, 2] * lab_b
+    )
+    s_cbrt = (
+        _OKLAB_TO_LMS[2, 0] * lch_l
+        + _OKLAB_TO_LMS[2, 1] * lab_a
+        + _OKLAB_TO_LMS[2, 2] * lab_b
+    )
 
     l = l_cbrt * l_cbrt * l_cbrt
     m = m_cbrt * m_cbrt * m_cbrt
@@ -244,9 +352,21 @@ def transform_pixel_fused(
     z = _LMS_TO_XYZ[2, 0] * l + _LMS_TO_XYZ[2, 1] * m + _LMS_TO_XYZ[2, 2] * s
 
     # XYZ to Linear RGB
-    r_lin = _XYZ_TO_LINEAR_RGB[0, 0] * x + _XYZ_TO_LINEAR_RGB[0, 1] * y + _XYZ_TO_LINEAR_RGB[0, 2] * z
-    g_lin = _XYZ_TO_LINEAR_RGB[1, 0] * x + _XYZ_TO_LINEAR_RGB[1, 1] * y + _XYZ_TO_LINEAR_RGB[1, 2] * z
-    b_lin = _XYZ_TO_LINEAR_RGB[2, 0] * x + _XYZ_TO_LINEAR_RGB[2, 1] * y + _XYZ_TO_LINEAR_RGB[2, 2] * z
+    r_lin = (
+        _XYZ_TO_LINEAR_RGB[0, 0] * x
+        + _XYZ_TO_LINEAR_RGB[0, 1] * y
+        + _XYZ_TO_LINEAR_RGB[0, 2] * z
+    )
+    g_lin = (
+        _XYZ_TO_LINEAR_RGB[1, 0] * x
+        + _XYZ_TO_LINEAR_RGB[1, 1] * y
+        + _XYZ_TO_LINEAR_RGB[1, 2] * z
+    )
+    b_lin = (
+        _XYZ_TO_LINEAR_RGB[2, 0] * x
+        + _XYZ_TO_LINEAR_RGB[2, 1] * y
+        + _XYZ_TO_LINEAR_RGB[2, 2] * z
+    )
 
     # Clamp linear values
     r_lin = max(0.0, min(1.0, r_lin))
@@ -263,7 +383,13 @@ def transform_pixel_fused(
 
 @numba.njit(parallel=True, cache=True)
 def transform_image_fused(
-    rgb_image, attractors_lab, tolerances, strengths, enable_luminance, enable_saturation, enable_hue
+    rgb_image,
+    attractors_lab,
+    tolerances,
+    strengths,
+    enable_luminance,
+    enable_saturation,
+    enable_hue,
 ):
     """
     Transform entire image using fused kernel with parallel processing.

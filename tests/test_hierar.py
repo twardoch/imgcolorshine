@@ -63,10 +63,14 @@ def test_compute_perceptual_distance_mask(sample_image_lab_float32: np.ndarray):
 
     # Different images
     lab2[0, 0, :] += 0.5  # Introduce a large difference at one pixel
-    mask_different_large_thresh = compute_perceptual_distance_mask(lab1, lab2, threshold=1.0)  # High threshold
+    mask_different_large_thresh = compute_perceptual_distance_mask(
+        lab1, lab2, threshold=1.0
+    )  # High threshold
     assert not np.any(mask_different_large_thresh)  # Difference might be < 1.0
 
-    mask_different_small_thresh = compute_perceptual_distance_mask(lab1, lab2, threshold=0.01)  # Low threshold
+    mask_different_small_thresh = compute_perceptual_distance_mask(
+        lab1, lab2, threshold=0.01
+    )  # Low threshold
     assert mask_different_small_thresh[0, 0]  # Pixel with large diff should be True
     assert np.sum(mask_different_small_thresh) == 1  # Only that pixel
 
@@ -81,7 +85,9 @@ def test_compute_gradient_magnitude():
     gray_edge = np.zeros((64, 64), dtype=np.float32)
     gray_edge[:, 32:] = 255  # Vertical edge
     grad_edge = compute_gradient_magnitude(gray_edge)
-    assert np.any(grad_edge[:, 31:33] > 0)  # Expect non-zero gradient around the edge line
+    assert np.any(
+        grad_edge[:, 31:33] > 0
+    )  # Expect non-zero gradient around the edge line
     # Check that borders are zero
     assert np.all(grad_edge[0, :] == 0)
     assert np.all(grad_edge[-1, :] == 0)
@@ -91,7 +97,9 @@ def test_compute_gradient_magnitude():
     # Max value of Sobel for 0 to 255 step is sqrt((4*255)^2 + 0) = 1020
     # Or for diagonal it could be sqrt((3*255)^2 + (3*255)^2) approx
     # Check that values are within a reasonable range, e.g. not excessively large.
-    assert np.max(grad_edge) < 255 * 5  # Generous upper bound for Sobel on 0-255 range data
+    assert (
+        np.max(grad_edge) < 255 * 5
+    )  # Generous upper bound for Sobel on 0-255 range data
 
 
 def test_hierarchical_processor_compute_perceptual_distance_static_method():
@@ -110,7 +118,9 @@ def test_hierarchical_processor_compute_perceptual_distance_static_method():
 
 
 # --- HierarchicalProcessor tests ---
-def test_build_pyramid_default(processor_default: HierarchicalProcessor, sample_image_rgb_uint8: np.ndarray):
+def test_build_pyramid_default(
+    processor_default: HierarchicalProcessor, sample_image_rgb_uint8: np.ndarray
+):
     """"""
     img_h, img_w = sample_image_rgb_uint8.shape[:2]  # 128, 128
     pyramid = processor_default.build_pyramid(sample_image_rgb_uint8)
@@ -131,30 +141,46 @@ def test_build_pyramid_default(processor_default: HierarchicalProcessor, sample_
     assert np.isclose(pyramid[1].scale, 0.5)
 
     # Test with smaller image where min_size condition hits earlier
-    small_img = cv2.resize(sample_image_rgb_uint8, (processor_default.min_size, processor_default.min_size))
+    small_img = cv2.resize(
+        sample_image_rgb_uint8, (processor_default.min_size, processor_default.min_size)
+    )
     pyramid_small = processor_default.build_pyramid(small_img)
     assert len(pyramid_small) == 1  # Only the original image
-    assert pyramid_small[0].shape == (processor_default.min_size, processor_default.min_size)
+    assert pyramid_small[0].shape == (
+        processor_default.min_size,
+        processor_default.min_size,
+    )
 
 
-@mock.patch("imgcolorshine.hierar.batch_srgb_to_oklab", return_value=np.zeros((64, 64, 3), dtype=np.float32))
+@mock.patch(
+    "imgcolorshine.hierar.batch_srgb_to_oklab",
+    return_value=np.zeros((64, 64, 3), dtype=np.float32),
+)
 @mock.patch("imgcolorshine.hierar.compute_perceptual_distance_mask")
-def test_compute_difference_mask(mock_compute_mask, mock_batch_srgb_to_oklab, processor_default: HierarchicalProcessor):
+def test_compute_difference_mask(
+    mock_compute_mask,
+    mock_batch_srgb_to_oklab,
+    processor_default: HierarchicalProcessor,
+):
     """"""
     fine_level_rgb = np.random.randint(0, 256, (64, 64, 3), dtype=np.uint8)
     coarse_upsampled_rgb = np.random.randint(0, 256, (64, 64, 3), dtype=np.uint8)
     threshold = 0.2  # This is user input 0-1 range
 
-    processor_default.compute_difference_mask(fine_level_rgb, coarse_upsampled_rgb, threshold)
+    processor_default.compute_difference_mask(
+        fine_level_rgb, coarse_upsampled_rgb, threshold
+    )
 
     # Check batch_srgb_to_oklab calls
     assert mock_batch_srgb_to_oklab.call_count == 2
     # Check first call args
     np.testing.assert_array_almost_equal(
-        mock_batch_srgb_to_oklab.call_args_list[0][0][0], fine_level_rgb.astype(np.float32) / 255.0
+        mock_batch_srgb_to_oklab.call_args_list[0][0][0],
+        fine_level_rgb.astype(np.float32) / 255.0,
     )
     np.testing.assert_array_almost_equal(
-        mock_batch_srgb_to_oklab.call_args_list[1][0][0], coarse_upsampled_rgb.astype(np.float32) / 255.0
+        mock_batch_srgb_to_oklab.call_args_list[1][0][0],
+        coarse_upsampled_rgb.astype(np.float32) / 255.0,
     )
 
     # Check compute_perceptual_distance_mask call
@@ -170,7 +196,11 @@ def test_compute_difference_mask(mock_compute_mask, mock_batch_srgb_to_oklab, pr
 @mock.patch("cv2.getStructuringElement")
 @mock.patch("cv2.dilate")
 def test_detect_gradient_regions(
-    mock_dilate, mock_getse, mock_compute_grad, mock_cvtcolor, processor_default: HierarchicalProcessor
+    mock_dilate,
+    mock_getse,
+    mock_compute_grad,
+    mock_cvtcolor,
+    processor_default: HierarchicalProcessor,
 ):
     """"""
     image_rgb = np.random.randint(0, 256, (64, 64, 3), dtype=np.uint8)
@@ -189,17 +219,27 @@ def test_detect_gradient_regions(
     # mock_compute_grad.assert_called_once_with(mock_cvtcolor.return_value.astype(np.float32))
     assert mock_compute_grad.call_count == 1
     called_arg_compute_grad = mock_compute_grad.call_args[0][0]
-    np.testing.assert_array_equal(called_arg_compute_grad, mock_cvtcolor.return_value.astype(np.float32))
+    np.testing.assert_array_equal(
+        called_arg_compute_grad, mock_cvtcolor.return_value.astype(np.float32)
+    )
 
     # Check normalization and thresholding logic implicitly by checking mock_dilate input
     # gradient_mask = gradient_magnitude > gradient_threshold
     # Dilate is called with gradient_mask.astype(np.uint8)
-    normalized_grad = mock_grad_mag / mock_grad_mag.max() if mock_grad_mag.max() > 0 else mock_grad_mag
-    expected_grad_mask_input_to_dilate = (normalized_grad > gradient_threshold).astype(np.uint8)
+    normalized_grad = (
+        mock_grad_mag / mock_grad_mag.max()
+        if mock_grad_mag.max() > 0
+        else mock_grad_mag
+    )
+    expected_grad_mask_input_to_dilate = (normalized_grad > gradient_threshold).astype(
+        np.uint8
+    )
 
     mock_getse.assert_called_once_with(cv2.MORPH_ELLIPSE, (5, 5))
     mock_dilate.assert_called_once()
-    np.testing.assert_array_equal(mock_dilate.call_args[0][0], expected_grad_mask_input_to_dilate)
+    np.testing.assert_array_equal(
+        mock_dilate.call_args[0][0], expected_grad_mask_input_to_dilate
+    )
     assert mock_dilate.call_args[0][1] is mock_getse.return_value
 
 
@@ -208,7 +248,11 @@ def test_detect_gradient_regions(
 @mock.patch("cv2.getStructuringElement")
 @mock.patch("cv2.dilate")
 def test_detect_gradient_regions_no_gradient(
-    mock_dilate, mock_getse, mock_compute_grad, mock_cvtcolor, processor_default: HierarchicalProcessor
+    mock_dilate,
+    mock_getse,
+    mock_compute_grad,
+    mock_cvtcolor,
+    processor_default: HierarchicalProcessor,
 ):
     """"""
     image_rgb = np.random.randint(0, 256, (64, 64, 3), dtype=np.uint8)
@@ -227,7 +271,9 @@ def test_detect_gradient_regions_no_gradient(
     mock_cvtcolor.assert_called_once_with(image_rgb, cv2.COLOR_RGB2GRAY)
     assert mock_compute_grad.call_count == 1
     called_arg_compute_grad = mock_compute_grad.call_args[0][0]
-    np.testing.assert_array_equal(called_arg_compute_grad, mock_cvtcolor.return_value.astype(np.float32))
+    np.testing.assert_array_equal(
+        called_arg_compute_grad, mock_cvtcolor.return_value.astype(np.float32)
+    )
 
     # Check normalization and thresholding logic implicitly by checking mock_dilate input
     # If mock_grad_mag is all zeros, normalized_grad is all zeros.
@@ -236,7 +282,9 @@ def test_detect_gradient_regions_no_gradient(
 
     mock_getse.assert_called_once_with(cv2.MORPH_ELLIPSE, (5, 5))
     mock_dilate.assert_called_once()
-    np.testing.assert_array_equal(mock_dilate.call_args[0][0], expected_grad_mask_input_to_dilate)
+    np.testing.assert_array_equal(
+        mock_dilate.call_args[0][0], expected_grad_mask_input_to_dilate
+    )
     assert mock_dilate.call_args[0][1] is mock_getse.return_value
 
 
@@ -252,53 +300,75 @@ def mock_transform_func(image, attractors, tolerances, strengths, channels):
         return 255 - image
     # If input is float (e.g. from resize), handle that then convert back
     return (
-        (255 - (image * 255).astype(np.uint8)).astype(np.uint8) if image.max() <= 1 else (255 - image).astype(np.uint8)
+        (255 - (image * 255).astype(np.uint8)).astype(np.uint8)
+        if image.max() <= 1
+        else (255 - image).astype(np.uint8)
     )
 
 
 @mock.patch("cv2.resize")  # Removed problematic side_effect
 def test_process_hierarchical_small_image_no_pyramid(
-    mock_cv_resize, processor_default: HierarchicalProcessor, sample_image_rgb_uint8: np.ndarray
+    mock_cv_resize,
+    processor_default: HierarchicalProcessor,
+    sample_image_rgb_uint8: np.ndarray,
 ):
     """"""
     # Let the initial resize for test setup use the real cv2.resize
     # The mock_cv_resize will apply to calls inside processor_default.process_hierarchical
-    small_img = _original_cv2_resize(sample_image_rgb_uint8, (processor_default.min_size, processor_default.min_size))
+    small_img = _original_cv2_resize(
+        sample_image_rgb_uint8, (processor_default.min_size, processor_default.min_size)
+    )
 
     # Mock build_pyramid to ensure it returns only one level for this test
     with mock.patch.object(
         processor_default,
         "build_pyramid",
-        return_value=[PyramidLevel(image=small_img, scale=1.0, shape=small_img.shape[:2], level=0)],
+        return_value=[
+            PyramidLevel(image=small_img, scale=1.0, shape=small_img.shape[:2], level=0)
+        ],
     ) as mock_build_pyr:
-        result = processor_default.process_hierarchical(small_img, mock_transform_func, [], [], [], [])
+        result = processor_default.process_hierarchical(
+            small_img, mock_transform_func, [], [], [], []
+        )
         mock_build_pyr.assert_called_once_with(small_img)
         # Check that transform_func was called directly on the small_img
         # This requires transform_func to be "spyable" or check its effect
-        np.testing.assert_array_equal(result, mock_transform_func(small_img, [], [], [], []))
+        np.testing.assert_array_equal(
+            result, mock_transform_func(small_img, [], [], [], [])
+        )
         # mock_cv_resize (the one from @mock.patch) should not be called if only one level
         mock_cv_resize.assert_not_called()  # No upsampling should occur
 
 
 @mock.patch("cv2.resize")  # Removed problematic side_effect
 def test_process_hierarchical_full_run(
-    mock_cv_resize, processor_default: HierarchicalProcessor, sample_image_rgb_uint8: np.ndarray
+    mock_cv_resize,
+    processor_default: HierarchicalProcessor,
+    sample_image_rgb_uint8: np.ndarray,
 ):
     """"""
     # Mock sub-functions to control their behavior and verify calls
     with (
-        mock.patch.object(processor_default, "compute_difference_mask") as mock_comp_diff,
-        mock.patch.object(processor_default, "detect_gradient_regions") as mock_detect_grad,
+        mock.patch.object(
+            processor_default, "compute_difference_mask"
+        ) as mock_comp_diff,
+        mock.patch.object(
+            processor_default, "detect_gradient_regions"
+        ) as mock_detect_grad,
     ):
         # Setup mocks:
         # Coarsest level (64x64 for 128x128 input)
         # Fine level (128x128)
         # Let compute_difference_mask return a mask that refines some pixels
-        mock_comp_diff.return_value = np.zeros(sample_image_rgb_uint8.shape[:2], dtype=bool)  # Default no diff
+        mock_comp_diff.return_value = np.zeros(
+            sample_image_rgb_uint8.shape[:2], dtype=bool
+        )  # Default no diff
         mock_comp_diff.return_value[0:16, 0:16] = True  # Refine top-left corner
 
         # Let detect_gradient_regions return no gradients to isolate diff_mask effect
-        mock_detect_grad.return_value = np.zeros(sample_image_rgb_uint8.shape[:2], dtype=bool)
+        mock_detect_grad.return_value = np.zeros(
+            sample_image_rgb_uint8.shape[:2], dtype=bool
+        )
 
         # Configure mock_cv_resize to return an appropriately shaped array
         # This will be the 'upsampled' variable in the code.
@@ -323,20 +393,29 @@ def test_process_hierarchical_full_run(
         resized_from_shape = mock_cv_resize.call_args_list[0][0][0].shape
         resized_to_dsize = mock_cv_resize.call_args_list[0][0][1]
         assert resized_from_shape[0] == sample_image_rgb_uint8.shape[0] // 2  # 64
-        assert resized_to_dsize == (sample_image_rgb_uint8.shape[1], sample_image_rgb_uint8.shape[0])  # (128, 128)
+        assert resized_to_dsize == (
+            sample_image_rgb_uint8.shape[1],
+            sample_image_rgb_uint8.shape[0],
+        )  # (128, 128)
 
         # 4. compute_difference_mask called for level 0 (128x128)
         mock_comp_diff.assert_called_once()
         # Check args: fine_level (pyramid[0].image), upsampled, threshold
         assert mock_comp_diff.call_args[0][0].shape == sample_image_rgb_uint8.shape
-        assert mock_comp_diff.call_args[0][1].shape == sample_image_rgb_uint8.shape  # upsampled result
+        assert (
+            mock_comp_diff.call_args[0][1].shape == sample_image_rgb_uint8.shape
+        )  # upsampled result
         assert mock_comp_diff.call_args[0][2] == processor_default.difference_threshold
 
         # 5. detect_gradient_regions called if use_adaptive_subdivision is True
         if processor_default.use_adaptive_subdivision:
             mock_detect_grad.assert_called_once()
-            assert mock_detect_grad.call_args[0][0].shape == sample_image_rgb_uint8.shape
-            assert mock_detect_grad.call_args[0][1] == processor_default.gradient_threshold
+            assert (
+                mock_detect_grad.call_args[0][0].shape == sample_image_rgb_uint8.shape
+            )
+            assert (
+                mock_detect_grad.call_args[0][1] == processor_default.gradient_threshold
+            )
         else:
             mock_detect_grad.assert_not_called()
 
@@ -357,10 +436,14 @@ def test_process_hierarchical_full_run(
         assert upsampled_from_coarsest is mock_upsampled_array
 
         # Fine level image (128x128)
-        transformed_fine_level = mock_transform_func(sample_image_rgb_uint8, att, tol, stren, chan)
+        transformed_fine_level = mock_transform_func(
+            sample_image_rgb_uint8, att, tol, stren, chan
+        )
 
         expected_result = upsampled_from_coarsest.copy()
-        refinement_mask = mock_comp_diff.return_value  # In this test, grad_mask is all False
+        refinement_mask = (
+            mock_comp_diff.return_value
+        )  # In this test, grad_mask is all False
         expected_result[refinement_mask] = transformed_fine_level[refinement_mask]
 
         np.testing.assert_array_equal(result, expected_result)
@@ -368,16 +451,24 @@ def test_process_hierarchical_full_run(
 
 @mock.patch("cv2.resize")
 def test_process_hierarchical_no_adaptive_subdivision(
-    mock_cv_resize, processor_no_adaptive: HierarchicalProcessor, sample_image_rgb_uint8: np.ndarray
+    mock_cv_resize,
+    processor_no_adaptive: HierarchicalProcessor,
+    sample_image_rgb_uint8: np.ndarray,
 ):
     """"""
     # This test uses processor_no_adaptive fixture (use_adaptive_subdivision=False)
     with (
-        mock.patch.object(processor_no_adaptive, "compute_difference_mask") as mock_comp_diff,
-        mock.patch.object(processor_no_adaptive, "detect_gradient_regions") as mock_detect_grad,
+        mock.patch.object(
+            processor_no_adaptive, "compute_difference_mask"
+        ) as mock_comp_diff,
+        mock.patch.object(
+            processor_no_adaptive, "detect_gradient_regions"
+        ) as mock_detect_grad,
     ):
         # Setup mocks for this specific test
-        mock_comp_diff.return_value = np.zeros(sample_image_rgb_uint8.shape[:2], dtype=bool)  # No diffs
+        mock_comp_diff.return_value = np.zeros(
+            sample_image_rgb_uint8.shape[:2], dtype=bool
+        )  # No diffs
         mock_upsampled_array = np.zeros_like(sample_image_rgb_uint8)
         mock_cv_resize.return_value = mock_upsampled_array
 
@@ -403,7 +494,9 @@ def test_process_hierarchical_no_adaptive_subdivision(
             (sample_image_rgb_uint8.shape[1], sample_image_rgb_uint8.shape[0]),
             interpolation=cv2.INTER_LINEAR,
         )
-        assert upsampled_from_coarsest is mock_upsampled_array  # Verifying mock was used as expected
+        assert (
+            upsampled_from_coarsest is mock_upsampled_array
+        )  # Verifying mock was used as expected
 
         np.testing.assert_array_equal(result, mock_upsampled_array)
 
@@ -457,12 +550,18 @@ def test_process_hierarchical_tiled_small_image_no_tiling(
     with mock.patch.object(processor_default, "process_hierarchical") as mock_proc_hier:
         mock_proc_hier.return_value = sample_image_rgb_uint8  # Dummy return
 
-        processor_default.process_hierarchical_tiled(sample_image_rgb_uint8, mock_transform_func, [], [], [], [])
+        processor_default.process_hierarchical_tiled(
+            sample_image_rgb_uint8, mock_transform_func, [], [], [], []
+        )
 
-        mock_proc_hier.assert_called_once_with(sample_image_rgb_uint8, mock_transform_func, [], [], [], [])
+        mock_proc_hier.assert_called_once_with(
+            sample_image_rgb_uint8, mock_transform_func, [], [], [], []
+        )
 
 
-def test_process_hierarchical_tiled_large_image(processor_default: HierarchicalProcessor):
+def test_process_hierarchical_tiled_large_image(
+    processor_default: HierarchicalProcessor,
+):
     """"""
     # Image size chosen to ensure tiling is triggered based on condition:
     # h > tile_size * 2 or w > tile_size * 2

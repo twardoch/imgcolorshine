@@ -38,7 +38,9 @@ class ColorLUT:
             cache_dir: Directory for caching LUTs (default: ~/.cache/imgcolorshine)
         """
         self.size = size
-        self.cache_dir = Path(cache_dir) if cache_dir else Path.home() / ".cache" / "imgcolorshine"
+        self.cache_dir = (
+            Path(cache_dir) if cache_dir else Path.home() / ".cache" / "imgcolorshine"
+        )
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Pre-allocate LUT array
@@ -98,7 +100,9 @@ class ColorLUT:
         except Exception as e:
             logger.warning(f"Failed to save cache: {e}")
 
-    def build_lut(self, transform_func, attractors_lab, tolerances, strengths, channels):
+    def build_lut(
+        self, transform_func, attractors_lab, tolerances, strengths, channels
+    ):
         """
         Build the 3D LUT by sampling the transformation function.
 
@@ -128,12 +132,23 @@ class ColorLUT:
                 for b_idx in range(self.size):
                     # Convert indices to RGB values [0, 1]
                     rgb = np.array(
-                        [r_idx / (self.size - 1), g_idx / (self.size - 1), b_idx / (self.size - 1)], dtype=np.float32
+                        [
+                            r_idx / (self.size - 1),
+                            g_idx / (self.size - 1),
+                            b_idx / (self.size - 1),
+                        ],
+                        dtype=np.float32,
                     )
 
                     # Apply transformation
                     transformed = transform_func(
-                        rgb, attractors_lab, tolerances, strengths, channels[0], channels[1], channels[2]
+                        rgb,
+                        attractors_lab,
+                        tolerances,
+                        strengths,
+                        channels[0],
+                        channels[1],
+                        channels[2],
                     )
 
                     # Store in LUT
@@ -266,7 +281,13 @@ def create_identity_lut(size=65):
 
 @numba.njit(cache=True)
 def transform_pixel_for_lut(
-    rgb, attractors_lab, tolerances, strengths, enable_luminance, enable_saturation, enable_hue
+    rgb,
+    attractors_lab,
+    tolerances,
+    strengths,
+    enable_luminance,
+    enable_saturation,
+    enable_hue,
 ):
     """
     Transform a single pixel for LUT building.
@@ -277,7 +298,15 @@ def transform_pixel_for_lut(
 
     # Transform and return
     r_out, g_out, b_out = transform_pixel_fused(
-        rgb[0], rgb[1], rgb[2], attractors_lab, tolerances, strengths, enable_luminance, enable_saturation, enable_hue
+        rgb[0],
+        rgb[1],
+        rgb[2],
+        attractors_lab,
+        tolerances,
+        strengths,
+        enable_luminance,
+        enable_saturation,
+        enable_hue,
     )
 
     return np.array([r_out, g_out, b_out], dtype=np.float32)

@@ -212,10 +212,14 @@ def transform_pixels(
             pixel_lch = pixels_lch[y, x]
 
             # Calculate weights for all attractors
-            weights = calculate_weights(pixel_lab, attractors_lab, tolerances, strengths)
+            weights = calculate_weights(
+                pixel_lab, attractors_lab, tolerances, strengths
+            )
 
             # Blend colors
-            result[y, x] = blend_colors(pixel_lab, pixel_lch, attractors_lab, attractors_lch, weights, flags)
+            result[y, x] = blend_colors(
+                pixel_lab, pixel_lch, attractors_lab, attractors_lch, weights, flags
+            )
 
     return result
 

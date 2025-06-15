@@ -93,12 +93,16 @@ def attractor_params():
 
 def assert_image_shape(image: np.ndarray, expected_shape: tuple[int, ...]):
     """Assert that an image has the expected shape."""
-    assert image.shape == expected_shape, f"Expected shape {expected_shape}, got {image.shape}"
+    assert image.shape == expected_shape, (
+        f"Expected shape {expected_shape}, got {image.shape}"
+    )
 
 
 def assert_image_dtype(image: np.ndarray, expected_dtype: np.dtype):
     """Assert that an image has the expected data type."""
-    assert image.dtype == expected_dtype, f"Expected dtype {expected_dtype}, got {image.dtype}"
+    assert image.dtype == expected_dtype, (
+        f"Expected dtype {expected_dtype}, got {image.dtype}"
+    )
 
 
 def assert_color_close(color1: Color, color2: Color, tolerance: float = 0.01):
@@ -113,12 +117,20 @@ def assert_color_close(color1: Color, color2: Color, tolerance: float = 0.01):
     if diff_h > 180:
         diff_h = 360 - diff_h
 
-    assert diff_l <= tolerance, f"Lightness difference {diff_l} exceeds tolerance {tolerance}"
-    assert diff_c <= tolerance, f"Chroma difference {diff_c} exceeds tolerance {tolerance}"
-    assert diff_h <= tolerance * 360, f"Hue difference {diff_h} exceeds tolerance {tolerance * 360}"
+    assert diff_l <= tolerance, (
+        f"Lightness difference {diff_l} exceeds tolerance {tolerance}"
+    )
+    assert diff_c <= tolerance, (
+        f"Chroma difference {diff_c} exceeds tolerance {tolerance}"
+    )
+    assert diff_h <= tolerance * 360, (
+        f"Hue difference {diff_h} exceeds tolerance {tolerance * 360}"
+    )
 
 
-def create_test_image(width: int = 100, height: int = 100, pattern: str = "gradient") -> np.ndarray:
+def create_test_image(
+    width: int = 100, height: int = 100, pattern: str = "gradient"
+) -> np.ndarray:
     """Create a test image with a specific pattern."""
     if pattern == "gradient":
         # Create a gradient from black to white

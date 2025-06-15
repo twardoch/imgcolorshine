@@ -90,7 +90,9 @@ def test_performance_comparison() -> None:
         logger.info(f"\nBenchmarking {width}x{height} image...")
 
         # Create test image
-        image: np.ndarray[Any, np.dtype[np.uint8]] = np.random.randint(0, 256, (height, width, 3), dtype=np.uint8)
+        image: np.ndarray[Any, np.dtype[np.uint8]] = np.random.randint(
+            0, 256, (height, width, 3), dtype=np.uint8
+        )
 
         # Convert to float32 [0,1]
         image_float = image.astype(np.float32) / 255.0

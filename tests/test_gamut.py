@@ -4,11 +4,20 @@ import numpy as np
 import pytest
 from coloraide import Color
 
-from imgcolorshine.gamut import GamutMapper, batch_map_oklch_numba, binary_search_chroma, create_gamut_boundary_lut
+from imgcolorshine.gamut import (
+    GamutMapper,
+    batch_map_oklch_numba,
+    binary_search_chroma,
+    create_gamut_boundary_lut,
+)
 
 # Import Numba helpers from trans_numba that are used by gamut.py for context,
 # though their direct testing might be elsewhere or implicit.
-from imgcolorshine.trans_numba import is_in_gamut_srgb, oklab_to_srgb_single, oklch_to_oklab_single
+from imgcolorshine.trans_numba import (
+    is_in_gamut_srgb,
+    oklab_to_srgb_single,
+    oklch_to_oklab_single,
+)
 
 
 # Helper for comparing OKLCH tuples
@@ -109,7 +118,9 @@ def test_map_oklch_to_gamut_srgb_out_of_gamut(srgb_mapper: GamutMapper):
     assert mapped_l == l
     assert mapped_c < c
     assert mapped_h == h
-    assert Color("oklch", [mapped_l, mapped_c, mapped_h]).in_gamut("srgb", tolerance=0.0015)  # Allow small tolerance
+    assert Color("oklch", [mapped_l, mapped_c, mapped_h]).in_gamut(
+        "srgb", tolerance=0.0015
+    )  # Allow small tolerance
 
 
 # Test map_oklch_to_gamut (non-sRGB path - uses ColorAide)
@@ -133,7 +144,9 @@ def test_map_oklch_to_gamut_p3_out_of_gamut(p3_mapper: GamutMapper):
     assert mapped_l == l
     assert mapped_c < c
     assert mapped_h == h
-    assert Color("oklch", [mapped_l, mapped_c, mapped_h]).in_gamut("display-p3", tolerance=0.0001)
+    assert Color("oklch", [mapped_l, mapped_c, mapped_h]).in_gamut(
+        "display-p3", tolerance=0.0001
+    )
 
 
 def test_map_oklab_to_gamut(srgb_mapper: GamutMapper):
@@ -173,7 +186,11 @@ def test_batch_map_oklch(mapper_fixture_name, request):
         [
             [0.7, 0.1, 120.0],  # In sRGB and P3
             [0.8, 0.5, 240.0],  # Out of sRGB, possibly out of P3 (very vibrant blue)
-            [0.95, 0.4, 150.0],  # Very bright, very saturated green (out of sRGB, maybe P3)
+            [
+                0.95,
+                0.4,
+                150.0,
+            ],  # Very bright, very saturated green (out of sRGB, maybe P3)
         ],
         dtype=np.float32,
     )
@@ -188,7 +205,9 @@ def test_batch_map_oklch(mapper_fixture_name, request):
         assert mapped_l == original_l
         assert mapped_h == original_h
         assert mapped_c <= original_c
-        assert Color("oklch", [mapped_l, mapped_c, mapped_h]).in_gamut(mapper.target_space, tolerance=0.0015)
+        assert Color("oklch", [mapped_l, mapped_c, mapped_h]).in_gamut(
+            mapper.target_space, tolerance=0.0015
+        )
 
 
 def test_batch_map_oklch_numba_direct():  # Testing the Numba fn directly
@@ -231,18 +250,26 @@ def test_analyze_gamut_coverage_empty(srgb_mapper: GamutMapper):
     """"""
     colors = np.array([])
     # Reshape to (0,3) if needed by the function's Color iteration logic
-    stats = srgb_mapper.analyze_gamut_coverage(colors.reshape(0, 3) if colors.ndim == 1 else colors)
+    stats = srgb_mapper.analyze_gamut_coverage(
+        colors.reshape(0, 3) if colors.ndim == 1 else colors
+    )
     assert stats["total"] == 0
     assert stats["in_gamut"] == 0
     assert stats["out_of_gamut"] == 0
-    assert stats["percentage_in_gamut"] == 100  # Or 0, depending on interpretation. Code says 100.
+    assert (
+        stats["percentage_in_gamut"] == 100
+    )  # Or 0, depending on interpretation. Code says 100.
 
 
-def test_create_gamut_boundary_lut(srgb_mapper: GamutMapper):  # Pass mapper for is_in_gamut usage
+def test_create_gamut_boundary_lut(
+    srgb_mapper: GamutMapper,
+):  # Pass mapper for is_in_gamut usage
     """"""
     hue_steps = 12  # Smaller for faster test
     lightness_steps = 10
-    lut = create_gamut_boundary_lut(hue_steps=hue_steps, lightness_steps=lightness_steps)
+    lut = create_gamut_boundary_lut(
+        hue_steps=hue_steps, lightness_steps=lightness_steps
+    )
     assert lut.shape == (lightness_steps, hue_steps)
     assert lut.dtype == np.float32
     assert np.all(lut >= 0)

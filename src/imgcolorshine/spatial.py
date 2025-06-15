@@ -22,7 +22,9 @@ from scipy.spatial import KDTree
 
 
 @numba.njit(cache=True, parallel=True)
-def compute_influence_mask_direct(pixels_flat: np.ndarray, centers: np.ndarray, radii: np.ndarray) -> np.ndarray:
+def compute_influence_mask_direct(
+    pixels_flat: np.ndarray, centers: np.ndarray, radii: np.ndarray
+) -> np.ndarray:
     """
     Numba-optimized direct computation of influence mask.
 
@@ -62,7 +64,9 @@ def compute_influence_mask_direct(pixels_flat: np.ndarray, centers: np.ndarray, 
 
 
 @numba.njit(cache=True)
-def find_pixel_attractors(pixel: np.ndarray, centers: np.ndarray, radii: np.ndarray, indices: np.ndarray) -> np.ndarray:
+def find_pixel_attractors(
+    pixel: np.ndarray, centers: np.ndarray, radii: np.ndarray, indices: np.ndarray
+) -> np.ndarray:
     """
     Numba-optimized function to find attractors influencing a pixel.
 
@@ -140,7 +144,9 @@ class SpatialAccelerator:
         self.tile_cache: dict[tuple, TileInfo] = {}
         self._max_radius: float = 0.0
 
-    def build_spatial_index(self, attractors_oklab: np.ndarray, tolerances: np.ndarray) -> None:
+    def build_spatial_index(
+        self, attractors_oklab: np.ndarray, tolerances: np.ndarray
+    ) -> None:
         """
         Build KD-tree and influence regions from attractors.
 
@@ -204,7 +210,9 @@ class SpatialAccelerator:
         # For each influence region, find pixels within radius
         for region in self.influence_regions:
             # Query all points within this region's radius
-            indices = self.color_tree.query_ball_point(pixels_flat, r=region.radius, workers=-1)
+            indices = self.color_tree.query_ball_point(
+                pixels_flat, r=region.radius, workers=-1
+            )
 
             # Check which pixels are close to this specific attractor
             for idx, neighbors in enumerate(indices):
@@ -238,11 +246,17 @@ class SpatialAccelerator:
 
         # Prepare data for Numba function
         len(self.influence_regions)
-        centers = np.array([region.center for region in self.influence_regions], dtype=np.float32)
-        radii = np.array([region.radius for region in self.influence_regions], dtype=np.float32)
+        centers = np.array(
+            [region.center for region in self.influence_regions], dtype=np.float32
+        )
+        radii = np.array(
+            [region.radius for region in self.influence_regions], dtype=np.float32
+        )
 
         # Use Numba-optimized function for parallel computation
-        return compute_influence_mask_direct(pixels_flat.astype(np.float32), centers, radii)
+        return compute_influence_mask_direct(
+            pixels_flat.astype(np.float32), centers, radii
+        )
 
     def query_pixel_attractors(self, pixel_oklab: np.ndarray) -> list[int]:
         """
@@ -262,12 +276,20 @@ class SpatialAccelerator:
 
         # Prepare data for Numba function
         len(self.influence_regions)
-        centers = np.array([region.center for region in self.influence_regions], dtype=np.float32)
-        radii = np.array([region.radius for region in self.influence_regions], dtype=np.float32)
-        indices = np.array([region.attractor_idx for region in self.influence_regions], dtype=np.int32)
+        centers = np.array(
+            [region.center for region in self.influence_regions], dtype=np.float32
+        )
+        radii = np.array(
+            [region.radius for region in self.influence_regions], dtype=np.float32
+        )
+        indices = np.array(
+            [region.attractor_idx for region in self.influence_regions], dtype=np.int32
+        )
 
         # Use Numba-optimized function
-        result = find_pixel_attractors(pixel_oklab.astype(np.float32), centers, radii, indices)
+        result = find_pixel_attractors(
+            pixel_oklab.astype(np.float32), centers, radii, indices
+        )
 
         return result.tolist()
 
@@ -307,7 +329,9 @@ class SpatialAccelerator:
 
         return mean, variance
 
-    def analyze_tile_coherence(self, tile_oklab: np.ndarray, tile_coords: tuple[int, int, int, int]) -> TileInfo:
+    def analyze_tile_coherence(
+        self, tile_oklab: np.ndarray, tile_coords: tuple[int, int, int, int]
+    ) -> TileInfo:
         """
         Analyze spatial coherence within a tile for optimization.
 
@@ -347,7 +371,9 @@ class SpatialAccelerator:
             ]
 
             # Find common attractors across sample points
-            attractor_sets = [set(self.query_pixel_attractors(p)) for p in sample_points]
+            attractor_sets = [
+                set(self.query_pixel_attractors(p)) for p in sample_points
+            ]
             if attractor_sets:
                 common_attractors = set.intersection(*attractor_sets)
                 dominant_attractors = list(common_attractors)
@@ -420,14 +446,18 @@ class SpatialAccelerator:
         # If most pixels are influenced, skip spatial optimization
         if influence_ratio > 0.8:
             logger.debug("Most pixels influenced, using standard processing")
-            return transform_func(image_rgb, attractors_oklab, tolerances, strengths, channels)
+            return transform_func(
+                image_rgb, attractors_oklab, tolerances, strengths, channels
+            )
 
         # Process with spatial optimization
         # For now, we'll use a simple approach - in production this would be optimized
         result = image_rgb.copy()
 
         # Transform the whole image (this is the optimization opportunity)
-        transformed = transform_func(image_rgb, attractors_oklab, tolerances, strengths, channels)
+        transformed = transform_func(
+            image_rgb, attractors_oklab, tolerances, strengths, channels
+        )
 
         # Apply only to influenced pixels
         result[influence_mask] = transformed[influence_mask]
@@ -511,7 +541,9 @@ class SpatialAccelerator:
 
                 else:
                     # Non-uniform tile, process normally
-                    result[y:y2, x:x2] = transform_func(tile_rgb, attractors_oklab, tolerances, strengths, channels)
+                    result[y:y2, x:x2] = transform_func(
+                        tile_rgb, attractors_oklab, tolerances, strengths, channels
+                    )
 
         logger.info(
             f"Tile coherence: {uniform_tiles}/{total_tiles} tiles were uniform "
