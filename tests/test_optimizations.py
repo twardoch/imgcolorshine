@@ -89,8 +89,6 @@ def test_hierarchical_processing():
     result_uint8 = np.clip(result, 0, 255).astype(np.uint8)
     assert np.any(result_uint8 != image)  # Should have some changes
 
-    return result
-
 
 def test_spatial_acceleration():
     """Test spatial acceleration optimization."""
@@ -151,8 +149,6 @@ def test_spatial_acceleration():
     assert result.shape == image.shape
     # Result may be float32 while original is uint8
 
-    return result
-
 
 def test_combined_optimizations():
     """Test combined fast_hierar + spatial acceleration."""
@@ -195,8 +191,6 @@ def test_combined_optimizations():
     assert result.shape == image.shape
     assert np.any(result != image)  # Should have changes
 
-    return result
-
 
 if __name__ == "__main__":
     logger.remove()
@@ -205,8 +199,8 @@ if __name__ == "__main__":
     logger.info("=== Testing imgcolorshine optimizations ===\n")
 
     # Test individual optimizations
-    hier_result = test_hierarchical_processing()
-    spatial_result = test_spatial_acceleration()
-    combined_result = test_combined_optimizations()
+    test_hierarchical_processing()
+    test_spatial_acceleration()
+    test_combined_optimizations()
 
     logger.info("\n=== All tests completed successfully! ===")

@@ -298,3 +298,8 @@ def batch_gamut_map_oklch(oklch_image: np.ndarray) -> np.ndarray:
             mapped_image[i, j] = gamut_map_oklch_single(oklch_image[i, j])
 
     return mapped_image
+
+
+# Aliases for backward compatibility with tests
+srgb_to_oklab_batch = batch_srgb_to_oklab
+oklab_to_srgb_batch = batch_oklab_to_srgb
