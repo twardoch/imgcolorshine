@@ -20,9 +20,11 @@ from typing import Any
 import numba
 import numpy as np
 
-# ---------------------------------------------------------------------------
-# Colour-space matrices (CSS Color Module 4 reference values)
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# COLOR SPACE MATRICES (CSS Color Module 4 reference values)
+# ===========================================================================
+# These matrices define the transformations between color spaces according to
+# the CSS Color Module 4 specification. All matrices use float32 for performance.
 
 _LINEAR_RGB_TO_XYZ = np.array(
     [
@@ -78,9 +80,10 @@ _OKLAB_TO_LMS = np.array(
     dtype=np.float32,
 )
 
-# ---------------------------------------------------------------------------
-# Utility helpers
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# UTILITY HELPERS
+# ===========================================================================
+# Low-level helper functions for color space conversions
 
 
 @numba.njit(cache=True)
@@ -96,6 +99,10 @@ def _linear_to_srgb_component(c: float) -> float:
         return c * 12.92
     return 1.055 * (c ** (1.0 / 2.4)) - 0.055
 
+
+# ===========================================================================
+# SRGB <-> LINEAR RGB CONVERSIONS
+# ===========================================================================
 
 @numba.njit(cache=True)
 def srgb_to_linear(srgb: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
@@ -118,16 +125,17 @@ def linear_to_srgb(linear: np.ndarray) -> np.ndarray:
 
 @numba.njit(cache=True)
 def _matmul_3x3(mat: np.ndarray, vec: np.ndarray) -> np.ndarray:
-    """3×3 matrix × vector (we unroll for Numba speed)."""
+    """3×3 matrix × vector multiplication (unrolled for Numba optimization)."""
     res = np.zeros(3, dtype=np.float32)
     for i in range(3):
         res[i] = mat[i, 0] * vec[0] + mat[i, 1] * vec[1] + mat[i, 2] * vec[2]
     return res
 
 
-# ---------------------------------------------------------------------------
-# Pixel-wise conversions
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# SINGLE-PIXEL CONVERSIONS
+# ===========================================================================
+# Functions that operate on individual pixels (3-element arrays)
 
 
 @numba.njit(cache=True)
@@ -152,9 +160,10 @@ def oklab_to_srgb_single(oklab: np.ndarray) -> np.ndarray:
     return linear_to_srgb(linear)
 
 
-# ---------------------------------------------------------------------------
-# Batch conversions (parallel)
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# BATCH IMAGE CONVERSIONS (Parallel Processing)
+# ===========================================================================
+# Functions that process entire images using parallel loops for performance
 
 
 @numba.njit(parallel=True, cache=True)
@@ -176,6 +185,10 @@ def batch_oklab_to_srgb(oklab_image: np.ndarray[Any, Any]) -> np.ndarray[Any, An
             out[y, x] = oklab_to_srgb_single(oklab_image[y, x])
     return out
 
+
+# ===========================================================================
+# OKLAB <-> OKLCH CONVERSIONS
+# ===========================================================================
 
 @numba.njit(cache=True)
 def oklab_to_oklch_single(oklab: np.ndarray) -> np.ndarray:
@@ -216,9 +229,10 @@ def batch_oklch_to_oklab(oklch_image: np.ndarray[Any, Any]) -> np.ndarray[Any, A
     return out
 
 
-# ---------------------------------------------------------------------------
-# Gamut mapping (binary-search on chroma)
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# GAMUT MAPPING
+# ===========================================================================
+# CSS Color Module 4 compliant gamut mapping using binary search on chroma
 
 
 @numba.njit(cache=True)

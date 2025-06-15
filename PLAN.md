@@ -170,9 +170,9 @@ The core performance drag is per-pixel processing in Python. Our strategy is two
 
 ### 4.2. **Target 1: Refactor `trans_numba.py`**
 
-- [ ] **4.2.1. Add comment blocks to delineate sections**
-- [ ] **4.2.2. Rename internal helpers with underscore prefix**
-- [ ] **4.2.3. Group related functions logically**
+- [x] **4.2.1. Add comment blocks to delineate sections**
+- [x] **4.2.2. Rename internal helpers with underscore prefix**
+- [x] **4.2.3. Group related functions logically**
 
 -   **Problem**: This file is a long, flat list of functions. It's functional but lacks structure.
 -   **Proposal**: Group related functions into logical, private `numba.experimental.jitclass` instances or simply better-named internal functions. For instance, group all sRGB↔Linear functions, then XYZ↔LMS, etc. While we can't use standard Python classes with `@njit` methods in the same way, we can organize the file better. The current single-file approach is correct, but internal organization can be improved with comments and private helper functions.
@@ -180,10 +180,10 @@ The core performance drag is per-pixel processing in Python. Our strategy is two
 
 ### 4.3. **Target 2: Eliminate Legacy Aliases**
 
-- [ ] **4.3.1. Search for legacy alias usage**
-- [ ] **4.3.2. Replace with canonical names**
-- [ ] **4.3.3. Delete alias assignments**
-- [ ] **4.3.4. Run full test suite**
+- [x] **4.3.1. Search for legacy alias usage** (No aliases found)
+- [x] **4.3.2. Replace with canonical names** (N/A - already done)
+- [x] **4.3.3. Delete alias assignments** (N/A - already done)
+- [x] **4.3.4. Run full test suite**
 
 -   **Problem**: `trans_numba.py` contains `srgb_to_oklab_batch = batch_srgb_to_oklab`. This is technical debt from earlier refactoring.
 -   **Action**:
