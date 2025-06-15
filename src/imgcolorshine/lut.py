@@ -273,7 +273,7 @@ def transform_pixel_for_lut(
 
     This is a wrapper around the fused kernel that handles the single pixel case.
     """
-    from colorshine.fused_kernels import transform_pixel_fused
+    from imgcolorshine.kernel import transform_pixel_fused
 
     # Transform and return
     r_out, g_out, b_out = transform_pixel_fused(

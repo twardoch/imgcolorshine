@@ -150,8 +150,8 @@ def process_image(
         try:
             logger.info(f"Building {lut_size}³ color LUT...")
             import numpy as np
-            from colorshine.fused_kernels import transform_pixel_fused
-            from colorshine.lut import ColorLUT
+            from imgcolorshine.kernel import transform_pixel_fused
+            from imgcolorshine.lut import ColorLUT
 
             # Create LUT
             lut = ColorLUT(size=lut_size if lut_size > 0 else 65)
@@ -180,12 +180,12 @@ def process_image(
     # Try GPU transformation if LUT failed or disabled
     if transformed is None and gpu:
         try:
-            from colorshine.gpu import GPU_AVAILABLE
+            from imgcolorshine.gpu import GPU_AVAILABLE
 
             if GPU_AVAILABLE:
                 logger.info("Attempting GPU acceleration...")
                 import numpy as np
-                from colorshine.gpu_transforms import process_image_gpu
+                from imgcolorshine.trans_gpu import process_image_gpu
 
                 # Prepare attractor data
                 attractors_lab = np.array([a.oklab_values for a in attractor_objects])
