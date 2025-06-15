@@ -90,6 +90,7 @@ requires = [
     'hatchling>=1.27.0',
     'hatch-vcs>=0.4.0',
     'mypy>=1.15.0',
+    # 'hatch-mypyc>=0.16.0',  # Disabled until type stubs are available
 ]
 build-backend = 'hatchling.build'
 [tool.hatch.build]
@@ -108,6 +109,10 @@ reproducible = true
 [tool.hatch.build.hooks.vcs]
 version-file = 'src/imgcolorshine/__version__.py'
 
+# [tool.hatch.build.hooks.mypyc]
+# dependencies = ["hatch-mypyc"]
+# Note: Mypyc compilation disabled for now due to missing type stubs for dependencies
+
 [tool.hatch.version]
 source = 'vcs'
 
@@ -115,17 +120,14 @@ source = 'vcs'
 allow-direct-references = true
 
 [tool.mypyc]
-# Modules to compile with mypyc
+# Modules to compile with mypyc - only modules without heavy external deps
 modules = [
-    "imgcolorshine.io",
-    "imgcolorshine.falloff",
     "imgcolorshine.gamut",
     "imgcolorshine.utils",
 ]
 # Mypyc compilation options
-strict_optional = true
-warn_return_any = true
-warn_unused_configs = true
+opt_level = "3"
+strip_asserts = true
 [tool.hatch.envs.default]
 features = [
     'dev',
