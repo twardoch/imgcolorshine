@@ -25,7 +25,11 @@ The core performance drag is per-pixel processing in Python. Our strategy is two
 
 #### 2.1.2. **Target 1: Vectorize `_transform_pixels_percentile` in `engine.py`**
 
-- [ ] **2.1.2.1. Analyze current implementation**
+- [x] **2.1.2.1. Analyze current implementation**
+- [x] **2.1.2.2. Vectorize weight calculation**
+- [x] **2.1.2.3. Vectorize blending operation**
+- [x] **2.1.2.4. Remove per-pixel loops**
+- [x] **2.1.2.5. Verify performance improvement (>5x speedup)**
 
 -   **Current State**: The function iterates over `H x W` pixels, calling helper functions for each one. This is suboptimal as it prevents SIMD vectorization across the image.
 
@@ -82,9 +86,15 @@ The core performance drag is per-pixel processing in Python. Our strategy is two
 
 ## 3. Build System & AOT with Mypyc
 
-#### 3.0.1. **Objective**: Compile non-Numba-friendly Python modules into C extensions for a ~1.5-2x speedup and reduced interpreter overhead.
+### 3.1. **Objective**: Compile non-Numba-friendly Python modules into C extensions for a ~1.5-2x speedup and reduced interpreter overhead.
 
-#### 3.0.2. **Target 1: Migrate Build System from `setup.py` to `pyproject.toml` + Hatch**
+### 3.2. **Target 1: Migrate Build System from `setup.py` to `pyproject.toml` + Hatch**
+
+- [ ] **3.2.1. Delete `setup.py` and `build_ext.py`**
+- [ ] **3.2.2. Move mypy config from `mypy.ini` to `pyproject.toml`**
+- [ ] **3.2.3. Configure mypyc modules in `pyproject.toml`**
+- [ ] **3.2.4. Configure Hatchling build hook**
+- [ ] **3.2.5. Verify `uv run hatch build` creates wheels with `.so`/`.pyd` files**
 
 -   **Current State**: A legacy `setup.py` exists, which complicates modern packaging workflows and mypyc integration. `build_ext.py` is an unused artifact. `mypy.ini` is separate.
 -   **Proposed Implementation**:
@@ -125,7 +135,12 @@ The core performance drag is per-pixel processing in Python. Our strategy is two
     -   The project can be installed from the built wheel and runs correctly.
     -   `setup.py`, `build_ext.py`, and `mypy.ini` are deleted.
 
-#### 3.0.3. **Target 2: Guarded Imports for Development Mode**
+### 3.3. **Target 2: Guarded Imports for Development Mode**
+
+- [ ] **3.3.1. Implement try/except ImportError blocks**
+- [ ] **3.3.2. Refactor modules to separate pure Python fallbacks**
+- [ ] **3.3.3. Test editable install functionality**
+- [ ] **3.3.4. Test wheel install uses compiled extensions**
 
 -   **Current State**: In a development (editable) install, the compiled modules won't exist. Direct imports would fail.
 -   **Proposed Implementation**: Use a `try...except ImportError` block to create a fallback mechanism. The compiled module is preferred, but the pure-python version is used if it's not found.
@@ -151,22 +166,34 @@ The core performance drag is per-pixel processing in Python. Our strategy is two
 
 ## 4. Codebase Beautification & Refinement
 
-#### 4.0.1. **Objective**: Improve code structure, readability, and maintainability.
+### 4.1. **Objective**: Improve code structure, readability, and maintainability.
 
--   **Target 1: Refactor `trans_numba.py`**
-    -   **Problem**: This file is a long, flat list of functions. It's functional but lacks structure.
-    -   **Proposal**: Group related functions into logical, private `numba.experimental.jitclass` instances or simply better-named internal functions. For instance, group all sRGB↔Linear functions, then XYZ↔LMS, etc. While we can't use standard Python classes with `@njit` methods in the same way, we can organize the file better. The current single-file approach is correct, but internal organization can be improved with comments and private helper functions.
-    -   **Action**: Add comment blocks to delineate sections: `sRGB <> Linear RGB`, `XYZ <> LMS`, `Oklab <> LMS`, `OKLCH <> Oklab`, `Gamut Mapping`. Review `matrix_multiply_3x3` and rename to `_matmul_3x3` to signal it's an internal, unrolled helper.
+### 4.2. **Target 1: Refactor `trans_numba.py`**
 
--   **Target 2: Eliminate Legacy Aliases**
-    -   **Problem**: `trans_numba.py` contains `srgb_to_oklab_batch = batch_srgb_to_oklab`. This is technical debt from earlier refactoring.
-    -   **Action**:
-        1.  Globally search for `srgb_to_oklab_batch` and `oklab_to_srgb_batch`.
-        2.  Replace all usages with the canonical names (`batch_srgb_to_oklab`, `batch_oklab_to_srgb`).
-        3.  Delete the alias assignments from the bottom of `trans_numba.py`.
-        4.  Run the full test suite (`pytest tests/`) to ensure no breakages.
+- [ ] **4.2.1. Add comment blocks to delineate sections**
+- [ ] **4.2.2. Rename internal helpers with underscore prefix**
+- [ ] **4.2.3. Group related functions logically**
+
+-   **Problem**: This file is a long, flat list of functions. It's functional but lacks structure.
+-   **Proposal**: Group related functions into logical, private `numba.experimental.jitclass` instances or simply better-named internal functions. For instance, group all sRGB↔Linear functions, then XYZ↔LMS, etc. While we can't use standard Python classes with `@njit` methods in the same way, we can organize the file better. The current single-file approach is correct, but internal organization can be improved with comments and private helper functions.
+-   **Action**: Add comment blocks to delineate sections: `sRGB <> Linear RGB`, `XYZ <> LMS`, `Oklab <> LMS`, `OKLCH <> Oklab`, `Gamut Mapping`. Review `matrix_multiply_3x3` and rename to `_matmul_3x3` to signal it's an internal, unrolled helper.
+
+### 4.3. **Target 2: Eliminate Legacy Aliases**
+
+- [ ] **4.3.1. Search for legacy alias usage**
+- [ ] **4.3.2. Replace with canonical names**
+- [ ] **4.3.3. Delete alias assignments**
+- [ ] **4.3.4. Run full test suite**
+
+-   **Problem**: `trans_numba.py` contains `srgb_to_oklab_batch = batch_srgb_to_oklab`. This is technical debt from earlier refactoring.
+-   **Action**:
+    1.  Globally search for `srgb_to_oklab_batch` and `oklab_to_srgb_batch`.
+    2.  Replace all usages with the canonical names (`batch_srgb_to_oklab`, `batch_oklab_to_srgb`).
+    3.  Delete the alias assignments from the bottom of `trans_numba.py`.
+    4.  Run the full test suite (`pytest tests/`) to ensure no breakages.
 
 ---
+
 ## 5. Timeline & Definition of Done (Revised)
 
 | Week | Deliverable                                           | Key Result                                          |
@@ -192,36 +219,33 @@ _A pragmatic, performance-first audit of the repository._
 The items below **provide no production value** after the refactor (Numba + mypy-strict, no legacy fallbacks) and can be **deleted outright** or **stripped from runtime paths**.  They are kept only for historical context or super-narrow debugging scenarios that are now obsolete.
 
 ### 6.1. Obsolete Build / Packaging Artifacts
-- `build_ext.py` — removed already; legacy setup-py bridge for mypyc.
-- `setup.py` — does not exist anymore; ensure it never re-appears.
+- [ ] **6.1.1. Verify `build_ext.py` is removed**
+- [ ] **6.1.2. Ensure `setup.py` doesn't exist**
 
 ### 6.2. Developer-Only Helper Scripts
-- `testdata/example.sh`, `testdata/quicktest.sh` — ad-hoc demo scripts.
-- `cleanup.sh` — CI/lint shortcut superseded by `hatch fix` and GitHub Actions.
-- Everything in `tests/debug_*` (`debug_color_distances.py`, `debug_transformation.py`, etc.).
-- One-shot notebooks or scratch pads that creep in the future.
+- [ ] **6.2.1. Remove `testdata/example.sh`, `testdata/quicktest.sh`**
+- [ ] **6.2.2. Remove `cleanup.sh`**
+- [ ] **6.2.3. Remove debug scripts in `tests/debug_*`**
 
 ### 6.3. Legacy / Compatibility Code Paths
-- **GPU Fallback Layers** in `src/imgcolorshine/gpu.py`:
-  - Drop JAX support (`_check_jax_available`, JAX branches) ⇒ CuPy-only path.
-  - Remove `ArrayModule.backend=='cpu'` indirection — we always call NumPy directly when GPU disabled.
-- **Old per-pixel kernel** `_calculate_weights_percentile()` and the commented `@numba.njit` decorator lines in `engine.py`.
-- Any mention of `old/imgcolorshine/` in docstrings (pure documentation rot).
-- Commented-out alias blocks (`srgb_to_oklab_batch = …`) — already excised.
+- [ ] **6.3.1. Drop JAX support from `gpu.py`**
+- [ ] **6.3.2. Remove `ArrayModule.backend=='cpu'` indirection**
+- [ ] **6.3.3. Remove old per-pixel kernel and commented code**
+- [ ] **6.3.4. Remove mentions of `old/imgcolorshine/`**
 
 ### 6.4. Low-Value Tests
-Unit tests that solely exercised _removed_ compatibility shims can be trimmed to speed CI:
-- Tests gating JAX/cpu fallbacks in `tests/test_gpu.py` (`test_array_module_jax_*`, etc.).
-- `tests/test_cli_simple.py` duplicates coverage of `tests/test_cli.py`.
-- Redundant "debug" tests (`tests/simple_debug.py`, `tests/debug_*`).
+- [ ] **6.4.1. Remove JAX/cpu fallback tests**
+- [ ] **6.4.2. Remove duplicate CLI tests**
+- [ ] **6.4.3. Remove redundant debug tests**
 
 ### 6.5. Generated / Packed Files
-- `llms.txt`  — massive concatenation for LLM ingestion; not needed in wheel/source dist.
-- `.giga/`, `.cursor/` auxiliary metadata.
-- Coverage artefacts (`htmlcov/`, `coverage.xml`) — keep in `.gitignore` only.
+- [ ] **6.5.1. Add `llms.txt` to `.gitignore`**
+- [ ] **6.5.2. Remove `.giga/`, `.cursor/` from repo**
+- [ ] **6.5.3. Keep coverage artifacts in `.gitignore` only**
 
 ### 6.6. Documentation Stubs
-- Any empty `docs/` pages or placeholder markdown (e.g. `COVERAGE_REPORT.md` once pipeline reports are automated).
+- [ ] **6.6.1. Remove empty docs pages**
+- [ ] **6.6.2. Remove placeholder markdown files**
 
 > **Action**: create a one-time pruning commit that deletes the above paths and strips code branches in a single shot.  Follow with a `ruff --fix` & `mypy` pass to ensure no dangling imports.
 
