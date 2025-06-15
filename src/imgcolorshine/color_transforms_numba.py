@@ -117,8 +117,8 @@ def linear_to_srgb(linear: np.ndarray) -> np.ndarray:
 
 @numba.njit(cache=True)
 def matrix_multiply_3x3(mat: np.ndarray, vec: np.ndarray) -> np.ndarray:
-    """Manual 3x3 matrix multiplication to avoid scipy dependency."""
-    result = np.empty(3, dtype=vec.dtype)
+    """Multiply a 3x3 matrix by a vector."""
+    result = np.zeros(3, dtype=np.float32)
     for i in range(3):
         result[i] = mat[i, 0] * vec[0] + mat[i, 1] * vec[1] + mat[i, 2] * vec[2]
     return result
@@ -126,7 +126,7 @@ def matrix_multiply_3x3(mat: np.ndarray, vec: np.ndarray) -> np.ndarray:
 
 @numba.njit(cache=True)
 def srgb_to_oklab_single(rgb: np.ndarray) -> np.ndarray:
-    """Convert a single sRGB pixel to Oklab."""
+    """Convert a single RGB pixel to Oklab."""
     # Step 1: sRGB to linear RGB
     linear = srgb_to_linear(rgb)
 
@@ -136,10 +136,10 @@ def srgb_to_oklab_single(rgb: np.ndarray) -> np.ndarray:
     # Step 3: XYZ to LMS
     lms = matrix_multiply_3x3(_XYZ_TO_LMS, xyz)
 
-    # Step 4: Apply cube root (avoiding negative values)
+    # Step 4: Apply cube root
     lms_cbrt = np.empty_like(lms)
     for i in range(3):
-        lms_cbrt[i] = np.cbrt(max(0.0, lms[i]))
+        lms_cbrt[i] = np.cbrt(lms[i])
 
     # Step 5: LMS to Oklab
     return matrix_multiply_3x3(_LMS_TO_OKLAB, lms_cbrt)

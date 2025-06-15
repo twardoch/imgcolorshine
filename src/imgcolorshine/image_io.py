@@ -141,7 +141,8 @@ class ImageProcessor:
         size_mb = (h * w * 3 * 4) / (1024 * 1024)  # Float32 size in MB
         logger.debug(f"Loaded {w}×{h} image with OpenCV ({size_mb:.1f} MB in memory)")
 
-        return img
+        # Ensure C-contiguous memory layout for optimal performance
+        return np.ascontiguousarray(img)
 
     def _load_pil(self, path: Path) -> np.ndarray:
         """Load image using PIL as fallback."""
@@ -158,7 +159,8 @@ class ImageProcessor:
             size_mb = (h * w * 3 * 4) / (1024 * 1024)  # Float32 size in MB
             logger.debug(f"Loaded {w}×{h} image with PIL ({size_mb:.1f} MB in memory)")
 
-            return arr
+            # Ensure C-contiguous memory layout for optimal performance
+            return np.ascontiguousarray(arr)
 
     def _save_opencv(self, image: np.ndarray, path: Path, quality: int) -> None:
         """Save image using OpenCV for better performance."""

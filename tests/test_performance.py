@@ -14,13 +14,15 @@ conversions on various image sizes.
 # Import both implementations
 import sys
 import time
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 from coloraide import Color
 from loguru import logger
 from PIL import Image
 
-sys.path.insert(0, "src")
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from imgcolorshine import color_transforms_numba as ct_numba
 from imgcolorshine.color_engine import OKLCHEngine
 
@@ -79,74 +81,60 @@ def create_test_image(width: int, height: int) -> np.ndarray:
     return np.random.rand(height, width, 3).astype(np.float32)
 
 
-def main():
-    """Run performance benchmarks."""
-    logger.info("Starting performance benchmark...")
-
-    # Test different image sizes
-    sizes = [
-        (256, 256),
-        (512, 512),
-        (1024, 1024),
-        (2048, 2048),
-    ]
-
-    # Warm up Numba JIT
-    logger.info("Warming up Numba JIT compiler...")
-    warmup_img = create_test_image(64, 64)
-    _ = benchmark_numba_conversion(warmup_img)
-
+def test_performance_comparison() -> None:
+    """Compare performance between ColorAide and Numba implementations."""
+    # Test parameters
+    sizes = [(100, 100), (500, 500), (1000, 1000)]
     results = []
 
+    # Test each image size
     for width, height in sizes:
-        logger.info(f"\nBenchmarking {width}×{height} image...")
+        logger.info(f"\nBenchmarking {width}x{height} image...")
 
         # Create test image
-        img = create_test_image(width, height)
-        pixels = width * height
+        image: np.ndarray[Any, np.dtype[np.uint8]] = np.random.randint(0, 256, (height, width, 3), dtype=np.uint8)
 
-        # Benchmark ColorAide (only for smaller images)
-        if pixels <= 512 * 512:
-            ca_rgb2oklab, ca_oklab2rgb = benchmark_coloraide_conversion(img)
-            ca_total = ca_rgb2oklab + ca_oklab2rgb
-            logger.info(
-                f"ColorAide: RGB→Oklab: {ca_rgb2oklab:.3f}s, Oklab→RGB: {ca_oklab2rgb:.3f}s, Total: {ca_total:.3f}s"
-            )
-        else:
-            ca_total = None
-            logger.info("ColorAide: Skipped (too slow for large images)")
+        # Convert to float32 [0,1]
+        image_float = image.astype(np.float32) / 255.0
 
-        # Benchmark Numba
-        nb_rgb2oklab, nb_oklab2rgb = benchmark_numba_conversion(img)
-        nb_total = nb_rgb2oklab + nb_oklab2rgb
-        logger.info(
-            f"Numba:     RGB→Oklab: {nb_rgb2oklab:.3f}s, Oklab→RGB: {nb_oklab2rgb:.3f}s, Total: {nb_total:.3f}s"
-        )
+        # Time ColorAide version
+        ca_time = None
+        try:
+            start_time = time.time()
+            for _ in range(3):  # Run multiple times for better timing
+                for y in range(height):
+                    for x in range(width):
+                        rgb = image_float[y, x]
+                        color = Color("srgb", rgb)
+                        _ = color.convert("oklab")
+                        _ = color.convert("oklch")
+            ca_time = (time.time() - start_time) / 3
+        except Exception as e:
+            logger.error(f"ColorAide error: {e}")
+
+        # Time Numba version
+        start_time = time.time()
+        for _ in range(3):  # Run multiple times for better timing
+            oklab = ct_numba.srgb_to_oklab_single(image_float)
+            _ = ct_numba.oklab_to_oklch_single(oklab)
+        nb_time = (time.time() - start_time) / 3
 
         # Calculate speedup
-        if ca_total is not None:
-            speedup = ca_total / nb_total
-            logger.info(f"Speedup:   {speedup:.1f}x faster")
-            results.append((width, height, ca_total, nb_total, speedup))
-        else:
-            results.append((width, height, None, nb_total, None))
+        speedup = ca_time / nb_time if ca_time else None
+        results.append((width, height, ca_time, nb_time, speedup))
 
-    # Summary
-    logger.info("\n" + "=" * 60)
-    logger.info("PERFORMANCE SUMMARY")
-    logger.info("=" * 60)
-    logger.info(f"{'Size':<12} {'ColorAide':<12} {'Numba':<12} {'Speedup':<12}")
-    logger.info("-" * 60)
+    # Print results table
+    logger.info("\nPerformance Results:")
+    logger.info("Size      | ColorAide | Numba  | Speedup")
+    logger.info("-" * 40)
 
     for width, height, ca_time, nb_time, speedup in results:
-        size_str = f"{width}×{height}"
+        size_str = f"{width}x{height}"
         ca_str = f"{ca_time:.3f}s" if ca_time else "N/A"
         nb_str = f"{nb_time:.3f}s"
         speedup_str = f"{speedup:.1f}x" if speedup else "N/A"
-        logger.info(f"{size_str:<12} {ca_str:<12} {nb_str:<12} {speedup_str:<12}")
-
-    logger.info("\nBenchmark complete!")
+        logger.info(f"{size_str:9} | {ca_str:9} | {nb_str:6} | {speedup_str}")
 
 
 if __name__ == "__main__":
-    main()
+    test_performance_comparison()

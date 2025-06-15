@@ -25,9 +25,11 @@ class ImgColorShineCLI:
         output_image: str | None = None,
         luminance: bool = False,
         saturation: bool = False,
-        chroma: bool = True,
+        chroma: bool = False,
         verbose: bool = False,
         tile_size: int = 1024,
+        gpu: bool = True,
+        LUT_size: int = 0,
     ) -> None:
         """
         Transform image colors using OKLCH color attractors.
@@ -41,6 +43,8 @@ class ImgColorShineCLI:
             chroma: Transform chroma channel
             verbose: Enable verbose logging
             tile_size: Tile size for processing large images
+            gpu: Use GPU acceleration if available (default: True)
+            LUT_size: Size of 3D LUT for acceleration (0=disabled, 65=default when enabled)
 
         Examples:
             imgcolorshine shine photo.jpg "red;50;75"
@@ -58,6 +62,8 @@ class ImgColorShineCLI:
             hue=chroma,
             verbose=verbose,
             tile_size=tile_size,
+            gpu=gpu,
+            lut_size=LUT_size,
         )
 
 

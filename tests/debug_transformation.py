@@ -9,10 +9,12 @@ from pathlib import Path
 
 import numpy as np
 from coloraide import Color
+from loguru import logger
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from imgcolorshine.color_engine import OKLCHEngine
+from imgcolorshine.falloff import calculate_weights as falloff_calculate_weights
 from imgcolorshine.image_io import ImageProcessor
 from imgcolorshine.transforms import blend_colors, calculate_weights
 
@@ -39,8 +41,8 @@ def debug_transformation():
     sample_lch = np.zeros_like(sample_lab)
     for y in range(sample_lab.shape[0]):
         for x in range(sample_lab.shape[1]):
-            l, a, b = sample_lab[y, x]
-            sample_lch[y, x] = engine.oklab_to_oklch(l, a, b)
+            light, a, b = sample_lab[y, x]
+            sample_lch[y, x] = engine.oklab_to_oklch(light, a, b)
 
     # Test weight calculation for center pixel
     center_pixel_lab = sample_lab[5, 5]
@@ -104,6 +106,26 @@ def debug_transformation():
         pass
     else:
         pass
+
+
+def main():
+    """Debug color transformation behavior."""
+    engine = OKLCHEngine()
+
+    # Create a sample image with a gradient
+    sample = np.zeros((10, 10, 3), dtype=np.float32)
+    for y in range(10):
+        for x in range(10):
+            sample[y, x] = [0.5, 0.0, 0.0]  # Base color
+
+    # Convert to Oklab
+    sample_lab = np.zeros_like(sample)
+    sample_lch = np.zeros_like(sample)
+
+    for y in range(sample_lab.shape[0]):
+        for x in range(sample_lab.shape[1]):
+            light, a, b = sample_lab[y, x]  # Changed 'l' to 'light'
+            sample_lch[y, x] = engine.oklab_to_oklch(light, a, b)
 
 
 if __name__ == "__main__":

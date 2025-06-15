@@ -68,6 +68,8 @@ def process_image(
     hue: bool = True,
     verbose: bool = False,
     tile_size: int = 1024,
+    gpu: bool = True,
+    lut_size: int = 0,
 ) -> None:
     """
     Process an image with color attractors.
@@ -123,10 +125,78 @@ def process_image(
     logger.info(f"Loading image: {input_path}")
     image = processor.load_image(input_path)
 
-    # Transform colors
-    logger.info("Transforming colors...")
-    flags = {"luminance": luminance, "saturation": saturation, "hue": hue}
-    transformed = transformer.transform_image(image, attractor_objects, flags)
+    # Try LUT transformation first if enabled
+    transformed = None
+    if lut_size > 0:
+        try:
+            logger.info(f"Building {lut_size}³ color LUT...")
+            import numpy as np
+
+            from imgcolorshine.fused_kernels import transform_pixel_fused
+            from imgcolorshine.lut import ColorLUT
+
+            # Create LUT
+            lut = ColorLUT(size=lut_size if lut_size > 0 else 65)
+
+            # Prepare attractor data
+            attractors_lab = np.array([a.oklab_values for a in attractor_objects])
+            tolerances = np.array([a.tolerance for a in attractor_objects])
+            strengths = np.array([a.strength for a in attractor_objects])
+            channels = [luminance, saturation, hue]
+
+            # Build LUT using fused kernel
+            def transform_func(rgb, attr_lab, tol, str_vals, l, s, h):
+                return np.array(transform_pixel_fused(rgb[0], rgb[1], rgb[2], attr_lab, tol, str_vals, l, s, h))
+
+            lut.build_lut(transform_func, attractors_lab, tolerances, strengths, channels)
+
+            # Apply LUT
+            logger.info("Applying LUT transformation...")
+            transformed = lut.apply_lut(image)
+            logger.info("LUT processing successful")
+
+        except Exception as e:
+            logger.warning(f"LUT processing failed: {e}, falling back to standard processing")
+            transformed = None
+
+    # Try GPU transformation if LUT failed or disabled
+    if transformed is None and gpu:
+        try:
+            from imgcolorshine.gpu_backend import GPU_AVAILABLE
+
+            if GPU_AVAILABLE:
+                logger.info("Attempting GPU acceleration...")
+                import numpy as np
+
+                from imgcolorshine.gpu_transforms import process_image_gpu
+
+                # Prepare attractor data
+                attractors_lab = np.array([a.oklab_values for a in attractor_objects])
+                tolerances = np.array([a.tolerance for a in attractor_objects])
+                strengths = np.array([a.strength for a in attractor_objects])
+
+                # Process on GPU
+                transformed = process_image_gpu(
+                    image, attractors_lab, tolerances, strengths, luminance, saturation, hue
+                )
+
+                if transformed is not None:
+                    logger.info("GPU processing successful")
+                else:
+                    logger.warning("GPU processing failed, falling back to CPU")
+                    gpu = False
+            else:
+                logger.debug("GPU not available, using CPU")
+                gpu = False
+        except ImportError:
+            logger.debug("GPU libraries not installed, using CPU")
+            gpu = False
+
+    # CPU processing (fallback or if GPU disabled)
+    if not gpu or transformed is None:
+        logger.info("Transforming colors on CPU...")
+        flags = {"luminance": luminance, "saturation": saturation, "hue": hue}
+        transformed = transformer.transform_image(image, attractor_objects, flags)
 
     # Save image
     logger.info(f"Saving image: {output_path}")
