@@ -19,6 +19,7 @@ import numba
 import numpy as np
 from loguru import logger
 
+from imgcolorshine import color_transforms_numba as ct_numba
 from imgcolorshine.color_engine import Attractor, OKLCHEngine
 from imgcolorshine.utils import process_large_image
 
@@ -173,7 +174,7 @@ def blend_colors(
     final_a = final_c * np.cos(h_rad)
     final_b = final_c * np.sin(h_rad)
 
-    return np.array([final_l, final_a, final_b])
+    return np.array([final_l, final_a, final_b], dtype=pixel_lab.dtype)
 
 
 @numba.njit(parallel=True)
@@ -360,11 +361,8 @@ class ColorTransformer:
         tile_lab = self.engine.batch_rgb_to_oklab(tile)
 
         # Also need OKLCH for channel-specific operations
-        tile_lch = np.zeros_like(tile_lab)
-        for y in range(tile_lab.shape[0]):
-            for x in range(tile_lab.shape[1]):
-                l, a, b = tile_lab[y, x]
-                tile_lch[y, x] = self.engine.oklab_to_oklch(l, a, b)
+        # Use Numba-optimized batch conversion
+        tile_lch = ct_numba.batch_oklab_to_oklch(tile_lab.astype(np.float32))
 
         # Apply transformation
         transformed_lab = transform_pixels(

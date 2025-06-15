@@ -24,9 +24,24 @@ def sample_rgb_array():
     # 4x4 RGB image with various colors
     return np.array(
         [
-            [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 0]],  # Red, Green, Blue, Yellow
-            [[255, 0, 255], [0, 255, 255], [128, 128, 128], [255, 255, 255]],  # Magenta, Cyan, Gray, White
-            [[0, 0, 0], [64, 64, 64], [192, 192, 192], [128, 0, 0]],  # Black, Dark gray, Light gray, Dark red
+            [
+                [255, 0, 0],
+                [0, 255, 0],
+                [0, 0, 255],
+                [255, 255, 0],
+            ],  # Red, Green, Blue, Yellow
+            [
+                [255, 0, 255],
+                [0, 255, 255],
+                [128, 128, 128],
+                [255, 255, 255],
+            ],  # Magenta, Cyan, Gray, White
+            [
+                [0, 0, 0],
+                [64, 64, 64],
+                [192, 192, 192],
+                [128, 0, 0],
+            ],  # Black, Dark gray, Light gray, Dark red
             [
                 [0, 128, 0],
                 [0, 0, 128],
@@ -42,7 +57,13 @@ def sample_rgb_array():
 def sample_oklch_array():
     """Create a sample OKLCH array for testing."""
     # 2x2 OKLCH values
-    return np.array([[[0.7, 0.2, 30], [0.5, 0.1, 120]], [[0.3, 0.15, 240], [0.9, 0.05, 0]]], dtype=np.float32)
+    return np.array(
+        [
+            [[0.7, 0.2, 30], [0.5, 0.1, 120]],
+            [[0.3, 0.15, 240], [0.9, 0.05, 0]],
+        ],
+        dtype=np.float32,
+    )
 
 
 @pytest.fixture
@@ -63,7 +84,11 @@ def sample_colors():
 @pytest.fixture
 def attractor_params():
     """Sample attractor parameters for testing."""
-    return [("red", 50, 75), ("oklch(70% 0.2 120)", 30, 60), ("#0066cc", 40, 80)]
+    return [
+        ("red", 50, 75),
+        ("oklch(70% 0.2 120)", 30, 60),
+        ("#0066cc", 40, 80),
+    ]
 
 
 def assert_image_shape(image: np.ndarray, expected_shape: tuple[int, ...]):
@@ -120,7 +145,11 @@ def create_test_image(width: int = 100, height: int = 100, pattern: str = "gradi
         for y in range(0, height, block_size):
             for x in range(0, width, block_size):
                 if ((x // block_size) + (y // block_size)) % 2 == 0:
-                    image[y : y + block_size, x : x + block_size] = [255, 255, 255]
+                    image[y : y + block_size, x : x + block_size] = [
+                        255,
+                        255,
+                        255,
+                    ]
         return image
 
     msg = f"Unknown pattern: {pattern}"

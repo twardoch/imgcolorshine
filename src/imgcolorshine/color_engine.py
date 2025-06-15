@@ -19,6 +19,9 @@ import numpy as np
 from coloraide import Color
 from loguru import logger
 
+# Import Numba-optimized color transforms
+from imgcolorshine import color_transforms_numba as ct_numba
+
 
 @dataclass
 class Attractor:
@@ -252,18 +255,9 @@ class OKLCHEngine:
         - old/imgcolorshine/imgcolorshine/transforms.py
         - src/imgcolorshine/transforms.py
         """
-        # Flatten for batch processing
-        h, w = rgb_image.shape[:2]
-        flat_rgb = rgb_image.reshape(-1, 3)
-
-        # Convert each pixel - in production, use vectorized ColorAide
-        oklab_list = []
-        for rgb in flat_rgb:
-            color = Color("srgb", list(rgb))
-            oklab = color.convert("oklab")
-            oklab_list.append([oklab["lightness"], oklab["a"], oklab["b"]])
-
-        return np.array(oklab_list).reshape(h, w, 3)
+        # Use Numba-optimized batch conversion
+        logger.debug("Using Numba-optimized RGB to Oklab conversion")
+        return ct_numba.batch_srgb_to_oklab(rgb_image.astype(np.float32))
 
     def batch_oklab_to_rgb(self, oklab_image: np.ndarray) -> np.ndarray:
         """
@@ -281,28 +275,15 @@ class OKLCHEngine:
         - old/imgcolorshine/imgcolorshine/transforms.py
         - src/imgcolorshine/transforms.py
         """
-        # Flatten for batch processing
-        # Ensure shape dimensions are integers (NumPy may return int64).
-        # This prevents accidental float propagation that breaks `reshape`.
-        height, width = map(int, oklab_image.shape[:2])
-        flat_oklab = oklab_image.reshape(-1, 3)
+        # Use Numba-optimized batch conversion with gamut mapping
+        logger.debug("Using Numba-optimized Oklab to RGB conversion")
 
-        # Convert each pixel - in production, use vectorized ColorAide
-        rgb_list = []
-        for oklab in flat_oklab:
-            color = Color("oklab", list(oklab))
+        # First convert to OKLCH for gamut mapping
+        oklch_image = ct_numba.batch_oklab_to_oklch(oklab_image.astype(np.float32))
 
-            # Gamut map if needed
-            if not color.in_gamut("srgb"):
-                oklch = color.convert("oklch")
-                l_val, c_val, hue_val = self.gamut_map_oklch(
-                    oklch["lightness"],
-                    oklch["chroma"],
-                    oklch["hue"],
-                )
-                color = Color("oklch", [l_val, c_val, hue_val])
+        # Apply gamut mapping
+        oklch_mapped = ct_numba.batch_gamut_map_oklch(oklch_image)
 
-            srgb = color.convert("srgb")
-            rgb_list.append([srgb["red"], srgb["green"], srgb["blue"]])
-
-        return np.array(rgb_list).reshape(height, width, 3)
+        # Convert back to Oklab then to sRGB
+        oklab_mapped = ct_numba.batch_oklch_to_oklab(oklch_mapped)
+        return ct_numba.batch_oklab_to_srgb(oklab_mapped)

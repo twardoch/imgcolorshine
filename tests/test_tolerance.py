@@ -101,7 +101,13 @@ class TestToleranceCalculation:
 
         # Test falloff at different normalized distances
         test_distances = [0.0, 0.25, 0.5, 0.75, 1.0]
-        expected_falloffs = [1.0, 0.8536, 0.5, 0.1464, 0.0]  # Raised cosine values
+        expected_falloffs = [
+            1.0,
+            0.8536,
+            0.5,
+            0.1464,
+            0.0,
+        ]  # Raised cosine values
 
         for d_norm, expected_falloff in zip(test_distances, expected_falloffs, strict=True):
             # Create attractor at distance that gives desired d_norm
