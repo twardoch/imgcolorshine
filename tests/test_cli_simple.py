@@ -22,32 +22,32 @@ class TestCLISimple:
     def setup_method(self):
         """Set up test fixtures."""
         self.cli = ImgColorShineCLI()
-    
+
     @patch("imgcolorshine.cli.process_image")
     def test_shine_basic(self, mock_process):
         """Test basic shine command."""
         self.cli.shine("input.jpg", "red;50;75")
-        
+
         # Verify process_image was called
         mock_process.assert_called_once()
         call_kwargs = mock_process.call_args[1]
-        
+
         assert call_kwargs["input_image"] == "input.jpg"
         assert "red;50;75" in call_kwargs["attractors"]
-    
+
     @patch("imgcolorshine.cli.process_image")
     def test_shine_multiple_attractors(self, mock_process):
         """Test shine with multiple attractors."""
         self.cli.shine("input.jpg", "red;50;75", "blue;30;60", "#00ff00;40;80")
-        
+
         call_kwargs = mock_process.call_args[1]
         attractors = call_kwargs["attractors"]
-        
+
         assert len(attractors) == 3
         assert "red;50;75" in attractors
         assert "blue;30;60" in attractors
         assert "#00ff00;40;80" in attractors
-    
+
     @patch("imgcolorshine.cli.process_image")
     def test_shine_with_options(self, mock_process):
         """Test shine with various options."""
@@ -63,11 +63,11 @@ class TestCLISimple:
             gpu=False,
             LUT_size=65,
             fast_hierar=True,
-            Fast_spatial=False
+            Fast_spatial=False,
         )
-        
+
         call_kwargs = mock_process.call_args[1]
-        
+
         assert call_kwargs["output_image"] == "output.png"
         assert call_kwargs["luminance"] is True
         assert call_kwargs["saturation"] is False

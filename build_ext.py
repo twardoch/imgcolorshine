@@ -23,6 +23,7 @@ def build_mypyc_extensions() -> list[Any] | None:
     Build mypyc extensions for performance-critical modules.
     
     Returns compiled extension modules or None if mypyc is not available.
+
     """
     if mypycify is None:
         print("mypyc not available, skipping compilation")

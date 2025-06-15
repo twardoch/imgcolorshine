@@ -163,12 +163,11 @@ def oklab_to_srgb_single(oklab: np.ndarray) -> np.ndarray:
     linear = matrix_multiply_3x3(_XYZ_TO_LINEAR_RGB, xyz)
 
     # Step 5: Linear RGB to sRGB
-    srgb = linear_to_srgb(linear)
+    return linear_to_srgb(linear)
 
     # No clamping here for internal checks; clamping is done by final consumer if needed.
     # For example, batch_oklab_to_srgb (the public API for batch conversion) does clamp.
     # Not clamping here allows is_in_gamut_srgb to correctly assess raw conversion.
-    return srgb
 
 
 @numba.njit(parallel=True, cache=True)
