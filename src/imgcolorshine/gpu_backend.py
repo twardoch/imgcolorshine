@@ -32,6 +32,7 @@ except ImportError:
 except Exception as e:
     logger.debug(f"CuPy initialization failed: {e}")
 
+
 # Check JAX availability without importing at module level
 def _check_jax_available():
     """Check if JAX is available and compatible with current NumPy version."""
@@ -49,13 +50,19 @@ def _check_jax_available():
     except ImportError as e:
         # Handle both standard ImportError and NumPy compatibility error
         error_msg = str(e)
-        if "numpy.core._multiarray_umath failed to import" in error_msg or "A module that was compiled using NumPy 1.x" in error_msg:
-            logger.debug("JAX not compatible with current NumPy version (likely NumPy 2.x with JAX compiled for NumPy 1.x)")
+        if (
+            "numpy.core._multiarray_umath failed to import" in error_msg
+            or "A module that was compiled using NumPy 1.x" in error_msg
+        ):
+            logger.debug(
+                "JAX not compatible with current NumPy version (likely NumPy 2.x with JAX compiled for NumPy 1.x)"
+            )
         else:
             logger.debug("JAX not installed")
     except Exception as e:
         logger.debug(f"JAX initialization failed: {e}")
     return False
+
 
 # Defer JAX check to avoid import errors at module level
 # This will be checked when JAX is actually needed
@@ -78,12 +85,12 @@ class ArrayModule:
     def _select_backend(self, backend):
         """Select the appropriate backend based on availability."""
         global _jax_checked
-        
+
         # Check JAX availability on first use
         if not _jax_checked:
             _check_jax_available()
             _jax_checked = True
-            
+
         if backend == "auto":
             if CUPY_AVAILABLE:
                 return "cupy"
@@ -116,6 +123,7 @@ class ArrayModule:
             return cp.asarray(array)
         if self.backend == "jax":
             import jax.numpy as jnp
+
             return jnp.asarray(array)
         return np.asarray(array)
 
@@ -141,6 +149,7 @@ class ArrayModule:
         elif self.backend == "jax":
             try:
                 import jax
+
                 info["devices"] = [str(d) for d in jax.devices()]
             except ImportError:
                 info["devices"] = []
@@ -209,7 +218,7 @@ def check_gpu_memory_available(required_mb):
         Tuple of (has_enough_memory, available_mb, total_mb)
     """
     global _jax_checked
-    
+
     if CUPY_AVAILABLE:
         free, total = cp.cuda.Device().mem_info
         free_mb = free / (1024 * 1024)
@@ -221,7 +230,7 @@ def check_gpu_memory_available(required_mb):
     if not _jax_checked:
         _check_jax_available()
         _jax_checked = True
-        
+
     # For JAX, assume we have enough memory (harder to check)
     if JAX_AVAILABLE:
         return True, 0, 0
