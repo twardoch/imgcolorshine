@@ -18,9 +18,7 @@ from imgcolorshine.trans_numba import (
 
 
 @numba.njit(cache=True)
-def binary_search_chroma(
-    l: float, c: float, h: float, epsilon: float = 0.0001
-) -> float:
+def binary_search_chroma(l: float, c: float, h: float, epsilon: float = 0.0001) -> float:
     """
     Numba-optimized binary search for maximum in-gamut chroma.
 
@@ -69,9 +67,7 @@ def binary_search_chroma(
 
 
 @numba.njit(parallel=True, cache=True)
-def batch_map_oklch_numba(
-    colors_flat: np.ndarray, epsilon: float = 0.0001
-) -> np.ndarray:
+def batch_map_oklch_numba(colors_flat: np.ndarray, epsilon: float = 0.0001) -> np.ndarray:
     """
     Numba-optimized batch gamut mapping for OKLCH colors.
 

@@ -20,6 +20,7 @@ CUPY_AVAILABLE = False
 # Try to import GPU libraries
 try:
     import cupy
+
     cp = cupy  # Assign to the global variable
 
     CUPY_AVAILABLE = cupy.cuda.is_available()

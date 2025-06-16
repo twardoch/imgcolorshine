@@ -1,47 +1,23 @@
 # TODO
 
+Our working folder is `/Users/adam/Developer/vcs/github.twardoch/pub/imgcolorshine`
+
 TASK: Work through the steps below. Once you've completed a step, mark it with `[x]`. Always use `uv` or `hatch` or `python`, not `python3`.
 
 ## [ ] Task 1
 
-Review `PLAN.md` and rewrite it so that: 
+1. Read the full codebase (`./llms.txt`) and `./cleanup.log` (the result of `./cleanup.sh`). 
 
-- Remove all completed items from `PLAN.md`. 
-- Keep only things that are TBD. 
-- Update `PLAN.md` so that it includes a plan to fix the TBDs and the items resulting from the problems below: 
+2. In `PLAN.md` write a comprenehsive plan for accomplishing these tasks: 
 
+- Factor out into dedicated modules inside `src/imgcolorshine/fast_mypyc` all code from all modules within `src/imgcolorshine` which are worth compiling with mypyc. 
+- Factor out and move into dedicated modules inside `src/imgcolorshine/fast_numba` all code from all modules within `src/imgcolorshine` which use numba. 
+- Make sure that the code directly in `src/imgcolorshine` uses pure Python.
+- Update `pyproject.toml` so that the code in `src/imgcolorshine/fast_mypyc` is compiled with mypyc 
+- Think of other ways to speed up the code. 
 
-## [x] Task 2
+You must document your all these things in `PLAN.md`. The `PLAN.md` needs to have itemized lists of the tasks prefixed by `- [ ]`. The plan must be very detailed, and must explain not only what needs to be done, but also specifically how you will do it. 
 
-after `uvx hatch clean; uvx hatch build` the file `./dist/imgcolorshine-3.3.2.tar.gz` contains this: 
-
-```
-dist/imgcolorshine-3.3.2
-├── LICENSE
-├── PKG-INFO
-├── pyproject.toml
-├── README.md
-└── src
-    └── imgcolorshine
-        ├── __version__.py
-        └── py.typed
-
-3 directories, 6 files
-```
-
-This is bullshit. 
-
-## [ ] Task 3
-
-Where are the binaries from the mypyc compilation? How should I build them? Are they integrated into `pyproject.toml`? If not, fix this. 
-
-## [ ] Task 4
+## [ ] Task 2
 
 Actually read `PLAN.md` and implement the tasks therein. 
-
-R
-
-
-
-
-

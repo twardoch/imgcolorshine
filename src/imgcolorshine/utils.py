@@ -161,6 +161,7 @@ class _SimpleProgress:
     def __exit__(self, *args):
         """"""
 
+
 def create_progress_bar(total_steps: int, description: str = "Processing"):
     """
     Create a simple progress tracking context.
