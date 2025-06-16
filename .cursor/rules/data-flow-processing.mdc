@@ -1,60 +1,65 @@
 ---
-description: Analyzes data flow and image processing pipeline organization for color transformation systems that operate on large images
-globs: src/imgcolorshine/io.py,src/imgcolorshine/transform.py,src/imgcolorshine/engine.py,src/imgcolorshine/spatial.py
+description: Documentation of image processing pipeline memory management and data flow between components
+globs: src/imgcolorshine/io.py,src/imgcolorshine/transforms.py,src/imgcolorshine/lut.py,src/imgcolorshine/gpu.py
 alwaysApply: false
 ---
 
 
 # data-flow-processing
 
-### Image Processing Pipeline Architecture
+## Core Data Flow Pipeline
 
-The data flow pipeline consists of several key stages that handle large image processing efficiently:
+1. **Image Loading and Tiling**
+`src/imgcolorshine/io.py`
+- Smart tiling system determines optimal tile sizes based on image dimensions and available memory
+- Tiles are processed with overlap regions to prevent edge artifacts
+- Memory estimation logic pre-calculates required memory and enforces tiling when needed
+Importance: 85
 
-#### 1. Memory-Aware Tiling System
-- Analyzes image dimensions and available memory to determine optimal tile sizes
-- Implements automatic tiling with overlap regions to prevent edge artifacts
-- Located in: `src/imgcolorshine/io.py`
+2. **Color Space Transformation Pipeline**
+`src/imgcolorshine/transforms.py`
+- Implements multi-stage color transformation pipeline:
+  1. RGB to OKLCH conversion
+  2. Attractor influence calculation
+  3. Color blending based on attractor weights
+  4. Gamut mapping
+  5. OKLCH to RGB conversion
+- Each stage processes data in chunks to maintain memory efficiency
+Importance: 95
 
-#### 2. Color Space Transformation Flow
-- Converts input tiles to OKLCH color space 
-- Processes transformations in perceptually uniform space
-- Maps results back to output color space
-- Located in: `src/imgcolorshine/transform.py`
+3. **LUT-Based Acceleration**
+`src/imgcolorshine/lut.py`
+- Caches frequently used color transformations in a 3D lookup table
+- Streaming architecture for LUT updates to avoid memory spikes
+- Automatic LUT invalidation when transformation parameters change
+Importance: 80
 
-#### 3. Spatial Acceleration Structure
-Implements a hierarchical grid system for optimizing color transformations:
-- Subdivides image into regions based on color similarity
-- Groups similar regions to reduce redundant calculations
-- Located in: `src/imgcolorshine/spatial.py`
+4. **GPU Memory Management**
+`src/imgcolorshine/gpu.py`
+- Implements smart batching for GPU processing based on available VRAM
+- Asynchronous data transfer between CPU and GPU
+- Automatic fallback to CPU when GPU memory is insufficient
+Importance: 75
 
-#### 4. Multi-Resolution Processing
-- Processes image at multiple scales, starting with lowest resolution
-- Propagates results to higher resolutions
-- Preserves fine details while accelerating processing
-- Located in: `src/imgcolorshine/engine.py`
+## Data Flow Control
 
-#### 5. Stream Processing Pipeline
-- Processes tiles sequentially to minimize memory usage
-- Implements producer-consumer pattern for tile processing
-- Located in: `src/imgcolorshine/io.py`
+1. **Hierarchical Processing**
+- Multi-resolution processing pipeline starting with downsampled image
+- Progressive refinement with increasing resolution
+- Results from lower resolutions guide higher resolution processing
+Importance: 90
 
-### Critical Data Flows
+2. **Memory-Mapped Processing**
+- Large images processed using memory-mapped files
+- Streaming architecture for minimal memory footprint
+- Automatic cleanup of temporary files
+Importance: 85
 
-1. **Input Processing Flow**
-```
-Load Image -> Split into Tiles -> Convert Color Space -> Process Tiles -> Merge Results
-```
-
-2. **Tile Processing Flow**  
-```
-Get Tile -> Apply Color Transform -> Handle Edge Cases -> Write Back
-```
-
-3. **Memory Management Flow**
-```
-Check Size -> Calculate Tiles -> Allocate Buffers -> Process -> Release
-```
+3. **Processing Coordination**
+- Dynamic scheduling of transformation operations
+- Dependency tracking between processing stages
+- Parallel processing of independent image regions
+Importance: 80
 
 $END$
 

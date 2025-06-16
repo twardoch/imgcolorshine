@@ -17,8 +17,6 @@ from loguru import logger
 # Global flags for available backends
 GPU_AVAILABLE = False
 CUPY_AVAILABLE = False
-cp = None  # Ensure cp is always defined globally
-
 # Try to import GPU libraries
 try:
     import cupy

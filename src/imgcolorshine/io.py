@@ -206,16 +206,14 @@ class ImageProcessor:
 
         # Set save parameters based on format
         ext = path.suffix.lower()
-        save_kwargs = {}
-
         if ext in [".jpg", ".jpeg"]:
-            save_kwargs["quality"] = quality
-            save_kwargs["optimize"] = True
+            pil_img.save(str(path), quality=quality, optimize=True)
         elif ext == ".png":
             # PNG compression level
-            save_kwargs["compress_level"] = int((100 - quality) / 11)
-
-        pil_img.save(path, **save_kwargs)
+            compress_level = int((100 - quality) / 11)
+            pil_img.save(str(path), compress_level=compress_level)
+        else:
+            pil_img.save(str(path))
 
         logger.debug(f"Saved image with PIL (quality: {quality})")
 

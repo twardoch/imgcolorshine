@@ -139,6 +139,28 @@ def estimate_optimal_tile_size(image_shape: tuple, available_memory_mb: int = 20
     return tile_size
 
 
+class _SimpleProgress:
+    """Simple progress tracker for internal use."""
+
+    def __init__(self, total: int, desc: str):
+        """"""
+        self.total = total
+        self.current = 0
+        self.desc = desc
+
+    def update(self, n: int = 1):
+        """"""
+        self.current += n
+        percent = (self.current / self.total) * 100
+        logger.info(f"{self.desc}: {percent:.1f}%")
+
+    def __enter__(self):
+        """"""
+        return self
+
+    def __exit__(self, *args):
+        """"""
+
 def create_progress_bar(total_steps: int, description: str = "Processing"):
     """
     Create a simple progress tracking context.
@@ -146,30 +168,7 @@ def create_progress_bar(total_steps: int, description: str = "Processing"):
     This is a placeholder for integration with rich.progress or tqdm.
 
     """
-
-    class SimpleProgress:
-        """"""
-
-        def __init__(self, total: int, desc: str):
-            """"""
-            self.total = total
-            self.current = 0
-            self.desc = desc
-
-        def update(self, n: int = 1):
-            """"""
-            self.current += n
-            percent = (self.current / self.total) * 100
-            logger.info(f"{self.desc}: {percent:.1f}%")
-
-        def __enter__(self):
-            """"""
-            return self
-
-        def __exit__(self, *args):
-            """"""
-
-    return SimpleProgress(total_steps, description)
+    return _SimpleProgress(total_steps, description)
 
 
 def validate_image(image: np.ndarray) -> None:

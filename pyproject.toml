@@ -89,12 +89,18 @@ imgcolorshine = 'imgcolorshine.cli:main'
 requires = [
     'hatchling>=1.27.0',
     'hatch-vcs>=0.4.0',
-    # 'mypy>=1.15.0',  # Temporarily disabled
-    # 'hatch-mypyc>=0.16.0',  # Temporarily disabled
+    'mypy>=1.15.0',
+    'hatch-mypyc>=0.16.0',
+    # Type stubs and dependencies needed for mypyc compilation
+    'numpy>=2.2.2',
+    'types-Pillow',
+    'coloraide>=4.6',
+    'loguru>=0.7.0',
 ]
 build-backend = 'hatchling.build'
 [tool.hatch.build]
 include = [
+    'src/imgcolorshine/**/*.py',  # Include all Python source files
     'src/imgcolorshine/py.typed',
     'src/imgcolorshine/data/**/*',
 ]
@@ -102,26 +108,47 @@ exclude = [
     '**/__pycache__',
     '**/.pytest_cache',
     '**/.mypy_cache',
+    "src/imgcolorshine/trans_numba.py",
+    "src/imgcolorshine/numba_utils.py",
+    "src/imgcolorshine/gamut_numba.py",
+    "src/imgcolorshine/gpu.py",
+    "src/imgcolorshine/trans_gpu.py",
+    "src/imgcolorshine/lut.py",
+    "src/imgcolorshine/__init__.py",
+    "src/imgcolorshine/__main__.py",
 ]
 [tool.hatch.build.targets.wheel]
-packages = ['src/imgcolorshine']
-reproducible = true
+packages = ["src/imgcolorshine"]
+
 [tool.hatch.build.hooks.vcs]
 version-file = 'src/imgcolorshine/__version__.py'
 
-# Temporarily disabled due to missing type stubs in build environment
-# [tool.hatch.build.hooks.mypyc]
-# dependencies = ["hatch-mypyc"]
-# # Only include modules with pure Python/NumPy/ColorAide logic.
-# # Numba-heavy files should be excluded as MyPyc can't compile them.
-# files = [
-#     "src/imgcolorshine/colorshine.py",
-#     "src/imgcolorshine/engine.py",
-#     "src/imgcolorshine/gamut.py",
-#     "src/imgcolorshine/io.py",
-#     "src/imgcolorshine/utils.py",
-#     "src/imgcolorshine/falloff.py",
-# ]
+[tool.hatch.build.hooks.mypyc]
+dependencies = ["hatch-mypyc"]
+mypy-args = ["--ignore-missing-imports", "--allow-subclassing-any"]
+# Only include modules with pure Python/NumPy/ColorAide logic.
+# Exclude Numba-heavy files (trans_numba.py, numba_utils.py) and modules with complex dependencies
+files = [
+    "src/imgcolorshine/colorshine.py",
+    "src/imgcolorshine/engine.py",
+    "src/imgcolorshine/gamut.py",
+    "src/imgcolorshine/io.py",
+    "src/imgcolorshine/utils.py",
+    "src/imgcolorshine/falloff.py",
+    "src/imgcolorshine/cli.py",
+]
+# Explicitly exclude Numba-accelerated or GPU-specific modules so mypyc does not
+# attempt to compile them. Compiling these would turn their Python callables
+# into built-ins, which confuses Numba at import time and raises
+# "decorated object is not a function" errors.
+exclude = [
+    "src/imgcolorshine/trans_numba.py",
+    "src/imgcolorshine/gamut_numba.py",
+    "src/imgcolorshine/numba_utils.py",
+    "src/imgcolorshine/gpu.py",
+    "src/imgcolorshine/trans_gpu.py",
+    "src/imgcolorshine/lut.py",
+]
 
 [tool.hatch.version]
 source = 'vcs'

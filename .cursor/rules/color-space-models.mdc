@@ -1,61 +1,60 @@
 ---
-description: Documents color space models, conversions, and transformations used in the imgcolorshine project
-globs: src/imgcolorshine/color*.py,src/imgcolorshine/transforms*.py,src/imgcolorshine/gamut.py
+description: Documents the color space models (RGB, OKLCH, Oklab), relationships, conversions and transformations used in the image processing system
+globs: src/imgcolorshine/color.py,src/imgcolorshine/gamut.py,src/imgcolorshine/trans_*.py
 alwaysApply: false
 ---
 
 
 # color-space-models
 
-### Core Color Space Models
+## Core Color Space Model Components
 
-#### OKLCH Color Engine
-- Perceptually uniform color space for natural-looking transformations
-- Three components: Lightness (0-100%), Chroma (0+), and Hue (0-360°)
-- Used as the primary working space for all color transformations
-- File: `src/imgcolorshine/color.py`
+### OKLCH Color Engine
+Score: 95
+- File: src/imgcolorshine/color.py
+- Implements perceptually uniform OKLCH color space model
+- Manages color transformations between RGB, Oklab and OKLCH spaces
+- Handles gamut mapping to ensure colors remain within sRGB display capabilities
+- Provides channel-specific transformations for lightness, chroma and hue
 
-#### Oklab Intermediate Space
-- Serves as conversion bridge between RGB and OKLCH
-- Linear light-based space for accurate color calculations  
-- File: `src/imgcolorshine/transforms.py`
+### Gamut Mapping
+Score: 90
+- File: src/imgcolorshine/gamut.py
+- CSS Color Module 4 compliant gamut mapping
+- Binary search algorithm for finding maximum in-gamut chroma
+- Preserves perceptual color attributes during mapping
+- Handles edge cases for colors far outside sRGB gamut
 
-#### RGB Output Space
-- sRGB gamut target for final output
-- Professional gamut mapping to preserve color appearance
-- File: `src/imgcolorshine/gamut.py`
+### Color Space Conversions
+Score: 85
+- File: src/imgcolorshine/trans_numba.py
+- Optimized conversions between RGB, Oklab and OKLCH
+- Vectorized operations for batch color processing
+- Handles numerical precision and edge cases
+- Maintains color accuracy during transformations
 
-### Color Space Transformations
+## Color Transformation Pipeline
 
-#### RGB ↔ Oklab
-- Matrix-based conversion preserving perceptual relationships
-- Handles gamma encoding/decoding for RGB
-- File: `src/imgcolorshine/transforms.py`
+### Attractor-Based Color Model
+Score: 95
+- Defines color attractors in OKLCH space
+- Each attractor has color, tolerance and strength parameters
+- Colors are "pulled" toward attractors based on distance
+- Smooth transitions using physics-inspired model 
 
-#### Oklab ↔ OKLCH
-- Polar coordinate conversion for intuitive editing
-- Maintains perceptual uniformity while enabling channel isolation
-- File: `src/imgcolorshine/color.py`
+### Multi-Channel Processing
+Score: 80
+- Independent control of lightness, chroma and hue channels
+- Channel-specific tolerance and strength parameters
+- Preserves untransformed channels
+- Blends multiple attractor influences
 
-### Color Attraction Model
-
-#### Distance Calculation
-- Computed in OKLCH space using weighted channel differences
-- Adapts to human perception of color differences
-- File: `src/imgcolorshine/color.py`
-
-#### Influence Mapping
-- Uses raised cosine falloff based on perceptual distance
-- Configurable tolerance (percentile-based) and strength parameters
-- File: `src/imgcolorshine/colorshine.py`
-
-### Professional Gamut Mapping
-
-#### CSS Color Module 4 Compliant
-- Preserves appearance while ensuring displayable colors
-- Maintains hue angle during compression when possible
-- Uses binary search for optimal chroma reduction
-- File: `src/imgcolorshine/gamut.py`
+### Perceptual Color Distance
+Score: 85
+- Implements perceptually uniform color difference metrics
+- Used for attractor influence calculations
+- Handles edge cases and numerical stability
+- Ensures color changes match human perception
 
 $END$
 

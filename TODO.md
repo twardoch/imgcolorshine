@@ -11,7 +11,7 @@ Review `PLAN.md` and rewrite it so that:
 - Update `PLAN.md` so that it includes a plan to fix the TBDs and the items resulting from the problems below: 
 
 
-## [ ] Task 2
+## [x] Task 2
 
 after `uvx hatch clean; uvx hatch build` the file `./dist/imgcolorshine-3.3.2.tar.gz` contains this: 
 

@@ -1,5 +1,5 @@
 ---
-description: Handles color space transformations, attractor models, and gamut mapping for image color manipulation
+description: Documents core color transformation algorithms, attractor models and gamut mapping for image processing applications
 globs: src/imgcolorshine/color.py,src/imgcolorshine/transform.py,src/imgcolorshine/falloff.py,src/imgcolorshine/gamut.py
 alwaysApply: false
 ---
@@ -7,42 +7,39 @@ alwaysApply: false
 
 # color-transformation-algorithms
 
-## Core Color Transformation Components
+## Core Color Transformation Engine
 
-### Attractor Model
-- **Percentile-Based System**: Attractor influence determined by percentile calculations of pixel similarity
-- **Falloff Functions**: Raised cosine curve modulates attractor influence based on color distance
-- **Strength Control**: Parameter range 0-200 controls influence intensity and falloff behavior
-  - 0-100: Normal influence with falloff
-  - 100-200: Progressive flattening of falloff curve
+The color transformation engine implements a physics-inspired model operating in OKLCH perceptual color space:
 
-### OKLCH Color Engine
-- **Color Space Conversion**: Operations performed in perceptually uniform OKLCH space
-- **Channel Independence**: Separate control over lightness, chroma, and hue transformations
-- **Attraction Calculator**: Determines pixel pull based on:
-  - Color similarity percentile (tolerance parameter)
-  - Configurable strength parameter
-  - Distance-based falloff function
+1. **Attractor Model** (Importance: 95)
+- Implements gravitational-style color attraction
+- Colors are "pulled" toward attractor points based on perceptual distance
+- Attractor influence determined by tolerance (percentile-based) and strength parameters
+- Support for multiple weighted attractors with blending
 
-### Gamut Mapping
-- **CSS Color Module 4 Compliance**: Professional gamut mapping preserving perceptual attributes
-- **Channel Priority**: Preserves lightness and hue while adjusting chroma
-- **Boundary Handling**: Maximum chroma calculation maintains displayable colors
+2. **Falloff Functions** (Importance: 85) 
+- Custom falloff curves control attraction strength vs distance
+- Raised cosine falloff provides smooth transitions
+- Strength parameter above 100% flattens falloff curve
+- Adaptive influence based on image color distribution
 
-### Multi-Attractor Blending
-- **Normalized Weighted Average**: Combines multiple attractor influences
-- **Distance-Based Weights**: Influence strength varies by color similarity
-- **Channel-Specific Blending**: Independent control over L/C/H components
+3. **Perceptual Color Processing** (Importance: 90)
+- All operations performed in OKLCH perceptual color space
+- Independent control of lightness, chroma and hue channels
+- Adaptive percentile-based tolerance calculation
+- Seamless blending of multiple color influences
 
-## File Structure
+4. **Gamut Mapping** (Importance: 80)
+- CSS Color Module 4 compliant gamut mapping
+- Preserves perceptual attributes while ensuring displayability
+- Binary search for maximum in-gamut chroma
+- Smooth handling of out-of-gamut colors
 
-```
-src/imgcolorshine/
-├── color.py       # OKLCH color engine, attractor management
-├── transform.py   # Core transformation pipeline
-├── falloff.py     # Distance-based influence functions  
-└── gamut.py       # CSS Color Module 4 gamut mapping
-```
+Key Files:
+- `src/imgcolorshine/color.py` - Core color engine and attractor model
+- `src/imgcolorshine/transform.py` - Color transformation pipeline
+- `src/imgcolorshine/falloff.py` - Distance-based influence functions
+- `src/imgcolorshine/gamut.py` - Gamut mapping implementation
 
 $END$
 

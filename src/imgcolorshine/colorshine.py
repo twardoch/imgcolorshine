@@ -152,6 +152,7 @@ def process_image(
 
     # Check if LUT acceleration is requested
     lut_size = kwargs.get("lut_size", 0)
+    transformed: np.ndarray  # Declare transformed variable for mypyc
     if lut_size > 0:
         logger.info(f"Using 3D LUT acceleration (size={lut_size})")
         lut_manager = LUTManager(lut_size=lut_size)

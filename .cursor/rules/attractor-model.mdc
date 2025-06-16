@@ -1,62 +1,49 @@
 ---
-description: Specification for the physics-inspired color attractor model that transforms images using perceptually uniform color space
-globs: src/imgcolorshine/color.py,src/imgcolorshine/transform.py,src/imgcolorshine/falloff.py
+description: Specifies the color attractor model implementation for image color transformation using perceptually uniform OKLCH color space.
+globs: src/imgcolorshine/color.py,src/imgcolorshine/transform.py,src/imgcolorshine/colorshine.py,src/imgcolorshine/falloff.py
 alwaysApply: false
 ---
 
 
 # attractor-model
 
-## Core Attractor Model Components (Importance: 95)
+The attractor model represents the core unique business logic for transforming image colors using physics-inspired "color attractors". The model operates entirely in perceptually uniform OKLCH color space.
 
-The attractor model implements a physics-inspired color transformation system using:
+## Key Components
 
-1. Perceptual Distance Calculation
-- Calculates color similarity in OKLCH space between pixels and attractors
-- Uses percentile-based tolerance to determine influence radius
-- Implements raised cosine falloff for smooth transitions
+### 1. Color Attraction Model (90/100)
+- Each attractor has a target color, tolerance (radius of influence), and strength
+- Tolerance is implemented as a percentile (0-100) rather than absolute distance
+- A tolerance of 50 means the attractor influences the 50% most similar pixels
+- The strength parameter (0-200) controls both intensity and falloff behavior
+- Strength > 100 progressively flattens the falloff curve
 
-2. Multi-Attractor Blending
-- Combines influence from multiple attractors using weighted averaging
-- Weights determined by perceptual distance and attractor strength
-- Handles overlapping areas of influence gracefully
+### 2. Distance-Based Influence (85/100) 
+- Influence is calculated using perceptual distance in OKLCH space
+- Falloff is smooth and continuous using raised cosine function
+- Multi-attractor blending uses normalized weighted average
+- Each pixel is influenced more by closer attractors
+- Strength parameter modulates both intensity and distance sensitivity
 
-3. Channel-Specific Transformations
+### 3. Channel-Specific Transforms (80/100)
 - Independent control over lightness, chroma and hue channels
-- Channel-specific attraction strength modulation
-- Preserves unmodified channels during transformation
+- Transforms preserve perceptual uniformity in each channel
+- Channel-specific tolerances allow targeted adjustments
+- Blending happens independently in each channel
+- Channel mixing handled in perceptually uniform space
 
-## Attractor Parameters (Importance: 90)
+### 4. Gamut Mapping (75/100)
+- Out-of-gamut colors mapped back to sRGB using CSS Color 4 approach  
+- Perceptual attributes preserved during gamut mapping
+- Chroma reduced while maintaining lightness and hue
+- Gamut mapping applied after attractor transformations
+- Result guaranteed to be within sRGB gamut
 
-1. Tolerance (0-100)
-- Percentile-based radius of influence 
-- 0% = no pixels affected
-- 50% = affects half the pixels most similar to attractor
-- 100% = affects all pixels
-- Adapts to each image's unique color distribution
-
-2. Strength (0-200)
-- Controls transformation intensity
-- 0-100: Progressive falloff based on distance
-- 100-200: Overrides falloff curve
-- Full strength (100) makes nearest pixels match attractor exactly
-
-## Key Implementation Details (Importance: 85)
-
-1. Distance-Based Influence
-- Stronger influence on pixels more similar to attractor
-- Continuous falloff based on perceptual distance
-- Normalized weighting across multiple attractors
-
-2. Perceptual Uniformity
-- All operations performed in OKLCH space
-- Ensures natural-looking transformations
-- Maintains visual coherence of results
-
-Relevant Files:
-- src/imgcolorshine/color.py: Core attractor model implementation
-- src/imgcolorshine/transform.py: Color transformation logic
-- src/imgcolorshine/falloff.py: Distance-based influence functions
+## Key Files
+- color.py: Core attractor model implementation
+- transform.py: Color space transformations and blending
+- colorshine.py: High-level transformation orchestration
+- falloff.py: Distance-based influence functions
 
 $END$
 
