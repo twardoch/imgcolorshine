@@ -20,7 +20,7 @@ classifiers = [
 dependencies = [
     'fire>=0.6.0',
     'loguru>=0.7.0',
-    'numpy>=2.2.2',
+    'numpy>=2.2.2,<2.3',
     'numba>=0.58.0',
     'scipy>=1.11.0',
     'coloraide>=4.6',
@@ -43,15 +43,15 @@ Source = 'https://github.com/twardoch/imgcolorshine'
 [project.optional-dependencies]
 dev = [
     'pre-commit>=4.1.0',
-    'ruff>=0.9.7',
-    'mypy>=1.15.0',
+    'ruff>=0.12.0',
+    'mypy>=1.16.1',
     'absolufy-imports>=0.3.1',
     'pyupgrade>=3.19.1',
     'isort>=6.0.1',
     'ty>=0.0.1a10',
 ]
 test = [
-    'pytest>=8.3.4',
+    'pytest>=8.4.1',
     'pytest-cov>=6.0.0',
     'pytest-benchmark[histogram]>=5.1.0',
     'pytest-asyncio>=0.26.0',
@@ -67,14 +67,14 @@ all = [
     'absolufy-imports>=0.3.1',
     'coverage[toml]>=7.6.12',
     'isort>=6.0.1',
-    'mypy>=1.15.0',
+    'mypy>=1.16.1',
     'pre-commit>=4.1.0',
     'pytest-asyncio>=0.26.0',
     'pytest-benchmark[histogram]>=5.1.0',
     'pytest-cov>=6.0.0',
-    'pytest>=8.3.4',
+    'pytest>=8.4.1',
     'pyupgrade>=3.19.1',
-    'ruff>=0.9.7',
+    'ruff>=0.12.0',
     'myst-parser>=4.0.0',
     'sphinx-autodoc-typehints>=2.0.0',
     'sphinx-rtd-theme>=3.0.2',
@@ -89,7 +89,7 @@ imgcolorshine = 'imgcolorshine.cli:main'
 requires = [
     'hatchling>=1.27.0',
     'hatch-vcs>=0.4.0',
-    'mypy>=1.15.0',
+    'mypy>=1.16.1',
     'hatch-mypyc>=0.16.0',
     # Type stubs and dependencies needed for mypyc compilation
     'numpy>=2.2.2',
@@ -129,24 +129,22 @@ mypy-args = ["--ignore-missing-imports", "--allow-subclassing-any", "--verbose" 
 # Only include modules with pure Python/NumPy/ColorAide logic.
 # Exclude Numba-heavy files (trans_numba.py, numba_utils.py) and modules with complex dependencies
 files = [
-    "src/imgcolorshine/colorshine.py",
-    "src/imgcolorshine/engine.py",
-    "src/imgcolorshine/gamut.py",
-    "src/imgcolorshine/io.py",
-    "src/imgcolorshine/utils.py",
-    "src/imgcolorshine/falloff.py",
-    "src/imgcolorshine/cli.py",
+    "src/imgcolorshine/fast_mypyc/colorshine.py",
+    "src/imgcolorshine/fast_mypyc/engine.py",
+    "src/imgcolorshine/fast_mypyc/gamut.py",
+    "src/imgcolorshine/fast_mypyc/io.py",
+    "src/imgcolorshine/fast_mypyc/utils.py",
+    "src/imgcolorshine/fast_mypyc/falloff.py",
+    "src/imgcolorshine/fast_mypyc/cli.py",
 ]
 # Explicitly exclude Numba-accelerated or GPU-specific modules so mypyc does not
 # attempt to compile them. Compiling these would turn their Python callables
 # into built-ins, which confuses Numba at import time and raises
 # "decorated object is not a function" errors.
+# Numba files are now in fast_numba and won't be picked up by the 'files' glob above.
+# gpu.py and lut.py are still in the main src/imgcolorshine dir.
 exclude = [
-    "src/imgcolorshine/trans_numba.py",
-    "src/imgcolorshine/gamut_numba.py",
-    "src/imgcolorshine/numba_utils.py",
     "src/imgcolorshine/gpu.py",
-    "src/imgcolorshine/trans_gpu.py",
     "src/imgcolorshine/lut.py",
 ]
 

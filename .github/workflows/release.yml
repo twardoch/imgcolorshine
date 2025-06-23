@@ -33,11 +33,11 @@ jobs:
           python-version: "3.12"
           enable-cache: true
 
-      - name: Install build tools
-        run: uv pip install build hatchling hatch-vcs
+      - name: Install Hatch
+        run: uv pip install --system hatch
 
       - name: Build distributions
-        run: uv run python -m build --outdir dist
+        run: hatch build
 
       - name: Verify distribution files
         run: |
