@@ -2,7 +2,7 @@
 # /// script
 # dependencies = ["fire", "loguru"]
 # ///
-# this_file: src/imgcolorshine/cli.py
+# this_file: src/imgcolorshine/fast_mypyc/cli.py
 
 """
 Fire-based CLI interface for imgcolorshine.
@@ -12,7 +12,7 @@ Simple CLI class that delegates to the main processing logic.
 
 import fire  # type: ignore[import-not-found,import-untyped]
 
-from imgcolorshine.colorshine import process_image
+from .colorshine import process_image
 
 
 class ImgColorShineCLI:

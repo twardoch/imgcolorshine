@@ -64,13 +64,11 @@ jobs:
           enable-cache: true
           cache-suffix: ${{ matrix.os }}-${{ matrix.python-version }}
 
-      - name: Install test dependencies
-        run: |
-          uv pip install --system --upgrade pip
-          uv pip install --system ".[test]"
+      - name: Install Hatch
+        run: uv pip install --system hatch
 
-      - name: Run tests with Pytest
-        run: uv run pytest -n auto --maxfail=1 --disable-warnings --cov-report=xml --cov-config=pyproject.toml --cov=src/imgcolorshine --cov=tests tests/
+      - name: Run tests with Pytest using Hatch
+        run: hatch run ci:test -n auto --maxfail=1 --disable-warnings tests/
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
@@ -98,11 +96,11 @@ jobs:
           python-version: "3.12"
           enable-cache: true
 
-      - name: Install build tools
-        run: uv pip install build hatchling hatch-vcs
+      - name: Install Hatch
+        run: uv pip install --system hatch
 
       - name: Build distributions
-        run: uv run python -m build --outdir dist
+        run: hatch build
 
       - name: Upload distribution artifacts
         uses: actions/upload-artifact@v4
