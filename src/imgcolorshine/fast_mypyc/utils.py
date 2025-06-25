@@ -2,7 +2,7 @@
 # /// script
 # dependencies = ["numpy", "loguru"]
 # ///
-# this_file: src/imgcolorshine/utils.py
+# this_file: src/imgcolorshine/fast_mypyc/utils.py
 
 """
 Utility functions for memory management and image processing.
@@ -235,7 +235,7 @@ def batch_process_images(image_paths: list, output_dir: str, transform_func: Cal
     """
     from pathlib import Path
 
-    from imgcolorshine.io import ImageProcessor
+    from .io import ImageProcessor
 
     output_dir_path = Path(output_dir)
     output_dir_path.mkdir(parents=True, exist_ok=True)

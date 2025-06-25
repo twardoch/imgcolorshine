@@ -10,7 +10,7 @@ Entry point for imgcolorshine package.
 Thin wrapper that calls the Fire CLI.
 """
 
-from imgcolorshine.cli import main
+from imgcolorshine.fast_mypyc.cli import main
 
 if __name__ == "__main__":
     main()

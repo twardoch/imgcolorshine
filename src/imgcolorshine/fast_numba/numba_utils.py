@@ -2,7 +2,7 @@
 # /// script
 # dependencies = ["numpy", "numba"]
 # ///
-# this_file: src/imgcolorshine/numba_utils.py
+# this_file: src/imgcolorshine/fast_numba/numba_utils.py
 
 """
 Additional Numba-optimized utility functions for imgcolorshine.

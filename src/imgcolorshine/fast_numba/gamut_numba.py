@@ -2,7 +2,7 @@
 # /// script
 # dependencies = ["numpy", "numba"]
 # ///
-# this_file: src/imgcolorshine/gamut_numba.py
+# this_file: src/imgcolorshine/fast_numba/gamut_numba.py
 
 """Numba-optimized gamut mapping functions."""
 
@@ -10,7 +10,7 @@ import numba
 import numpy as np
 
 # Import Numba-optimized functions from trans_numba
-from imgcolorshine.trans_numba import (
+from .trans_numba import (
     is_in_gamut_srgb,
     oklab_to_srgb_single,
     oklch_to_oklab_single,

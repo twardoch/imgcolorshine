@@ -17,9 +17,9 @@ from typing import Any
 import numpy as np
 from loguru import logger
 
-from imgcolorshine.engine import ColorTransformer, OKLCHEngine
-from imgcolorshine.io import ImageProcessor
-from imgcolorshine.lut import LUTManager
+from ..lut import LUTManager
+from .engine import ColorTransformer, OKLCHEngine
+from .io import ImageProcessor
 
 # Constants for attractor parsing
 ATTRACTOR_PARTS = 3
@@ -152,21 +152,23 @@ def process_image(
 
     # Check if LUT acceleration is requested
     lut_size = kwargs.get("lut_size", 0)
-    transformed: np.ndarray  # Declare transformed variable for mypyc
+
     if lut_size > 0:
         logger.info(f"Using 3D LUT acceleration (size={lut_size})")
         lut_manager = LUTManager(lut_size=lut_size)
 
         # Get or build LUT
         flags = {"luminance": luminance, "saturation": saturation, "hue": hue}
-        lut, interpolator = lut_manager.get_lut(transformer, attractor_objects, flags)
+        # Rename lut variable from get_lut to avoid potential confusion if not used directly
+        _lut_data, interpolator = lut_manager.get_lut(transformer, attractor_objects, flags)
 
-        # Apply LUT
-        image_normalized = image / 255.0
-        transformed_normalized = lut_manager.apply_lut(image_normalized, interpolator)
-        transformed = (transformed_normalized * 255.0).astype(np.uint8)
+        # Apply LUT. processor.load_image returns float32 in [0,1] range.
+        # lut_manager.apply_lut also expects input in [0,1] and outputs in [0,1].
+        transformed_via_lut = lut_manager.apply_lut(image, interpolator)
+        transformed = np.clip(transformed_via_lut, 0, 1)  # Ensure output is clipped
     else:
         logger.info("Using percentile-based tolerance model.")
+        # transformer.transform_image expects float32 [0,1] and returns float32 [0,1]
         transformed = transformer.transform_image(
             image,
             attractor_objects,
@@ -174,6 +176,7 @@ def process_image(
         )
 
     # Save the final image
+    # processor.save_image expects float32 [0,1] and handles conversion to uint8.
     logger.info("Saving transformed image...")
     processor.save_image(transformed, output_path)
     logger.info(f"Successfully saved to {output_path}")

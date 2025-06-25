@@ -49,6 +49,8 @@ dev = [
     'pyupgrade>=3.19.1',
     'isort>=6.0.1',
     'ty>=0.0.1a10',
+    'types-Pillow', # Already in build-system.requires, ensure consistency
+    'scipy-stubs',
 ]
 test = [
     'pytest>=8.4.1',
@@ -92,10 +94,12 @@ requires = [
     'mypy>=1.16.1',
     'hatch-mypyc>=0.16.0',
     # Type stubs and dependencies needed for mypyc compilation
-    'numpy>=2.2.2',
+    'numpy>=2.2.2', # NumPy has its own stubs
     'types-Pillow',
-    'coloraide>=4.6',
-    'loguru>=0.7.0',
+    'coloraide>=4.6', # coloraide has its own stubs
+    'loguru>=0.7.0',  # loguru has its own stubs
+    'scipy-stubs',
+    # Numba, cv2, Pillow are handled by specific types-* packages or direct exclusion from mypyc files list
 ]
 build-backend = 'hatchling.build'
 [tool.hatch.build]
@@ -136,6 +140,9 @@ files = [
     "src/imgcolorshine/fast_mypyc/utils.py",
     "src/imgcolorshine/fast_mypyc/falloff.py",
     "src/imgcolorshine/fast_mypyc/cli.py",
+    "src/imgcolorshine/__init__.py",
+    "src/imgcolorshine/__main__.py",
+    "src/imgcolorshine/fast_mypyc/__init__.py",
 ]
 # Explicitly exclude Numba-accelerated or GPU-specific modules so mypyc does not
 # attempt to compile them. Compiling these would turn their Python callables

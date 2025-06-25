@@ -2,7 +2,7 @@
 # /// script
 # dependencies = ["numpy", "loguru", "opencv-python", "pillow"]
 # ///
-# this_file: src/imgcolorshine/io.py
+# this_file: src/imgcolorshine/fast_mypyc/io.py
 
 """
 High-performance image I/O with OpenCV and PIL fallback.
@@ -206,16 +206,18 @@ class ImageProcessor:
 
         # Set save parameters based on format
         ext = path.suffix.lower()
-        if ext in [".jpg", ".jpeg"]:
-            pil_img.save(str(path), quality=quality, optimize=True)
-        elif ext == ".png":
-            # PNG compression level
-            compress_level = int((100 - quality) / 11)
-            pil_img.save(str(path), compress_level=compress_level)
-        else:
-            pil_img.save(str(path))
 
-        logger.debug(f"Saved image with PIL (quality: {quality})")
+        if ext in [".jpg", ".jpeg"]:
+            pil_img.save(path, quality=quality, optimize=True)
+        elif ext == ".png":
+            # PNG compression level (0-9, lower is faster, higher is smaller)
+            # PIL's compress_level is 0-9. Quality 95 -> level ~0. Quality 0 -> level 9.
+            compress_level = max(0, min(9, int((100 - quality) / 10)))
+            pil_img.save(path, compress_level=compress_level)
+        else:
+            pil_img.save(path)  # For other formats, no specific quality/compression args
+
+        logger.debug(f"Saved image with PIL (quality: {quality}, ext: {ext})")
 
     def estimate_memory_usage(self, width: int, height: int) -> int:
         """

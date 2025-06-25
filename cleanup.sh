@@ -14,34 +14,37 @@ if ! command -v uv >/dev/null 2>&1; then
     python -m pip install uv
 fi
 
-echo "python -m uv sync --all-extras"
-python -m uv sync --all-extras
-echo "python -m uv run hatch clean"
-python -m uv run hatch clean
-echo "python -m uv run hatch build"
-python -m uv run hatch build
+echo "python -m uv pip install .[all]"
+python -m uv pip install .[all] --quiet # Add --quiet to reduce log noise from this step
+echo "python -m uv run --with hatch hatch clean"
+python -m uv run --with hatch hatch clean
+echo "python -m uv run --with hatch hatch build"
+python -m uv run --with hatch hatch build
 #echo "python -m uzpy run -e src"
 #python -m uzpy run -e src
 
-echo "find . -name *.py -exec python -m uv run autoflake -i {} +"
-for p in src tests; do find "$p" -name "*.py" -exec python -m uv run autoflake -i {} +; done
-echo "find . -name *.py -exec python -m uv run pyupgrade --py311-plus {} +"
-for p in src tests; do find "$p" -name "*.py" -exec python -m uv run pyupgrade --py311-plus {} +; done
-echo "find . -name *.py -exec python -m uv run ruff check --output-format=github --fix --unsafe-fixes {} +"
-for p in src tests; do find "$p" -name "*.py" -exec python -m uv run ruff check --output-format=github --fix --unsafe-fixes {} +; done
-echo "find . -name *.py -exec python -m uv run ruff format --respect-gitignore --target-version py311 {} +"
-for p in src tests; do find "$p" -name "*.py" -exec python -m uv run ruff format --respect-gitignore --target-version py311 {} +; done
-echo "python -m uv run ty check"
-python -m uv run ty check
-echo "python -m uv run mypy --config-file pyproject.toml src/imgcolorshine tests"
-python -m uv run mypy --config-file pyproject.toml src/imgcolorshine tests
+echo "python -m uv run --with autoflake find . -name '*.py' -exec autoflake -i {} +"
+# Corrected loop for find + exec with uv run
+find src tests -name "*.py" -exec python -m uv run --with autoflake autoflake -i {} \;
+echo "python -m uv run --with pyupgrade find . -name '*.py' -exec pyupgrade --py311-plus {} +"
+find src tests -name "*.py" -exec python -m uv run --with pyupgrade pyupgrade --py311-plus {} \;
+echo "python -m uv run --with ruff find . -name '*.py' -exec ruff check --output-format=github --fix --unsafe-fixes {} +"
+find src tests -name "*.py" -exec python -m uv run --with ruff ruff check --output-format=github --fix --unsafe-fixes {} \;
+echo "python -m uv run --with ruff find . -name '*.py' -exec ruff format --respect-gitignore --target-version py311 {} +"
+find src tests -name "*.py" -exec python -m uv run --with ruff ruff format --respect-gitignore --target-version py311 {} \;
+echo "python -m uv run --with ty ty check"
+python -m uv run --with ty ty check
+echo "python -m uv run --with mypy mypy --config-file pyproject.toml src/imgcolorshine tests"
+python -m uv run --with mypy mypy --config-file pyproject.toml src/imgcolorshine tests
+
+# Ensure npx is available or skip
 if command -v npx >/dev/null 2>&1; then
-    echo "npx repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules,docs -o llms.txt ."
+    echo "npx repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules,docs,.log -o llms.txt ."
     npx repomix -i varia,.specstory,AGENT.md,CLAUDE.md,PLAN.md,SPEC.md,llms.txt,.cursorrules,docs,.log -o llms.txt .
 else
     echo "npx not found, skipping repomix"
 fi
-echo "python -m uv run hatch test"
-python -m uv run hatch test
+echo "python -m uv run --with hatch hatch test"
+python -m uv run --with hatch hatch test
 
 echo "=== Cleanup completed at $(date) ==="

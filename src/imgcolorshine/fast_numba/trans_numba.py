@@ -2,7 +2,7 @@
 # /// script
 # dependencies = ["numpy", "numba"]
 # ///
-# this_file: src/imgcolorshine/trans_numba.py
+# this_file: src/imgcolorshine/fast_numba/trans_numba.py
 
 """
 Numba-optimized color space transformations for high performance.
