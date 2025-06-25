@@ -2,7 +2,7 @@
 # /// script
 # dependencies = ["coloraide", "numpy", "numba", "loguru"]
 # ///
-# this_file: src/imgcolorshine/engine.py
+# this_file: src/imgcolorshine/fast_mypyc/engine.py
 
 """
 Core color transformation engine for imgcolorshine.
@@ -21,8 +21,8 @@ import numpy as np
 from coloraide import Color
 from loguru import logger
 
-from imgcolorshine import trans_numba
-from imgcolorshine.gpu import GPU_AVAILABLE, ArrayModule, get_array_module
+from ..fast_numba import trans_numba
+from ..gpu import GPU_AVAILABLE, ArrayModule, get_array_module
 
 # Constants for attractor model
 TOLERANCE_MIN, TOLERANCE_MAX = 0.0, 100.0

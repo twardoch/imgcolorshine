@@ -2,7 +2,7 @@
 # /// script
 # dependencies = ["numpy", "numba"]
 # ///
-# this_file: src/imgcolorshine/falloff.py
+# this_file: src/imgcolorshine/fast_mypyc/falloff.py
 
 """
 Falloff functions for color attraction.

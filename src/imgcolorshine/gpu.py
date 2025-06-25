@@ -17,20 +17,22 @@ from loguru import logger
 # Global flags for available backends
 GPU_AVAILABLE = False
 CUPY_AVAILABLE = False
+cp = None  # Ensure cp is always defined globally
+
 # Try to import GPU libraries
 try:
     import cupy
 
-    cp = cupy  # Assign to the global variable
+    cp = cupy  # Assign to the global variable after successful import
 
-    CUPY_AVAILABLE = cupy.cuda.is_available()
+    CUPY_AVAILABLE = cp.cuda.is_available()  # Use the global cp
     if CUPY_AVAILABLE:
         GPU_AVAILABLE = True
-        logger.info(f"CuPy available with CUDA {cupy.cuda.runtime.runtimeGetVersion()}")
+        logger.info(f"CuPy available with CUDA {cp.cuda.runtime.runtimeGetVersion()}")
 except ImportError:
-    logger.debug("CuPy not installed")
+    logger.debug("CuPy not installed")  # cp remains None
 except Exception as e:
-    logger.debug(f"CuPy initialization failed: {e}")
+    logger.debug(f"CuPy initialization failed: {e}")  # cp remains None
 
 
 class ArrayModule:
