@@ -17,6 +17,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - All tests now passing with proper understanding of the engine's behavior
 
 ### Changed
+- **Architecture Refactor**: Reorganized codebase into a clean three-tier structure for improved performance and maintainability
+  - Consolidated all Numba-optimized code into `src/imgcolorshine/fast_numba/` subdirectory
+  - Extracted pure Python performance-critical functions into `src/imgcolorshine/fast_mypyc/` for ahead-of-time compilation
+  - Removed deprecated compatibility shims (`trans_numba.py`, `falloff.py` in root directory)
+  - New modules in `fast_numba/`:
+    - `engine_kernels.py`: Fused transformation kernel extracted from engine.py
+    - `utils.py`: Moved from root directory, contains 6 numba-optimized utility functions
+  - New modules in `fast_mypyc/`:
+    - `engine_helpers.py`: Pure Python transformation functions (blend_pixel_colors, _calculate_weights_percentile, _transform_pixels_percentile_vec)
+    - `gamut_helpers.py`: Gamut mapping functions (is_in_gamut, map_oklab_to_gamut, analyze_gamut_coverage, create_gamut_boundary_lut)
+    - `colorshine_helpers.py`: Helper functions (parse_attractor, generate_output_path)
+  - All numba-dependent code is now isolated in `fast_numba/` for better modularity
+  - Pure Python hot-path functions are prepared for mypyc compilation to gain ~2-5x speedup
+  - Existing public API remains unchanged - all imports are transparently redirected
+
 - **Documentation Updates**
   - Updated README.md with new performance optimization flags
   - Added GPU acceleration documentation

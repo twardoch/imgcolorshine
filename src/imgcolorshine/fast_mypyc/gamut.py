@@ -20,7 +20,7 @@ from coloraide import Color
 from loguru import logger
 
 # Import Numba-optimized functions from the new module
-from ..fast_numba.gamut_numba import batch_map_oklch_numba, binary_search_chroma
+from imgcolorshine.fast_numba.gamut_numba import batch_map_oklch_numba, binary_search_chroma
 
 # Constants
 FULL_CIRCLE_DEGREES = 360.0

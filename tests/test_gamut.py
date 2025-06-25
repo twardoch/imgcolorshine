@@ -1,3 +1,5 @@
+# ruff: noqa
+
 # this_file: tests/test_gamut.py
 
 import numpy as np
@@ -13,7 +15,7 @@ from imgcolorshine.gamut import (
 
 # Import Numba helpers from trans_numba that are used by gamut.py for context,
 # though their direct testing might be elsewhere or implicit.
-from imgcolorshine.trans_numba import (
+from imgcolorshine.fast_numba.trans_numba import (
     is_in_gamut_srgb,
     oklab_to_srgb_single,
     oklch_to_oklab_single,

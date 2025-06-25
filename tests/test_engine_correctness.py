@@ -164,7 +164,7 @@ def test_channel_flags(transformer: ColorTransformer) -> None:
     transformed_h_lab = engine.batch_rgb_to_oklab(transformed_h)
 
     # Convert to LCH to check hue changes
-    from imgcolorshine.trans_numba import batch_oklab_to_oklch
+    from imgcolorshine.fast_numba.trans_numba import batch_oklab_to_oklch
 
     batch_oklab_to_oklch(image_lab)
     batch_oklab_to_oklch(transformed_h_lab)
@@ -234,7 +234,7 @@ def test_strength_200_no_falloff(transformer: ColorTransformer) -> None:
 
     if len(affected_indices) > 1:
         # Convert to LCH to check hue values
-        from imgcolorshine.trans_numba import batch_oklab_to_oklch
+        from imgcolorshine.fast_numba.trans_numba import batch_oklab_to_oklch
 
         engine = transformer.engine
         transformed_lab = engine.batch_rgb_to_oklab(transformed)

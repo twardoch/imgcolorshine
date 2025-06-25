@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from imgcolorshine.falloff import (
+from imgcolorshine.fast_numba.falloff import (
     FalloffType,
     apply_falloff_lut,
     calculate_falloff,

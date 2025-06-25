@@ -3,18 +3,21 @@
 # dependencies = ["numpy", "numba"]
 # ///
 # this_file: src/imgcolorshine/fast_numba/gamut_numba.py
+# ruff: noqa
 
 """Numba-optimized gamut mapping functions."""
 
 import numba
 import numpy as np
 
-# Import Numba-optimized functions from trans_numba
-from .trans_numba import (
+# Import Numba-optimized functions from sibling trans_numba
+from imgcolorshine.fast_numba.trans_numba import (
     is_in_gamut_srgb,
     oklab_to_srgb_single,
     oklch_to_oklab_single,
 )
+
+# ruff: noqa
 
 
 @numba.njit(cache=True)

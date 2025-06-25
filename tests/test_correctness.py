@@ -18,7 +18,7 @@ from coloraide import Color
 from loguru import logger
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-from imgcolorshine import trans_numba
+from imgcolorshine.fast_numba import trans_numba
 
 
 def test_single_pixel_conversion():
