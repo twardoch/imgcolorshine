@@ -1,196 +1,304 @@
-# PLAN
+# PLAN - imgcolorshine Improvement Roadmap
 
-## Goal of Task 1 (architecture refactor for performance)
+## Executive Summary
 
-Transform the current mixed-implementation layout into a clean three-tier structure:
+imgcolorshine has successfully completed Phase 1 of its architecture refactor, establishing a solid three-tier structure with Numba and Mypyc optimizations. The next phase focuses on resolving build issues, improving stability, enhancing usability, and preparing for broader deployment.
 
-1. **Pure-Python public API** (`src/imgcolorshine/…`) — remains optimisable with `mypyc`, **no** direct `numba` calls.
-2. **Numba-optimised kernels** (`src/imgcolorshine/fast_numba/…`) — thin, internal helper modules compiled just-in-time by Numba.
-3. **Ahead-of-time mypyc-compiled helpers** (`src/imgcolorshine/fast_mypyc/…`) — deterministic pure-Python algorithms that profit from `mypyc` AOT compilation.
+## Current State Analysis (as of 2025-06-29)
 
-## Current State Analysis
+### Achievements
+- ✅ Three-tier architecture implemented (Pure Python → Numba → Mypyc)
+- ✅ Core functionality consolidated and optimized
+- ✅ Test coverage improved from 41% to 50%
+- ✅ Comprehensive README documentation
+- ✅ Performance optimizations (GPU, LUT, fused kernels)
 
-### Existing Numba Code Distribution
-- **Already in `fast_numba/`**: `trans_numba.py`, `gamut_numba.py`, `falloff.py`
-- **Still in root**: `numba_utils.py` (6 functions), `engine.py` (1 function + 2 commented)
-- **Compatibility shims**: `trans_numba.py`, `falloff.py` in root (deprecated)
+### Outstanding Issues
+- ❌ Mypyc build errors preventing wheel compilation
+- ❌ Test failures in some edge cases
+- ❌ Limited platform testing (mainly macOS)
+- ❌ No Docker/containerization support
+- ❌ Missing API documentation
+- ❌ No CI/CD pipeline for automated testing
 
-### Identified mypyc Candidates
-1. **High Priority**: `_transform_pixels_percentile_vec()`, `process_large_image()`, `parse_attractor()`
-2. **Medium Priority**: Gamut mapping functions, `blend_pixel_colors()`, weight calculations
-3. **Low Priority**: I/O operations, validation functions
+## Phase 2: Stability & Build System (Immediate Priority)
+
+### Goal
+Resolve all build issues and establish a robust testing infrastructure.
+
+### 2.1 Fix Mypyc Compilation Errors
+**Problem**: Mypyc compilation fails during wheel building, preventing performance benefits.
+
+**Root Causes**:
+1. Import cycles between modules
+2. Type annotation issues with numpy arrays
+3. Missing type stubs for dependencies
+
+**Solution Steps**:
+1. **Analyze import dependencies**
+   - Create import dependency graph
+   - Identify and break circular imports
+   - Move shared types to dedicated module
+
+2. **Fix type annotations**
+   - Use `numpy.typing.NDArray` consistently
+   - Add proper type stubs for coloraide
+   - Ensure all mypyc modules have complete annotations
+
+3. **Implement fallback mechanism**
+   - Create pure Python versions of mypyc modules
+   - Use try/except imports with graceful degradation
+   - Add environment variable to disable mypyc
+
+### 2.2 Comprehensive Testing Infrastructure
+**Goal**: Achieve 80%+ test coverage with CI/CD automation.
+
+1. **Expand test suite**
+   - Add property-based testing with Hypothesis
+   - Create performance regression tests
+   - Add integration tests for CLI
+   - Test all optimization paths (CPU/GPU/LUT)
+
+2. **Platform testing matrix**
+   - Windows, macOS, Linux
+   - Python 3.9, 3.10, 3.11, 3.12
+   - With/without optional dependencies
+   - Different hardware configs (CPU-only, CUDA, Apple Silicon)
+
+3. **CI/CD Pipeline (GitHub Actions)**
+   ```yaml
+   - Test matrix across platforms/Python versions
+   - Build wheels for all platforms
+   - Run performance benchmarks
+   - Generate coverage reports
+   - Auto-publish to PyPI on tags
+   ```
+
+## Phase 3: Performance & Optimization (Short-term)
+
+### 3.1 Memory Optimization
+**Goal**: Reduce memory footprint for large images.
+
+1. **Streaming processing**
+   - Implement true streaming for tile processing
+   - Reduce memory copies in transformation pipeline
+   - Use memory-mapped files for very large images
+
+2. **Smart caching**
+   - LRU cache for color conversions
+   - Reuse allocated arrays
+   - Profile and optimize memory hotspots
+
+### 3.2 Advanced Acceleration
+1. **SIMD optimizations**
+   - Use AVX2/NEON for vectorized operations
+   - Implement hand-optimized kernels for common cases
+   
+2. **Multi-threading improvements**
+   - Better work distribution for tiles
+   - Parallel attractor processing
+   - Thread pool management
+
+3. **WebAssembly target**
+   - Compile core engine to WASM
+   - Enable browser-based usage
+   - Create web demo
+
+## Phase 4: Usability & Developer Experience (Medium-term)
+
+### 4.1 Enhanced CLI
+1. **Better user feedback**
+   - Progress bars with Rich
+   - Colorful output and formatting
+   - Interactive mode for parameter tuning
+   
+2. **Batch processing**
+   - Process entire directories
+   - Configuration files for repeated operations
+   - Parallel batch processing
+
+3. **Presets and profiles**
+   - Built-in color transformation presets
+   - User-definable profiles
+   - Export/import settings
+
+### 4.2 API Improvements
+1. **Simplified high-level API**
+   ```python
+   from imgcolorshine import ColorShine
+   
+   cs = ColorShine()
+   cs.add_attractor("sunset", "#ff6b35", tolerance=50, strength=70)
+   result = cs.transform("photo.jpg")
+   ```
+
+2. **Plugin architecture**
+   - Custom falloff functions
+   - Additional color spaces
+   - Post-processing filters
+
+### 4.3 Documentation & Examples
+1. **API documentation**
+   - Generate with Sphinx
+   - Interactive examples
+   - Architecture diagrams
+
+2. **Tutorial series**
+   - "Getting Started" guide
+   - Advanced techniques
+   - Performance tuning guide
+
+3. **Example gallery**
+   - Before/after comparisons
+   - Common use cases
+   - Artistic effects
+
+## Phase 5: Deployment & Distribution (Long-term)
+
+### 5.1 Packaging & Distribution
+1. **Docker support**
+   ```dockerfile
+   # Multi-stage build with all optimizations
+   FROM python:3.11-slim as builder
+   # Install with GPU support
+   FROM nvidia/cuda:11.8-runtime-ubuntu22.04
+   ```
+
+2. **Platform packages**
+   - Homebrew formula for macOS
+   - APT/YUM packages for Linux
+   - Windows installer with GUI
+
+3. **Cloud deployment**
+   - AWS Lambda function
+   - Google Cloud Run service
+   - Containerized microservice
+
+### 5.2 Integration Ecosystem
+1. **Plugin support for popular tools**
+   - GIMP plugin
+   - Photoshop extension
+   - ImageMagick integration
+
+2. **Language bindings**
+   - JavaScript/TypeScript via WASM
+   - Rust bindings
+   - Go bindings
+
+### 5.3 GUI Application
+1. **Desktop application**
+   - PyQt6/PySide6 interface
+   - Real-time preview
+   - Batch processing UI
+   
+2. **Web application**
+   - FastAPI backend
+   - React frontend
+   - WebGL acceleration
+
+## Phase 6: Advanced Features (Future)
+
+### 6.1 AI Integration
+1. **Smart attractors**
+   - ML-based color palette extraction
+   - Automatic attractor suggestions
+   - Style transfer integration
+
+2. **Semantic color transformation**
+   - "Make it look vintage"
+   - "Enhance sunset colors"
+   - Natural language processing
+
+### 6.2 Video Support
+1. **Frame processing**
+   - Temporal consistency
+   - Keyframe interpolation
+   - Real-time preview
+
+2. **Streaming video**
+   - FFmpeg integration
+   - Hardware encoding
+   - Live video filters
+
+### 6.3 Professional Features
+1. **Color management**
+   - ICC profile support
+   - Wide gamut handling
+   - Print preparation
+
+2. **RAW image support**
+   - Direct RAW processing
+   - 16-bit precision
+   - HDR tone mapping
+
+## Implementation Priority Matrix
+
+| Priority | Effort | Impact | Phase | Timeline |
+|----------|--------|---------|-------|----------|
+| HIGH | LOW | HIGH | 2.1 Fix Mypyc | 1 week |
+| HIGH | MEDIUM | HIGH | 2.2 Testing | 2 weeks |
+| MEDIUM | LOW | MEDIUM | 4.1 CLI Enhancement | 1 week |
+| MEDIUM | HIGH | HIGH | 3.1 Memory Optimization | 3 weeks |
+| LOW | HIGH | MEDIUM | 5.3 GUI Application | 6 weeks |
+| LOW | VERY HIGH | HIGH | 6.2 Video Support | 8 weeks |
+
+## Success Metrics
+
+1. **Technical Metrics**
+   - 0 build failures across all platforms
+   - 80%+ test coverage
+   - <10ms processing for 1080p images
+   - <100MB memory for 4K images
+
+2. **User Metrics**
+   - 10K+ PyPI downloads/month
+   - <5 min to first successful transformation
+   - 90%+ user satisfaction in surveys
+
+3. **Developer Metrics**
+   - <30 min to set up dev environment
+   - <1 day to add new feature
+   - Active contributor community
+
+## Risk Mitigation
+
+1. **Technical Risks**
+   - Mypyc incompatibility → Pure Python fallback
+   - GPU driver issues → Robust CPU path
+   - Memory constraints → Streaming architecture
+
+2. **Adoption Risks**
+   - Complex API → Simple wrapper functions
+   - Performance concerns → Comprehensive benchmarks
+   - Platform limitations → Docker containers
+
+3. **Maintenance Risks**
+   - Dependency updates → Pin versions, test matrix
+   - Code complexity → Modular architecture
+   - Bus factor → Documentation, multiple maintainers
+
+## Next Steps (Immediate Actions)
+
+1. **Week 1**: Fix Mypyc build errors
+   - Debug import cycles
+   - Fix type annotations
+   - Implement fallback mechanism
+
+2. **Week 2**: Establish CI/CD
+   - Set up GitHub Actions
+   - Create test matrix
+   - Automate wheel building
+
+3. **Week 3**: Improve test coverage
+   - Add missing unit tests
+   - Create integration tests
+   - Set up coverage reporting
+
+4. **Week 4**: Documentation sprint
+   - Generate API docs
+   - Write tutorials
+   - Create example gallery
 
 ---
 
-### High-level execution order
-
-- [ ] **Phase 0 — Reconnaissance & safety nets**
-
-  - [ ] Read `./llms.txt`, `cleanup.log` and re-scan the repo for `import numba`, `@numba` & heavy inner loops (regex & `grep_search`).
-  - [ ] Generate a `report/perf_hotspots.md` with a table (module ▸ reason ▸ suggested backend).
-  - [ ] Tag current `main` as `backup/pre-refactor-$(date +%Y-%m-%d)`.
-
-- [ ] **Phase 1 — Create new sub-packages**
-
-  - [ ] Create folders `src/imgcolorshine/fast_numba` and `src/imgcolorshine/fast_mypyc`, each with `__init__.py` (export convenience symbols).
-  - [ ] Move or copy candidate modules (see "Allocation" below) keeping original `git` history via `git mv`.
-  - [ ] Insert `this_file` headers + docstrings that explain internal-only status.
-
-- [ ] **Phase 2 — Allocation of existing modules**
-
-  **Numba migrations (`fast_numba/`):**
-  - [ ] Move `numba_utils.py` → `fast_numba/utils.py` (6 functions)
-  - [ ] Extract `_transform_pixels_numba` from `engine.py` → `fast_numba/engine_kernels.py`
-  - [ ] Remove deprecated shims: root-level `trans_numba.py` and `falloff.py`
-  - [ ] Update `fast_numba/__init__.py` to export all public symbols
-
-  **Mypyc extractions (`fast_mypyc/`):**
-  - [ ] Extract from `engine.py` → `fast_mypyc/engine_helpers.py`:
-    - `blend_pixel_colors()` (lines 100-134)
-    - `_calculate_weights_percentile()` (lines 137-161)  
-    - `_transform_pixels_percentile_vec()` (lines 166-262)
-  - [ ] Extract from `gamut.py` → `fast_mypyc/gamut_helpers.py`:
-    - `is_in_gamut()`, `map_oklab_to_gamut()`, `analyze_gamut_coverage()`
-    - `create_gamut_boundary_lut()` (lines 225-266)
-  - [ ] Extract from `colorshine.py` → `fast_mypyc/colorshine_helpers.py`:
-    - `parse_attractor()` (lines 39-62)
-    - `generate_output_path()` (lines 64-68)
-  - [ ] Move entire `utils.py` → `fast_mypyc/utils.py` (already started)
-  - [ ] Extract from `io.py` → `fast_mypyc/io_helpers.py`:
-    - Core `ImageProcessor` methods
-
-- [ ] **Phase 3 — Refactor imports & maintain compatibility**
-
-  - [ ] Search/replace root-level imports to point at new locations.
-  - [ ] Add re-exports inside `fast_*.__init__` and deprecation warnings in old paths during transition.
-
-- [ ] **Phase 4 — Update `pyproject.toml` build hooks**
-
-  - [ ] Add optional `mypyc` build-backend:
-    ```toml
-    [tool.mypyc]
-    packages = ["imgcolorshine.fast_mypyc"]
-    options = "--verbose"
-    ```
-  - [ ] Expose an extra `speedups` optional-dependency group (`[project.optional-dependencies]`).
-  - [ ] Document env-var `IMGCS_DISABLE_SPEEDUPS` to force pure-Python fallback.
-
-- [ ] **Phase 5 — Continuous Integration adjustments**
-
-  - [ ] Extend GitHub CI matrix: (CPython 3.11/3.12) × (speedups on/off).
-  - [ ] Install system LLVM ≥ 14 for mypyc wheels on Linux.
-
-- [ ] **Phase 6 — Testing & benchmarks**
-
-  - [ ] Update tests to import via public API only.
-  - [ ] Add `tests/test_speed_parity.py` verifying numerical equivalence between backends.
-  - [ ] Add `scripts/bench.py` (Rich table) — compare pure vs fast_mypyc vs numba vs GPU.
-
-- [ ] **Phase 7 — Docs & communication**
-
-  - [ ] Update `README.md`, `docs/performance.md` and in-code docstrings with new architecture diagram.
-  - [ ] Draft `CHANGELOG.md` entry under `## [Unreleased]` summarising refactor.
-
-- [ ] **Phase 8 — Release checklist**
-  - [ ] Bump version to `3.4.0` (minor, backward-compatible API).
-  - [ ] Build sdist + wheels (`hatch build`); verify mypyc wheels present.
-  - [ ] Publish to TestPyPI, smoke-test, then to PyPI.
-
----
-
-### Detailed HOW for key items
-
-1. **Moving Numba modules**  
-   ```bash
-   # Move numba_utils.py to fast_numba/utils.py
-   git mv src/imgcolorshine/numba_utils.py src/imgcolorshine/fast_numba/utils.py
-   
-   # Remove deprecated shims
-   git rm src/imgcolorshine/trans_numba.py
-   git rm src/imgcolorshine/falloff.py
-   ```
-
-2. **Extracting functions to fast_mypyc**  
-   For each function to extract:
-   ```python
-   # In fast_mypyc/engine_helpers.py
-   """Pure Python engine helper functions for mypyc compilation."""
-   # this_file: src/imgcolorshine/fast_mypyc/engine_helpers.py
-   
-   def blend_pixel_colors(pixel_colors, weights):
-       """Blend multiple color values with weights."""
-       # Move implementation here
-   ```
-   
-   Then in original module:
-   ```python
-   # In engine.py
-   from .fast_mypyc.engine_helpers import blend_pixel_colors
-   ```
-
-3. **Update imports for moved Numba code**  
-   ```python
-   # In engine.py
-   # Old: from .numba_utils import compute_color_distances_batch
-   # New:
-   from .fast_numba.utils import compute_color_distances_batch
-   ```
-
-4. **Guarded optional imports with fallbacks**  
-   ```python
-   # In public modules
-   try:
-       from .fast_mypyc.engine_helpers import blend_pixel_colors as _blend_fast
-   except ImportError:
-       from .engine_pure import blend_pixel_colors as _blend_fast
-       logger.warning("mypyc speedups not available, using pure Python")
-   
-   blend_pixel_colors = _blend_fast
-   ```
-
-5. **Update pyproject.toml for mypyc**  
-   ```toml
-   [tool.mypyc]
-   packages = ["imgcolorshine.fast_mypyc"]
-   exclude = ["imgcolorshine/fast_mypyc/__pycache__"]
-   opt_level = "3"
-   ```
-
-6. **Other speed improvements**
-   - Create SIMD-optimized versions using numpy's vectorization
-   - Profile and optimize memory allocation patterns
-   - Consider caching frequently computed values (color distances)
-   - Implement parallel tile processing for large images
-
----
-
-### Acceptance criteria
-
-- [ ] All unit tests pass (`python -m pytest`) both with and without optional speedups.
-- [ ] Benchmark shows ≥1.5 × speed gain in default configuration.
-- [ ] No public import path breaks (CI fails otherwise).
-
----
-
-## Implementation Order (Task 2)
-
-### Immediate Actions (Phase 1: Numba Consolidation)
-1. - [x] Move `numba_utils.py` → `fast_numba/utils.py`
-2. - [x] Extract `_transform_pixels_numba` from `engine.py` → `fast_numba/engine_kernels.py`
-3. - [x] Remove deprecated shims (`trans_numba.py`, `falloff.py` in root)
-4. - [x] Update all imports in affected modules
-5. - [ ] Verify tests still pass (NOTE: Many existing test failures unrelated to refactoring)
-
-### Next Actions (Phase 2: Mypyc Setup)
-1. - [x] Create `fast_mypyc/engine_helpers.py` and extract 3 functions from `engine.py`
-2. - [x] Create `fast_mypyc/gamut_helpers.py` and extract 4 functions from `gamut.py`
-3. - [x] Create `fast_mypyc/colorshine_helpers.py` and extract 2 functions from `colorshine.py`
-4. - [ ] Update imports with try/except fallback patterns
-5. - [x] Configure pyproject.toml for mypyc compilation (already configured)
-
-### Final Actions (Phase 3: Testing & Polish)
-1. - [ ] Run full test suite with and without speedups
-2. - [ ] Create performance benchmark script
-3. - [ ] Update documentation
-4. - [ ] Update CHANGELOG.md
-
+This plan provides a comprehensive roadmap for transforming imgcolorshine into a production-ready, widely-adopted tool while maintaining its core strength of high-performance, perceptually-uniform color transformations.

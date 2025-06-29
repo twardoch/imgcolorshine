@@ -5,7 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2025-06-16
+## [Unreleased] - 2025-06-29
+
+### Added
+- **Comprehensive README Rewrite**
+  - Restructured README.md for improved clarity and detail (#6)
+  - Added clear feature highlights and key capabilities section
+  - Enhanced installation instructions with optional dependencies
+  - Expanded usage guide with detailed attractor format explanation
+  - Added comprehensive examples and command options table
+  - Improved explanation of the attraction model and transformation process
+  - Added development setup instructions and contribution guidelines
+
+### Changed
+- **Phase 1 Refactoring Completed** (#5)
+  - Successfully consolidated core logic into fast_mypyc/engine.py and fast_numba/ modules
+  - Pruned dead code and removed redundant implementations
+  - Added comprehensive type hints throughout the codebase
+  - Documented the percentile algorithm for better understanding
+  - Improved code organization and modularity
+  
+### Fixed
+- **Build System Improvements**
+  - Updated pyproject.toml configuration for better dependency management
+  - Working on resolving remaining Mypyc compilation issues
+  - Improved build hooks and optional dependency groups
+
+### In Progress
+- **Mypyc Build Error Resolution**
+  - Addressing compilation errors in the mypyc build process
+  - Improving compatibility with the three-tier architecture
+  - Working on fallback mechanisms for pure Python execution
+
+## [3.3.4] - 2025-06-16
 
 ### Added
 - **Comprehensive Test Suite for Engine**
