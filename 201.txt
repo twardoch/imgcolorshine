@@ -1,0 +1,1 @@
+In @imgcolorshine-rs develop an ultrafast Rust port on this tool. First develop a detailed plan, search the web for suitable Rust creates, and then /work and test and /work and test until you have a fully functional solution
