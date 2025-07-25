@@ -1,304 +1,292 @@
-# PLAN - imgcolorshine Improvement Roadmap
+# imgcolorshine-rs: Rust Port Development Plan
 
-## Executive Summary
+## Project Overview
 
-imgcolorshine has successfully completed Phase 1 of its architecture refactor, establishing a solid three-tier structure with Numba and Mypyc optimizations. The next phase focuses on resolving build issues, improving stability, enhancing usability, and preparing for broader deployment.
+Develop an ultrafast Rust port of the `imgcolorshine` Python tool, leveraging Rust's zero-cost abstractions, memory safety, and performance characteristics to create a significantly faster implementation of the physics-inspired color transformation engine.
 
-## Current State Analysis (as of 2025-06-29)
+## Technical Architecture Goals
 
-### Achievements
-- ✅ Three-tier architecture implemented (Pure Python → Numba → Mypyc)
-- ✅ Core functionality consolidated and optimized
-- ✅ Test coverage improved from 41% to 50%
-- ✅ Comprehensive README documentation
-- ✅ Performance optimizations (GPU, LUT, fused kernels)
+### Core Performance Targets
+- **10-100x faster** than Python implementation for typical workloads
+- **Memory efficiency**: Zero-copy operations where possible
+- **Parallelism**: Multi-threaded processing using Rayon
+- **SIMD acceleration**: Vectorized color operations
+- **GPU support**: Optional WGPU-based GPU acceleration
+- **Cross-platform**: Windows, macOS, Linux support
 
-### Outstanding Issues
-- ❌ Mypyc build errors preventing wheel compilation
-- ❌ Test failures in some edge cases
-- ❌ Limited platform testing (mainly macOS)
-- ❌ No Docker/containerization support
-- ❌ Missing API documentation
-- ❌ No CI/CD pipeline for automated testing
+### Design Principles
+- **Safety first**: Leverage Rust's memory safety guarantees
+- **Zero-cost abstractions**: High-level APIs with C-like performance
+- **Modular architecture**: Clear separation of concerns
+- **Backward compatibility**: Match Python CLI interface exactly
+- **Professional quality**: Comprehensive testing and benchmarking
 
-## Phase 2: Stability & Build System (Immediate Priority)
+## Phase 1: Foundation & Core Color Engine (Priority: High)
 
-### Goal
-Resolve all build issues and establish a robust testing infrastructure.
+### 1.1 Project Setup and Dependencies
+- [ ] Initialize Cargo project with workspace configuration
+- [ ] Configure development dependencies (criterion, flamegraph)
+- [ ] Set up CI/CD pipeline (GitHub Actions)
+- [ ] Establish benchmarking infrastructure
+- [ ] Configure cross-compilation targets
 
-### 2.1 Fix Mypyc Compilation Errors
-**Problem**: Mypyc compilation fails during wheel building, preventing performance benefits.
+**Key Crates:**
+```toml
+[dependencies]
+# Core image processing
+image = "0.25"
+imageproc = "0.25"
 
-**Root Causes**:
-1. Import cycles between modules
-2. Type annotation issues with numpy arrays
-3. Missing type stubs for dependencies
+# Color space operations (CRITICAL - OKLCH support)
+palette = { version = "0.7", features = ["std", "serde"] }
 
-**Solution Steps**:
-1. **Analyze import dependencies**
-   - Create import dependency graph
-   - Identify and break circular imports
-   - Move shared types to dedicated module
+# Performance
+rayon = "1.8"          # Parallelism
+wide = "0.7"           # SIMD operations
+ndarray = "0.15"       # Numerical arrays
 
-2. **Fix type annotations**
-   - Use `numpy.typing.NDArray` consistently
-   - Add proper type stubs for coloraide
-   - Ensure all mypyc modules have complete annotations
+# CLI
+clap = { version = "4.5", features = ["derive"] }
 
-3. **Implement fallback mechanism**
-   - Create pure Python versions of mypyc modules
-   - Use try/except imports with graceful degradation
-   - Add environment variable to disable mypyc
+# Error handling
+anyhow = "1.0"         # Application errors
+thiserror = "1.0"      # Library errors
 
-### 2.2 Comprehensive Testing Infrastructure
-**Goal**: Achieve 80%+ test coverage with CI/CD automation.
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+```
 
-1. **Expand test suite**
-   - Add property-based testing with Hypothesis
-   - Create performance regression tests
-   - Add integration tests for CLI
-   - Test all optimization paths (CPU/GPU/LUT)
+### 1.2 Color Space Engine Implementation
+- [ ] **OKLCH/Oklab color space conversions** (matches Python `trans_numba.py`)
+  - [ ] sRGB ↔ Linear RGB conversions with gamma correction
+  - [ ] Linear RGB ↔ CIE XYZ transformations
+  - [ ] CIE XYZ ↔ Oklab conversions (perceptually uniform)
+  - [ ] Oklab ↔ OKLCH cylindrical coordinate transformations
+- [ ] **Universal color parsing** using `palette` crate
+  - [ ] CSS color format support (hex, rgb, hsl, oklch, named colors)
+  - [ ] Color validation and error handling
+- [ ] **Gamut mapping implementation** (CSS Color Module 4 compliant)
+  - [ ] sRGB gamut boundary detection
+  - [ ] Chroma reduction while preserving lightness and hue
+  - [ ] Professional color reproduction
 
-2. **Platform testing matrix**
-   - Windows, macOS, Linux
-   - Python 3.9, 3.10, 3.11, 3.12
-   - With/without optional dependencies
-   - Different hardware configs (CPU-only, CUDA, Apple Silicon)
+### 1.3 Core Transformation Algorithms
+- [ ] **Distance calculation engine** (Oklab ΔE calculations)
+  - [ ] Vectorized Euclidean distance in Oklab space
+  - [ ] SIMD-optimized distance computations using `wide`
+- [ ] **Percentile-based tolerance system** (matches Python algorithm)
+  - [ ] Efficient percentile calculation for large datasets
+  - [ ] Adaptive tolerance radius computation
+- [ ] **Falloff function implementation**
+  - [ ] Raised cosine falloff curve
+  - [ ] Extended strength mode (101-200 range) for duotone effects
+- [ ] **Multi-attractor blending system**
+  - [ ] Weighted average blending in OKLCH space
+  - [ ] Circular mean for hue angle blending
+  - [ ] Channel-specific transformation controls
 
-3. **CI/CD Pipeline (GitHub Actions)**
-   ```yaml
-   - Test matrix across platforms/Python versions
-   - Build wheels for all platforms
-   - Run performance benchmarks
-   - Generate coverage reports
-   - Auto-publish to PyPI on tags
-   ```
+## Phase 2: High-Performance Image Processing Pipeline (Priority: High)
 
-## Phase 3: Performance & Optimization (Short-term)
+### 2.1 Image I/O and Memory Management
+- [ ] **Efficient image loading** using `image` crate
+  - [ ] Support for JPEG, PNG, WebP, TIFF formats
+  - [ ] Memory-mapped file I/O for large images
+  - [ ] Automatic format detection and validation
+- [ ] **Tile-based processing** for memory efficiency
+  - [ ] Configurable tile sizes for large image handling
+  - [ ] Zero-copy tile extraction where possible
+  - [ ] Streaming processing for memory-constrained environments
 
-### 3.1 Memory Optimization
-**Goal**: Reduce memory footprint for large images.
+### 2.2 Parallel Processing Architecture
+- [ ] **Thread-level parallelism** using Rayon
+  - [ ] Parallel tile processing with work-stealing scheduler
+  - [ ] Load-balanced pixel-level operations
+  - [ ] Configurable thread pool management
+- [ ] **SIMD vectorization** for pixel operations
+  - [ ] Vectorized color space conversions
+  - [ ] SIMD-optimized distance calculations
+  - [ ] Parallel channel transformations
 
-1. **Streaming processing**
-   - Implement true streaming for tile processing
-   - Reduce memory copies in transformation pipeline
-   - Use memory-mapped files for very large images
+### 2.3 Core Two-Pass Algorithm Implementation
+- [ ] **Pass 1: Distance analysis and tolerance calculation**
+  - [ ] Parallel computation of per-pixel distances to all attractors
+  - [ ] Efficient percentile calculation using order statistics
+  - [ ] Dynamic radius computation per attractor
+- [ ] **Pass 2: Color transformation with strength application**
+  - [ ] Vectorized falloff calculations
+  - [ ] Multi-attractor influence blending
+  - [ ] Channel-specific transformation application
+  - [ ] Professional gamut mapping integration
 
-2. **Smart caching**
-   - LRU cache for color conversions
-   - Reuse allocated arrays
-   - Profile and optimize memory hotspots
+## Phase 3: Advanced Performance Optimizations (Priority: Medium)
 
-### 3.2 Advanced Acceleration
-1. **SIMD optimizations**
-   - Use AVX2/NEON for vectorized operations
-   - Implement hand-optimized kernels for common cases
-   
-2. **Multi-threading improvements**
-   - Better work distribution for tiles
-   - Parallel attractor processing
-   - Thread pool management
+### 3.1 GPU Acceleration (Optional but High-Impact)
+- [ ] **WGPU compute shader implementation**
+  - [ ] Port core algorithms to WGSL compute shaders
+  - [ ] GPU memory management and buffer optimization
+  - [ ] Fallback to CPU when GPU unavailable
+- [ ] **Memory transfer optimization**
+  - [ ] Minimize CPU↔GPU data transfers
+  - [ ] Async GPU computation with CPU overlap
+  - [ ] GPU memory pool management
 
-3. **WebAssembly target**
-   - Compile core engine to WASM
-   - Enable browser-based usage
-   - Create web demo
+### 3.2 Lookup Table (LUT) Acceleration
+- [ ] **3D LUT generation and caching**
+  - [ ] Configurable LUT resolution (32³, 64³, 128³)
+  - [ ] Trilinear interpolation for LUT queries
+  - [ ] LUT serialization and disk caching
+- [ ] **LUT-based fast path**
+  - [ ] Direct color lookup for repeated transformations
+  - [ ] Automatic LUT invalidation on parameter changes
 
-## Phase 4: Usability & Developer Experience (Medium-term)
+### 3.3 Advanced Optimization Techniques
+- [ ] **Spatial acceleration structures**
+  - [ ] K-d trees for nearest neighbor queries
+  - [ ] Spatial hashing for locality optimization
+- [ ] **Hierarchical processing**
+  - [ ] Multi-resolution pyramid processing
+  - [ ] Progressive refinement for interactive workflows
+- [ ] **Branch prediction optimization**
+  - [ ] Profile-guided optimization (PGO)
+  - [ ] Hot path identification and optimization
 
-### 4.1 Enhanced CLI
-1. **Better user feedback**
-   - Progress bars with Rich
-   - Colorful output and formatting
-   - Interactive mode for parameter tuning
-   
-2. **Batch processing**
-   - Process entire directories
-   - Configuration files for repeated operations
-   - Parallel batch processing
+## Phase 4: CLI Interface and User Experience (Priority: Medium)
 
-3. **Presets and profiles**
-   - Built-in color transformation presets
-   - User-definable profiles
-   - Export/import settings
+### 4.1 Command-Line Interface
+- [ ] **Exact Python CLI compatibility** using `clap` derive API
+  - [ ] Matching argument names and behavior
+  - [ ] Identical output file naming conventions
+  - [ ] Progress reporting and verbose logging
+- [ ] **Enhanced CLI features**
+  - [ ] Shell completion generation
+  - [ ] Configuration file support
+  - [ ] Batch processing capabilities
+  - [ ] Interactive parameter tuning mode
 
-### 4.2 API Improvements
-1. **Simplified high-level API**
-   ```python
-   from imgcolorshine import ColorShine
-   
-   cs = ColorShine()
-   cs.add_attractor("sunset", "#ff6b35", tolerance=50, strength=70)
-   result = cs.transform("photo.jpg")
-   ```
+### 4.2 Error Handling and Validation
+- [ ] **Comprehensive input validation**
+  - [ ] Image format validation
+  - [ ] Color syntax validation
+  - [ ] Parameter range checking
+- [ ] **User-friendly error messages**
+  - [ ] Contextual error information
+  - [ ] Suggestions for common mistakes
+  - [ ] Graceful degradation on errors
 
-2. **Plugin architecture**
-   - Custom falloff functions
-   - Additional color spaces
-   - Post-processing filters
+### 4.3 Logging and Diagnostics
+- [ ] **Structured logging** with multiple verbosity levels
+- [ ] **Performance metrics reporting**
+  - [ ] Processing time breakdown
+  - [ ] Memory usage statistics
+  - [ ] GPU utilization metrics (if applicable)
+- [ ] **Debug output modes**
+  - [ ] Intermediate result visualization
+  - [ ] Algorithm step-by-step tracing
 
-### 4.3 Documentation & Examples
-1. **API documentation**
-   - Generate with Sphinx
-   - Interactive examples
-   - Architecture diagrams
+## Phase 5: Testing, Validation, and Benchmarking (Priority: High)
 
-2. **Tutorial series**
-   - "Getting Started" guide
-   - Advanced techniques
-   - Performance tuning guide
+### 5.1 Correctness Testing
+- [ ] **Unit tests for all core algorithms**
+  - [ ] Color space conversion accuracy tests (ΔE < 0.01)
+  - [ ] Percentile calculation validation
+  - [ ] Falloff curve mathematical correctness
+  - [ ] Multi-attractor blending verification
+- [ ] **Integration tests**
+  - [ ] End-to-end image transformation tests
+  - [ ] CLI interface behavior testing
+  - [ ] Cross-platform compatibility testing
+- [ ] **Python parity testing**
+  - [ ] Pixel-perfect output comparison with Python version
+  - [ ] Edge case behavior matching
+  - [ ] Performance regression detection
 
-3. **Example gallery**
-   - Before/after comparisons
-   - Common use cases
-   - Artistic effects
+### 5.2 Performance Benchmarking
+- [ ] **Comprehensive benchmark suite** using Criterion
+  - [ ] Single vs multi-threaded performance
+  - [ ] GPU vs CPU acceleration comparison
+  - [ ] Memory usage profiling
+  - [ ] Cache performance analysis
+- [ ] **Real-world performance testing**
+  - [ ] Large image processing (8K, 16K resolutions)
+  - [ ] Batch processing scenarios
+  - [ ] Memory-constrained environments
+- [ ] **Performance regression monitoring**
+  - [ ] Automated benchmark CI integration
+  - [ ] Performance trending and alerting
 
-## Phase 5: Deployment & Distribution (Long-term)
+### 5.3 Quality Assurance
+- [ ] **Property-based testing** using QuickCheck
+  - [ ] Invariant testing for color transformations
+  - [ ] Fuzz testing for edge cases
+- [ ] **Visual quality assessment**
+  - [ ] Side-by-side comparison tools
+  - [ ] Perceptual difference metrics (CIEDE2000)
+  - [ ] User acceptance testing
 
-### 5.1 Packaging & Distribution
-1. **Docker support**
-   ```dockerfile
-   # Multi-stage build with all optimizations
-   FROM python:3.11-slim as builder
-   # Install with GPU support
-   FROM nvidia/cuda:11.8-runtime-ubuntu22.04
-   ```
+## Phase 6: Documentation and Distribution (Priority: Medium)
 
-2. **Platform packages**
-   - Homebrew formula for macOS
-   - APT/YUM packages for Linux
-   - Windows installer with GUI
+### 6.1 Documentation
+- [ ] **Comprehensive API documentation** using rustdoc
+- [ ] **User guide and tutorials**
+  - [ ] Migration guide from Python version  
+  - [ ] Performance tuning recommendations
+  - [ ] Advanced usage examples
+- [ ] **Developer documentation**
+  - [ ] Architecture overview
+  - [ ] Contribution guidelines
+  - [ ] Performance optimization guide
 
-3. **Cloud deployment**
-   - AWS Lambda function
-   - Google Cloud Run service
-   - Containerized microservice
+### 6.2 Package Distribution
+- [ ] **Crates.io publication**
+  - [ ] Semantic versioning strategy
+  - [ ] Feature flag organization
+  - [ ] Optional dependency management
+- [ ] **Binary distribution**
+  - [ ] GitHub Releases with pre-built binaries
+  - [ ] Cross-platform binary optimization
+  - [ ] Package manager integration (Homebrew, Chocolatey, etc.)
 
-### 5.2 Integration Ecosystem
-1. **Plugin support for popular tools**
-   - GIMP plugin
-   - Photoshop extension
-   - ImageMagick integration
+### 6.3 Integration and Ecosystem
+- [ ] **Library API design** for embedding in other applications
+- [ ] **FFI bindings** for Python/Node.js integration
+- [ ] **WebAssembly compilation** for browser usage
+- [ ] **Docker containerization** for cloud deployments
 
-2. **Language bindings**
-   - JavaScript/TypeScript via WASM
-   - Rust bindings
-   - Go bindings
+## Performance Expectations and Validation
 
-### 5.3 GUI Application
-1. **Desktop application**
-   - PyQt6/PySide6 interface
-   - Real-time preview
-   - Batch processing UI
-   
-2. **Web application**
-   - FastAPI backend
-   - React frontend
-   - WebGL acceleration
+### Target Performance Metrics
+- **Single-threaded**: 5-10x faster than Python implementation
+- **Multi-threaded**: 20-50x faster using all CPU cores  
+- **GPU-accelerated**: 100-500x faster for large images
+- **Memory usage**: 50% less than Python equivalent
+- **Binary size**: <50MB statically linked executable
 
-## Phase 6: Advanced Features (Future)
+### Validation Criteria
+- **Correctness**: Pixel-perfect output matching Python version
+- **Performance**: Meet or exceed target speedup metrics
+- **Stability**: Zero crashes in 1000+ hour stress testing
+- **Compatibility**: Work identically across all target platforms
+- **Usability**: Drop-in replacement for Python version
 
-### 6.1 AI Integration
-1. **Smart attractors**
-   - ML-based color palette extraction
-   - Automatic attractor suggestions
-   - Style transfer integration
+## Risk Assessment and Mitigation
 
-2. **Semantic color transformation**
-   - "Make it look vintage"
-   - "Enhance sunset colors"
-   - Natural language processing
+### Technical Risks
+- **Color space conversion accuracy**: Mitigate with extensive mathematical validation
+- **Multi-threading correctness**: Mitigate with comprehensive concurrent testing
+- **GPU driver compatibility**: Mitigate with robust fallback mechanisms
+- **Performance regression**: Mitigate with continuous benchmarking
 
-### 6.2 Video Support
-1. **Frame processing**
-   - Temporal consistency
-   - Keyframe interpolation
-   - Real-time preview
-
-2. **Streaming video**
-   - FFmpeg integration
-   - Hardware encoding
-   - Live video filters
-
-### 6.3 Professional Features
-1. **Color management**
-   - ICC profile support
-   - Wide gamut handling
-   - Print preparation
-
-2. **RAW image support**
-   - Direct RAW processing
-   - 16-bit precision
-   - HDR tone mapping
-
-## Implementation Priority Matrix
-
-| Priority | Effort | Impact | Phase | Timeline |
-|----------|--------|---------|-------|----------|
-| HIGH | LOW | HIGH | 2.1 Fix Mypyc | 1 week |
-| HIGH | MEDIUM | HIGH | 2.2 Testing | 2 weeks |
-| MEDIUM | LOW | MEDIUM | 4.1 CLI Enhancement | 1 week |
-| MEDIUM | HIGH | HIGH | 3.1 Memory Optimization | 3 weeks |
-| LOW | HIGH | MEDIUM | 5.3 GUI Application | 6 weeks |
-| LOW | VERY HIGH | HIGH | 6.2 Video Support | 8 weeks |
+### Resource Risks  
+- **Development time underestimation**: Mitigate with iterative delivery and MVP approach
+- **Complexity management**: Mitigate with modular architecture and clear interfaces
+- **Testing coverage**: Mitigate with automated test generation and coverage tracking
 
 ## Success Metrics
 
-1. **Technical Metrics**
-   - 0 build failures across all platforms
-   - 80%+ test coverage
-   - <10ms processing for 1080p images
-   - <100MB memory for 4K images
+1. **Performance**: Achieve 10-100x speedup over Python implementation
+2. **Compatibility**: 100% CLI interface compatibility with Python version
+3. **Quality**: Zero correctness regressions compared to Python version
+4. **Adoption**: Positive community feedback and adoption metrics
+5. **Maintainability**: Clean, well-documented codebase suitable for long-term maintenance
 
-2. **User Metrics**
-   - 10K+ PyPI downloads/month
-   - <5 min to first successful transformation
-   - 90%+ user satisfaction in surveys
-
-3. **Developer Metrics**
-   - <30 min to set up dev environment
-   - <1 day to add new feature
-   - Active contributor community
-
-## Risk Mitigation
-
-1. **Technical Risks**
-   - Mypyc incompatibility → Pure Python fallback
-   - GPU driver issues → Robust CPU path
-   - Memory constraints → Streaming architecture
-
-2. **Adoption Risks**
-   - Complex API → Simple wrapper functions
-   - Performance concerns → Comprehensive benchmarks
-   - Platform limitations → Docker containers
-
-3. **Maintenance Risks**
-   - Dependency updates → Pin versions, test matrix
-   - Code complexity → Modular architecture
-   - Bus factor → Documentation, multiple maintainers
-
-## Next Steps (Immediate Actions)
-
-1. **Week 1**: Fix Mypyc build errors
-   - Debug import cycles
-   - Fix type annotations
-   - Implement fallback mechanism
-
-2. **Week 2**: Establish CI/CD
-   - Set up GitHub Actions
-   - Create test matrix
-   - Automate wheel building
-
-3. **Week 3**: Improve test coverage
-   - Add missing unit tests
-   - Create integration tests
-   - Set up coverage reporting
-
-4. **Week 4**: Documentation sprint
-   - Generate API docs
-   - Write tutorials
-   - Create example gallery
-
----
-
-This plan provides a comprehensive roadmap for transforming imgcolorshine into a production-ready, widely-adopted tool while maintaining its core strength of high-performance, perceptually-uniform color transformations.
+This plan provides a comprehensive roadmap for developing a high-performance Rust port of imgcolorshine that maintains full compatibility while delivering significant performance improvements through Rust's systems programming capabilities.
