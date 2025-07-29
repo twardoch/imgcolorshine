@@ -3,7 +3,7 @@
 //! This module provides the CLI interface that matches the Python version's
 //! command-line arguments and behavior.
 
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use std::path::PathBuf;
 use crate::error::{Result, ColorShineError};
 

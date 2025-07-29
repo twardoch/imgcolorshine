@@ -7,8 +7,7 @@ use std::collections::HashMap;
 use crate::error::{Result, ColorShineError};
 use crate::color::attractor::Attractor;
 use crate::color::conversions::{
-    batch_srgb_to_oklch, batch_oklch_to_srgb, batch_distance_to_attractor,
-    srgb_to_oklch, oklch_to_srgb, oklch_to_oklab
+    batch_srgb_to_oklch, batch_oklch_to_srgb, batch_distance_to_attractor, oklch_to_oklab
 };
 use crate::utils::{percentile, circular_mean_degrees};
 
@@ -53,6 +52,7 @@ pub struct ColorEngine {
     /// Collection of attractors to apply
     attractors: Vec<Attractor>,
     /// Cached color conversion data
+    #[allow(dead_code)]
     conversion_cache: HashMap<String, (f32, f32, f32)>,
 }
 
@@ -105,7 +105,7 @@ impl ColorEngine {
             return Ok(rgb_data.to_vec()); // No attractors, return unchanged
         }
         
-        let pixel_count = rgb_data.len() / 3;
+        let _pixel_count = rgb_data.len() / 3;
         
         // Convert RGB to OKLCH and Oklab for processing
         let mut oklch_data = vec![0.0; rgb_data.len()];

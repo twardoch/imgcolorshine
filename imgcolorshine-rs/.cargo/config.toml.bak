@@ -1,0 +1,13 @@
+# this_file: .cargo/config.toml
+# Override global rustflags that interfere with building
+[build]
+rustflags = ["--cap-lints=allow"]
+
+[target.'cfg(all())']
+rustflags = ["--cap-lints=allow"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["--cap-lints=allow"]
+
+[target.aarch64-apple-darwin]
+rustflags = ["--cap-lints=allow"]

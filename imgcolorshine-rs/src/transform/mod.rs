@@ -81,8 +81,7 @@ impl Default for ColorTransformer {
     }
 }
 
-// Re-export important types
-pub use TransformSettings;
+// Re-export important types (already imported above)
 
 #[cfg(test)]
 mod tests {

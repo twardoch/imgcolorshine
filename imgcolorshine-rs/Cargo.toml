@@ -18,8 +18,8 @@ path = "src/main.rs"
 
 [dependencies]
 # Core image processing
-image = "0.25"
-imageproc = { version = "0.25", optional = true }
+image = { version = "0.24.7", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "ico", "tiff", "tga", "pnm", "dds", "farbfeld"] }
+imageproc = { version = "0.24", optional = true }
 
 # Color space operations (CRITICAL - OKLCH support)
 palette = { version = "0.7", features = ["std", "serde"] }
@@ -78,7 +78,7 @@ inherits = "release"
 debug = true
 strip = false
 
-
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
+

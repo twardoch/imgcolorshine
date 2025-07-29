@@ -1,0 +1,23 @@
+   Compiling num-bigint v0.4.6
+   Compiling equator v0.4.2
+   Compiling profiling v1.0.17
+   Compiling thiserror v1.0.69
+   Compiling rand_chacha v0.3.1
+   Compiling jpeg-decoder v0.3.2
+   Compiling image-webp v0.2.3
+   Compiling png v0.17.16
+   Compiling zune-jpeg v0.4.19
+   Compiling gif v0.13.3
+   Compiling owned_ttf_parser v0.25.1
+   Compiling phf_macros v0.11.3
+   Compiling serde v1.0.219
+   Compiling simba v0.8.1
+   Compiling regex v1.11.1
+   Compiling exr v1.73.0
+error: the `-Z unstable-options` flag must also be passed to enable the flag `check-cfg`
+
+error: could not compile `jpeg-decoder` (lib)
+
+Caused by:
+  process didn't exit successfully: `rustc --crate-name jpeg_decoder --edition=2021 /Users/adam/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/jpeg-decoder-0.3.2/src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type lib --emit=dep-info,metadata,link -C embed-bitcode=no -C debuginfo=2 -C split-debuginfo=unpacked --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values("default", "nightly_aarch64_neon", "platform_independent", "rayon"))' -C metadata=ae48499356245398 -C extra-filename=-1d730a167cf3ab84 --out-dir /Users/adam/Developer/vcs/github.twardoch/pub/imgcolorshine/imgcolorshine-rs/target/debug/deps -L dependency=/Users/adam/Developer/vcs/github.twardoch/pub/imgcolorshine/imgcolorshine-rs/target/debug/deps --cap-lints allow -L crates/vexy-svgcr-lib/build` (exit status: 1)
+warning: build failed, waiting for other jobs to finish...

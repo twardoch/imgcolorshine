@@ -1,0 +1,6 @@
+# this_file: .cargo/config.toml
+# Override global config to fix compilation issues
+
+[build]
+# Clear rustflags from global config
+rustflags = []

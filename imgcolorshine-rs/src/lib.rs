@@ -48,7 +48,8 @@ pub mod utils;
 
 // Re-export main types for convenience
 pub use color::{Attractor, ColorEngine, ColorSpace};
-pub use transform::{ColorTransformer, TransformSettings};
+pub use transform::ColorTransformer;
+pub use color::engine::TransformSettings;
 pub use error::{Result, ColorShineError};
 
 #[cfg(feature = "gpu")]

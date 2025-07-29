@@ -8,7 +8,8 @@ use std::process;
 
 use imgcolorshine_rs::{
     cli::{Args, parse_attractor_string, generate_output_filename, setup_logging, setup_thread_pool},
-    transform::{ColorTransformer, TransformSettings},
+    transform::ColorTransformer,
+    color::engine::TransformSettings,
     io::process_image_file,
     error::Result,
 };

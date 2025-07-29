@@ -3,8 +3,7 @@
 //! This module defines the `Attractor` type that represents a target color
 //! that can influence surrounding colors in the image.
 
-use palette::Oklch;
-use crate::error::{Result, ColorShineError};
+use crate::error::Result;
 use crate::utils::{validate_tolerance, validate_strength};
 use crate::color::conversions::{parse_css_color_to_oklch, oklch_to_oklab};
 

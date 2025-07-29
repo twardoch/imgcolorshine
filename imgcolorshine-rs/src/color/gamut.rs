@@ -4,7 +4,6 @@
 //! colors remain within the displayable sRGB color space.
 
 use palette::{Srgb, Oklch, IntoColor};
-use crate::error::Result;
 
 /// Gamut mapper for ensuring colors stay within displayable ranges
 /// 

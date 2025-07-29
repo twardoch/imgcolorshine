@@ -3,8 +3,7 @@
 //! This module implements the color space conversions matching the Python implementation
 //! in `trans_numba.py`. All conversions maintain high precision for color accuracy.
 
-use palette::{Oklab, Oklch, Srgb, FromColor, IntoColor};
-use crate::utils::{srgb_to_linear, linear_to_srgb};
+use palette::{Oklab, Oklch, Srgb, IntoColor};
 
 /// Convert sRGB to OKLCH color space
 /// 
