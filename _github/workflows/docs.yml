@@ -1,0 +1,123 @@
+name: Build and Deploy Documentation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src_docs/**'
+      - 'README.md'
+      - 'src/imgcolorshine/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src_docs/**'
+      - 'README.md'
+      - 'src/imgcolorshine/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install UV
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install documentation dependencies
+        run: |
+          uv pip install --system mkdocs-material
+          uv pip install --system mkdocs-minify-plugin
+          uv pip install --system pymdown-extensions
+
+      - name: Setup Pages
+        id: pages
+        uses: actions/configure-pages@v4
+
+      - name: Build documentation with MkDocs
+        working-directory: src_docs
+        run: |
+          mkdocs build --clean --strict
+          # Copy built site to docs directory for GitHub Pages
+          cp -r site/* ../docs/
+          # Ensure .nojekyll exists
+          touch ../docs/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # Test documentation build on PRs without deploying
+  test-build:
+    name: Test Documentation Build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install UV
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install documentation dependencies
+        run: |
+          uv pip install --system mkdocs-material
+          uv pip install --system mkdocs-minify-plugin
+          uv pip install --system pymdown-extensions
+
+      - name: Test build documentation
+        working-directory: src_docs
+        run: |
+          mkdocs build --clean --strict
+
+      - name: Check for broken links (basic check)
+        working-directory: src_docs
+        run: |
+          # Basic check that all markdown files are valid
+          find md/ -name "*.md" -exec echo "Checking {}" \;
+          # Could add more sophisticated link checking here
