@@ -9,4 +9,4 @@ to the original Python implementation if not compiled.
 # ruff: noqa
 # this_file: src/imgcolorshine/fast_mypyc/utils.py
 
-from imgcolorshine.utils import *  # type: ignore[import]
+from imgcolorshine.utils import *

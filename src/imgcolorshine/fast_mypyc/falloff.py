@@ -18,15 +18,12 @@ from enum import Enum
 import numpy as np
 
 # Import Numba-jitted versions
-from ..fast_numba.falloff_numba import (
+from imgcolorshine.fast_numba.falloff_numba import (
     falloff_cosine,
+    falloff_cubic,
+    falloff_gaussian,
     falloff_linear,
     falloff_quadratic,
-    falloff_gaussian,
-    falloff_cubic,
-    # calculate_falloff is also Numba-jitted but might be kept here if it dispatches
-    # or if a pure Python version is desired as fallback (currently it's fully Numba)
-    # apply_falloff_lut is also Numba-jitted
 )
 
 
@@ -98,6 +95,7 @@ def precompute_falloff_lut(falloff_type: FalloffType = FalloffType.COSINE, resol
         d_norm = i / (resolution - 1)
         lut[i] = falloff_func(d_norm)
     return lut
+
 
 # Note: calculate_falloff and apply_falloff_lut were Numba-jitted and moved to
 # falloff_numba.py. If pure Python versions are needed for some reason,

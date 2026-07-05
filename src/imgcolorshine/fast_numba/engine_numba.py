@@ -9,11 +9,12 @@
 import numba
 import numpy as np
 
-from . import trans_numba # For oklab_to_oklch_single
+from imgcolorshine.fast_numba import trans_numba  # For oklab_to_oklch_single
 
 # Constants (mirrored from engine.py for standalone use if necessary)
 STRENGTH_TRADITIONAL_MAX = 100.0
 FULL_CIRCLE_DEGREES = 360.0
+
 
 @numba.njit(parallel=True, cache=True)
 def _fused_transform_kernel(

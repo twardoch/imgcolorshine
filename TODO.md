@@ -1,3 +1,15 @@
+# TODO - imgcolorshine
+
+## Python package — follow-up modernization
+
+- [ ] Raise test coverage from ~52% to ≥80% (numba kernels, `colorshine`, `gamut_helpers`, `lut` are the biggest gaps).
+- [ ] Rename `fast_mypyc/` to a name that reflects its now-pure-Python nature (e.g. `core/`), keeping `fast_mypyc` as a deprecated re-export shim for one release.
+- [ ] Trim `README.md` (~410 lines) toward ~150, moving the technical deep-dive into `src_docs/`.
+- [ ] Decide the fate of the embedded `imgcolorshine-rs/` Rust port: split into its own repo or document it as an experimental in-tree sub-project.
+- [ ] Add a before/after visual comparison to the docs (the PLAN calls for example imagery).
+
+---
+
 # TODO - imgcolorshine-rs Development Tasks
 
 ## Phase 1: Foundation & Core Color Engine (Priority: High)

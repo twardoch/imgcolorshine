@@ -10,7 +10,7 @@ from __future__ import annotations
 import numba
 import numpy as np
 
-from . import trans_numba
+from imgcolorshine.fast_numba import trans_numba
 
 # Constants
 STRENGTH_TRADITIONAL_MAX = 100.0

@@ -6,13 +6,18 @@
 
 """imgcolorshine: Perceptual color transformations."""
 
-__version__ = "0.1.0"
+from importlib.metadata import PackageNotFoundError, version
 
-from .fast_mypyc.cli import ImgColorShineCLI
-from .fast_mypyc.colorshine import process_image
-from .fast_mypyc.engine import Attractor, ColorTransformer, OKLCHEngine
-from .fast_mypyc.io import ImageProcessor
-from .lut import LUTManager
+try:
+    __version__: str = version("imgcolorshine")
+except PackageNotFoundError:
+    __version__ = "0.0.0"
+
+from imgcolorshine.cli import ImgColorShineCLI
+from imgcolorshine.colorshine import process_image
+from imgcolorshine.engine import Attractor, ColorTransformer, OKLCHEngine
+from imgcolorshine.io import ImageProcessor
+from imgcolorshine.lut import LUTManager
 
 __all__ = [
     "Attractor",

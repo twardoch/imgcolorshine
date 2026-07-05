@@ -24,9 +24,7 @@ def is_in_gamut(color: Color, target_space: str) -> bool:
     return color.in_gamut(target_space)
 
 
-def map_oklab_to_gamut(
-    l: float, a: float, b: float, mapper: "GamutMapper"
-) -> tuple[float, float, float]:
+def map_oklab_to_gamut(l: float, a: float, b: float, mapper: GamutMapper) -> tuple[float, float, float]:
     """
     Map Oklab color to gamut by converting to OKLCH first.
 
@@ -56,9 +54,7 @@ def map_oklab_to_gamut(
     return l_mapped, a_mapped, b_mapped
 
 
-def analyze_gamut_coverage(
-    colors: np.ndarray, mapper: "GamutMapper"
-) -> "GamutStats":
+def analyze_gamut_coverage(colors: np.ndarray, mapper: GamutMapper) -> GamutStats:
     """
     Analyze how many colors are out of gamut.
 

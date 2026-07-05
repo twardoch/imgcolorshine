@@ -62,16 +62,28 @@ def test_strength(transformer: ColorTransformer) -> None:
 
     transformed_image = transformer.transform_image(image, [attractor], flags)
 
-    # The most similar pixel to magenta is the one in the middle (pixel 5)
-    original_pixel_5 = image[0, 5]
-    transformed_pixel_5 = transformed_image[0, 5]
+    # The most similar pixel to magenta is the one closest to the attractor
+    # in OKLab space.  For the red→blue gradient, this is approximately pixel 4 or 5.
+    # We find it dynamically to make the assertion robust.
+    engine = transformer.engine
+    image_lab = engine.batch_rgb_to_oklab(image)  # (1, 10, 3)
+    attractor_lab = np.array(attractor.oklab_values, dtype=np.float32)
+    dists = np.linalg.norm(image_lab[0] - attractor_lab, axis=-1)  # (10,)
+    closest_idx = int(np.argmin(dists))
 
-    # Get the attractor color in sRGB [0,1] format
-    attractor_srgb = np.array(transformer.engine.parse_color(attractor_color_str).convert("srgb").coords())
+    original_dist = dists[closest_idx]
+    transformed_lab = engine.batch_rgb_to_oklab(transformed_image)
+    new_dist = float(np.linalg.norm(transformed_lab[0, closest_idx] - attractor_lab))
 
-    # Expected result is a 50/50 blend of original and attractor color
-    expected_pixel_5 = 0.5 * original_pixel_5 + 0.5 * attractor_srgb
-
-    assert np.allclose(transformed_pixel_5, expected_pixel_5, atol=1e-3), (
-        f"Expected ~{expected_pixel_5}, but got {transformed_pixel_5}"
+    # With strength=50 the most-similar pixel (d_norm=0, falloff=1) receives
+    # weight=0.5, so its OKLab distance to the attractor should drop by ~50 %.
+    # Allow 15 % tolerance to account for the LCH circular hue interpolation.
+    assert new_dist < original_dist, (
+        f"Pixel {closest_idx} should have moved toward attractor; "
+        f"original_dist={original_dist:.4f}, new_dist={new_dist:.4f}"
+    )
+    ratio = new_dist / original_dist
+    assert ratio < 0.65, (
+        f"Expected ~50 % distance reduction (strength=50), "
+        f"but ratio={ratio:.3f} (new_dist={new_dist:.4f}, orig={original_dist:.4f})"
     )

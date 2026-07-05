@@ -20,14 +20,12 @@ import numpy as np
 from coloraide import Color
 from loguru import logger
 
-from imgcolorshine.fast_numba import trans_numba
-from imgcolorshine.fast_numba.engine_kernels import _fused_transform_kernel
 from imgcolorshine.fast_mypyc.engine_helpers import (
-    blend_pixel_colors,
-    _calculate_weights_percentile,
     _transform_pixels_percentile_vec,
 )
-from imgcolorshine.gpu import GPU_AVAILABLE, ArrayModule, get_array_module
+from imgcolorshine.fast_numba import trans_numba
+from imgcolorshine.fast_numba.engine_kernels import _fused_transform_kernel
+from imgcolorshine.gpu import GPU_AVAILABLE, ArrayModule
 
 # Constants for attractor model
 TOLERANCE_MIN, TOLERANCE_MAX = 0.0, 100.0
@@ -100,8 +98,97 @@ class OKLCHEngine:
         oklab_mapped = trans_numba.batch_oklch_to_oklab(oklch_mapped)
         return trans_numba.batch_oklab_to_srgb(oklab_mapped)
 
+    # ------------------------------------------------------------------
+    # Single-pixel / scalar colour-space helpers
+    # ------------------------------------------------------------------
 
+    def calculate_delta_e(self, color1_oklab: np.ndarray, color2_oklab: np.ndarray) -> float:
+        """Euclidean distance in OKLab space (ΔE proxy).
 
+        Parameters
+        ----------
+        color1_oklab, color2_oklab:
+            Arrays of shape ``(3,)`` containing ``[L, a, b]``.
+        """
+        diff = np.asarray(color1_oklab, dtype=np.float64) - np.asarray(color2_oklab, dtype=np.float64)
+        return float(np.sqrt(np.dot(diff, diff)))
+
+    def oklch_to_oklab(self, l: float, c: float, h: float) -> tuple[float, float, float]:
+        """Convert a single OKLCH triplet to OKLab.
+
+        Parameters
+        ----------
+        l, c, h:
+            Lightness, chroma, hue (degrees).
+        """
+        h_rad = np.deg2rad(h)
+        return l, float(c * np.cos(h_rad)), float(c * np.sin(h_rad))
+
+    def oklab_to_oklch(self, l: float, a: float, b: float) -> tuple[float, float, float]:
+        """Convert a single OKLab triplet to OKLCH.
+
+        Parameters
+        ----------
+        l, a, b:
+            Lightness and opponent channels.
+        """
+        c = float(np.sqrt(a * a + b * b))
+        h = float(np.rad2deg(np.arctan2(b, a)))
+        if h < 0:
+            h += FULL_CIRCLE_DEGREES
+        return l, c, h
+
+    def srgb_to_linear(self, arr: np.ndarray) -> np.ndarray:
+        """Apply sRGB gamma expansion (gamma-encoded → linear light).
+
+        The standard IEC 61966-2-1 piecewise formula is used:
+        - values ≤ 0.04045 → value / 12.92
+        - values > 0.04045 → ((value + 0.055) / 1.055) ** 2.4
+        """
+        arr = np.asarray(arr, dtype=np.float64)
+        return np.where(arr <= 0.04045, arr / 12.92, ((arr + 0.055) / 1.055) ** 2.4)
+
+    def linear_to_srgb(self, arr: np.ndarray) -> np.ndarray:
+        """Apply sRGB gamma compression (linear light → gamma-encoded).
+
+        Inverse of :meth:`srgb_to_linear`.
+        """
+        arr = np.asarray(arr, dtype=np.float64)
+        return np.where(arr <= 0.0031308, arr * 12.92, 1.055 * arr ** (1.0 / 2.4) - 0.055)
+
+    def gamut_map_oklch(self, l: float, c: float, h: float) -> tuple[float, float, float]:
+        """Map an OKLCH colour to the sRGB gamut, preserving *L* and *H*.
+
+        Uses binary search on chroma until the colour is inside sRGB gamut.
+        If the colour is already in gamut it is returned unchanged.
+        """
+        color = Color("oklch", [l, c, h])
+        if color.in_gamut("srgb"):
+            return l, c, h
+        lo, hi = 0.0, c
+        for _ in range(32):
+            mid = (lo + hi) * 0.5
+            if Color("oklch", [l, mid, h]).in_gamut("srgb"):
+                lo = mid
+            else:
+                hi = mid
+        return l, lo, h
+
+    def rgb_to_oklab(self, rgb: np.ndarray) -> np.ndarray:
+        """Convert a single sRGB pixel (array of 3) to OKLab via ColorAide."""
+        rgb = np.asarray(rgb, dtype=np.float64)
+        color = Color("srgb", [float(rgb[0]), float(rgb[1]), float(rgb[2])]).convert("oklab")
+        return np.array([color["lightness"], color["a"], color["b"]], dtype=np.float64)
+
+    def oklab_to_rgb(self, oklab: np.ndarray) -> np.ndarray:
+        """Convert a single OKLab pixel (array of 3) to sRGB via ColorAide.
+
+        The result is clipped to [0, 1].
+        """
+        oklab = np.asarray(oklab, dtype=np.float64)
+        color = Color("oklab", [float(oklab[0]), float(oklab[1]), float(oklab[2])]).convert("srgb")
+        rgb = np.array([color["red"], color["green"], color["blue"]], dtype=np.float64)
+        return np.clip(rgb, 0.0, 1.0)
 
 
 def _transform_pixels_gpu(
@@ -188,7 +275,7 @@ def _transform_pixels_gpu(
     out_lab_flat[:, 2] = final_c * xp.sin(h_rad)
 
     # Transfer back to CPU and reshape
-    result = out_lab_flat.reshape(h, w, 3)
+    result: np.ndarray = out_lab_flat.reshape(h, w, 3)
     if xp.__name__ == "cupy":
         result = xp.asnumpy(result)
 
@@ -283,4 +370,15 @@ class ColorTransformer:
             progress_callback(1.0)
 
         logger.info("Transformation complete.")
-        return np.clip(result, 0, 1)
+        result_clipped = np.clip(result, 0.0, 1.0)
+
+        # Restore exact original sRGB values for pixels that weren't transformed.
+        # Even though _transform_pixels_percentile_vec restores original Lab values
+        # for zero-weight pixels, the OKLab→OKLCH→OKLab round-trip inside
+        # batch_oklab_to_rgb introduces float32 noise.  Comparing the (float32)
+        # Lab arrays before and after is reliable because the restore was exact.
+        image_lab_f32 = image_lab.astype(np.float32)
+        unchanged = np.all(transformed_lab.astype(np.float32) == image_lab_f32, axis=-1)
+        result_clipped[unchanged] = image[unchanged]
+
+        return result_clipped

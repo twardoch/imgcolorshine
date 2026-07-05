@@ -18,8 +18,8 @@ import numpy as np
 from loguru import logger
 
 from imgcolorshine.engine import ColorTransformer, OKLCHEngine
+from imgcolorshine.fast_mypyc.colorshine_helpers import generate_output_path, parse_attractor
 from imgcolorshine.io import ImageProcessor
-from imgcolorshine.fast_mypyc.colorshine_helpers import parse_attractor, generate_output_path
 from imgcolorshine.lut import LUTManager
 
 # Constants for attractor parsing
@@ -35,8 +35,6 @@ def setup_logging(*, verbose: bool = False) -> None:
         logger.add(sys.stderr, level="DEBUG", format="{time:HH:mm:ss} | {level} | {message}")
     else:
         logger.add(sys.stderr, level="INFO", format="{message}")
-
-
 
 
 def process_image(

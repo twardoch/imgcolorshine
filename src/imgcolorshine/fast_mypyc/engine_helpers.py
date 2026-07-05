@@ -117,7 +117,18 @@ def _transform_pixels_percentile_vec(
     strengths_b = strengths[None, :]
 
     within_tol = (delta_e < delta_e_maxs_b) & (delta_e_maxs_b > 0.0)
-    d_norm = np.where(within_tol, delta_e / delta_e_maxs_b, 1.0)  # Normalised distance (0-1)
+
+    # Normalise distances so the MOST SIMILAR pixel (minimum ΔE) maps to
+    # d_norm=0 (falloff=1) and the tolerance boundary maps to d_norm=1
+    # (falloff=0).  This ensures that pixels most similar to the attractor
+    # always receive the full strength contribution regardless of absolute
+    # distance, which matches the documented model:
+    #   "strength=50 means 50% influence on the most similar pixels".
+    d_min = delta_e.min(axis=0, keepdims=True)  # (1, A) — per-attractor minimum
+    d_range = delta_e_maxs_b - d_min
+    # Guard against degenerate case where all pixels are equidistant from attractor.
+    d_range_safe = np.where(d_range > 0.0, d_range, 1.0)
+    d_norm = np.where(within_tol, (delta_e - d_min) / d_range_safe, 1.0)
     falloff = 0.5 * (np.cos(d_norm * np.pi) + 1.0)  # Raised-cosine 1 → 0
 
     # Traditional (≤100) vs extended (>100) strength regime
@@ -170,5 +181,13 @@ def _transform_pixels_percentile_vec(
     out_lab_flat[:, 0] = final_l
     out_lab_flat[:, 1] = final_c * np.cos(h_rad)
     out_lab_flat[:, 2] = final_c * np.sin(h_rad)
+
+    # CRITICAL: pixels that received no attractor influence (total_w == 0)
+    # must return their EXACT original Lab values.  The LCH round-trip
+    # (Lab → LCH → Lab via atan2 / cos / sin) introduces floating-point
+    # noise that causes these pixels to compare as "changed" even though
+    # no transformation was intended.
+    no_change = total_w.squeeze(1) == 0.0  # (N,) boolean
+    out_lab_flat[no_change] = pix_lab_flat[no_change]
 
     return out_lab_flat.reshape(h, w, 3)

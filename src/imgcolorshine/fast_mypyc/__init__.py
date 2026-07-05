@@ -13,13 +13,14 @@ user code continues to work unchanged.
 # this_file: src/imgcolorshine/fast_mypyc/__init__.py
 
 from __future__ import annotations
+
 from importlib import import_module
 
 __all__: list[str] = [
-    "utils",
-    "engine_helpers",
-    "gamut_helpers", 
     "colorshine_helpers",
+    "engine_helpers",
+    "gamut_helpers",
+    "utils",
 ]
 
 # Lazily import to avoid overhead during startup if speedups not loaded.

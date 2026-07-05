@@ -17,6 +17,8 @@ from loguru import logger
 # Global flags for available backends
 GPU_AVAILABLE = False
 CUPY_AVAILABLE = False
+JAX_AVAILABLE = False
+_jax_checked = False  # Tracks whether _check_jax_available has been called
 cp = None  # Ensure cp is always defined globally
 
 # Try to import GPU libraries
@@ -33,6 +35,35 @@ except ImportError:
     logger.debug("CuPy not installed")  # cp remains None
 except Exception as e:
     logger.debug(f"CuPy initialization failed: {e}")  # cp remains None
+
+
+def _check_jax_available() -> bool:
+    """Check whether JAX with GPU support is available.
+
+    Imports JAX at call time (not at module load) so the check is deferred
+    and can be mocked in tests.  Sets :data:`JAX_AVAILABLE` and
+    :data:`GPU_AVAILABLE` as side-effects when a GPU device is found.
+
+    Returns
+    -------
+    bool
+        *True* if JAX is importable and at least one GPU device is visible.
+    """
+    global JAX_AVAILABLE, GPU_AVAILABLE
+    try:
+        import jax
+
+        devices = jax.devices("gpu")
+        if devices:
+            JAX_AVAILABLE = True
+            GPU_AVAILABLE = True
+            logger.info(f"JAX available with {len(devices)} GPU device(s)")
+            return True
+        logger.debug("JAX installed but no GPU devices found")
+        return False
+    except (ImportError, Exception) as exc:
+        logger.debug(f"JAX not available: {exc}")
+        return False
 
 
 class ArrayModule:
@@ -53,9 +84,14 @@ class ArrayModule:
         if backend == "auto":
             if CUPY_AVAILABLE:
                 return "cupy"
+            if JAX_AVAILABLE:
+                return "jax"
             return "cpu"
         if backend == "cupy" and not CUPY_AVAILABLE:
             logger.warning("CuPy requested but not available, falling back to CPU")
+            return "cpu"
+        if backend == "jax" and not JAX_AVAILABLE:
+            logger.warning("JAX requested but not available, falling back to CPU")
             return "cpu"
         return backend
 
@@ -65,18 +101,28 @@ class ArrayModule:
             import cupy
 
             return cupy
+        if self.backend == "jax":
+            import jax.numpy as jnp
+
+            return jnp
         return np
 
     def to_device(self, array):
         """Transfer array to the appropriate device."""
         if self.backend == "cupy":
             return cp.asarray(array)
+        if self.backend == "jax":
+            import jax.numpy as jnp
+
+            return jnp.asarray(array)
         return np.asarray(array)
 
     def to_cpu(self, array):
         """Transfer array back to CPU."""
         if self.backend == "cupy":
             return cp.asnumpy(array)
+        if self.backend == "jax":
+            return np.asarray(array)
         return array
 
     def get_info(self):
@@ -90,6 +136,10 @@ class ArrayModule:
             info["cuda_version"] = cp.cuda.runtime.runtimeGetVersion()
             info["device_name"] = cp.cuda.Device().name
             info["device_memory"] = cp.cuda.Device().mem_info
+        elif self.backend == "jax":
+            import jax
+
+            info["devices"] = jax.devices("gpu")
 
         return info
 
@@ -160,6 +210,10 @@ def check_gpu_memory_available(required_mb):
         total_mb = total / (1024 * 1024)
         has_enough = free_mb >= required_mb
         return has_enough, free_mb, total_mb
+
+    if JAX_AVAILABLE:
+        # JAX does not expose a simple memory query API; assume enough memory.
+        return True, 0, 0
 
     return False, 0, 0
 

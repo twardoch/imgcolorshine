@@ -1,5 +1,9 @@
 # imgcolorshine
 
+<p align="center">
+  <img src="src_docs/md/assets/icon.png" alt="imgcolorshine icon" width="200">
+</p>
+
 **Transform image colors with artistic precision using OKLCH color attractors—a physics-inspired tool operating in a perceptually uniform color space.**
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
@@ -64,7 +68,7 @@ All color operations are performed in the **OKLCH color space**, which is percep
 3.  **Fine-Grained Control:** Adjust the "tolerance" (range of influence) and "strength" (intensity) of each attractor.
 4.  **Selective Adjustments:** Independently transform lightness, chroma (saturation), and hue.
 5.  **Universal Color Input:** Accepts any CSS color format for attractors (e.g., `red`, `#FF0000`, `rgb(255,0,0)`, `oklch(70% 0.2 30)`).
-6.  **High Performance:** Optimized with Numba, Mypyc, GPU acceleration (if available), and LUT caching for speed.
+6.  **High Performance:** Optimized with Numba JIT, optional GPU acceleration (if available), and LUT caching for speed.
 7.  **Professional Output:** Includes CSS Color Module 4 compliant gamut mapping to ensure all colors are displayable.
 8.  **Memory Efficiency:** Handles large images through robust library usage.
 
@@ -74,7 +78,7 @@ All color operations are performed in the **OKLCH color space**, which is percep
 *   🎨 **Universal Color Support:** Accepts any CSS color format for attractors.
 *   🎯 **Multi-Attractor Blending:** Seamlessly combines the influence of multiple color attractors.
 *   🎛️ **Channel Control:** Transform lightness, chroma, and hue independently.
-*   🏎️ **Multiple Acceleration Modes:** CPU (Numba/Mypyc), GPU (CuPy), and LUT-based processing.
+*   🏎️ **Multiple Acceleration Modes:** CPU (Numba JIT), GPU (CuPy), and LUT-based processing.
 *   📊 **Professional Gamut Mapping:** CSS Color Module 4 compliant.
 *   💾 **Memory Efficient:** Robust handling of images.
 
@@ -275,7 +279,6 @@ Once `delta_e_max` is known for each attractor, the engine transforms the pixel 
 
 *   **Vectorization (NumPy):** Core numerical operations and image manipulations are heavily vectorized using NumPy, which executes many operations in compiled C or Fortran code, significantly faster than Python loops.
 *   **Numba JIT Compilation:** Critical, performance-sensitive Python functions (especially color space conversions, gamut mapping, and parts of the transformation kernel) are Just-In-Time (JIT) compiled to highly optimized machine code by Numba. This often brings Python code to near C-level speed.
-*   **Mypyc Ahead-of-Time Compilation:** Certain Python modules (primarily helpers in `fast_mypyc`) are pre-compiled into C extensions using Mypyc. This reduces Python interpreter overhead for these modules during runtime.
 *   **GPU Acceleration (CuPy):** If an NVIDIA GPU and CuPy are available, `imgcolorshine` can offload the most computationally intensive parts of the transformation (distance calculations, falloff, blending for all pixels) to the GPU for massive parallel processing, offering substantial speedups on large images. The GPU implementation mirrors the logic of the CPU path.
 *   **3D Lookup Table (LUT) Acceleration:**
     *   For repeated transformations with the *exact same attractor settings and channel flags*, `imgcolorshine` can pre-compute the entire color transformation into a 3D LUT (e.g., 65x65x65).
@@ -287,7 +290,7 @@ Once `delta_e_max` is known for each attractor, the engine transforms the pixel 
 
 The codebase is structured into several key modules within `src/imgcolorshine/`:
 
-*   **`fast_mypyc/`**: Contains core Python logic that is also compiled with Mypyc for speed.
+*   **`fast_mypyc/`**: Contains the core pure-Python transformation logic. (The name is historical — these modules were previously compiled with Mypyc; they now ship as pure Python and are re-exported through the top-level `engine`, `colorshine`, `io`, `gamut`, and `cli` modules.)
     *   `cli.py`: Command-Line Interface definition using `fire`. Parses arguments and calls `process_image`.
     *   `colorshine.py`: Orchestrates the main image processing pipeline. Handles setup, attractor parsing, calling the engine, and LUT management.
     *   `colorshine_helpers.py`: Utility functions for `colorshine.py`.
@@ -312,7 +315,7 @@ The codebase is structured into several key modules within `src/imgcolorshine/`:
 *   **`__main__.py`**: Entry point for running the package as a script.
 *   **`__init__.py`**: Package initializer.
 
-This architecture separates concerns: CLI handling, main orchestration, the core transformation engine, optimized sub-modules (Numba, Mypyc), GPU interfacing, and I/O.
+This architecture separates concerns: CLI handling, main orchestration, the core transformation engine, Numba-optimized sub-modules, GPU interfacing, and I/O.
 
 ---
 

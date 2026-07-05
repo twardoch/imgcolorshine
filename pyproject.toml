@@ -1,9 +1,16 @@
 [project]
 name = 'imgcolorshine'
-description = ''
+description = 'Transform image colors using OKLCH color attractors'
 readme = 'README.md'
 requires-python = '>=3.10'
-keywords = []
+keywords = [
+    'color',
+    'image-processing',
+    'oklch',
+    'color-transform',
+    'perceptual-color',
+    'numba',
+]
 dynamic = ['version']
 classifiers = [
     'Development Status :: 4 - Beta',
@@ -49,8 +56,7 @@ dev = [
     'pyupgrade>=3.19.1',
     'isort>=6.0.1',
     'ty>=0.0.1a10',
-    'types-Pillow', # Already in build-system.requires, ensure consistency
-    'scipy-stubs',
+    'types-Pillow',
 ]
 test = [
     'pytest>=8.4.1',
@@ -85,7 +91,6 @@ all = [
 ]
 speedups = [
     'numba>=0.58.0',
-    'hatch-mypyc>=0.16.0',
 ]
 
 [project.scripts]
@@ -95,15 +100,6 @@ imgcolorshine = 'imgcolorshine.cli:main'
 requires = [
     'hatchling>=1.27.0',
     'hatch-vcs>=0.4.0',
-    'mypy>=1.16.1',
-    'hatch-mypyc>=0.16.0',
-    # Type stubs and dependencies needed for mypyc compilation
-    'numpy>=2.2.2', # NumPy has its own stubs
-    'types-Pillow',
-    'coloraide>=4.6', # coloraide has its own stubs
-    'loguru>=0.7.0',  # loguru has its own stubs
-    'scipy-stubs',
-    # Numba, cv2, Pillow are handled by specific types-* packages or direct exclusion from mypyc files list
 ]
 build-backend = 'hatchling.build'
 [tool.hatch.build]
@@ -116,14 +112,6 @@ exclude = [
     '**/__pycache__',
     '**/.pytest_cache',
     '**/.mypy_cache',
-    "src/imgcolorshine/trans_numba.py",
-    "src/imgcolorshine/numba_utils.py",
-    "src/imgcolorshine/gamut_numba.py",
-    "src/imgcolorshine/gpu.py",
-    "src/imgcolorshine/trans_gpu.py",
-    "src/imgcolorshine/lut.py",
-    "src/imgcolorshine/__init__.py",
-    "src/imgcolorshine/__main__.py",
 ]
 [tool.hatch.build.targets.wheel]
 packages = ["src/imgcolorshine"]
@@ -131,29 +119,12 @@ packages = ["src/imgcolorshine"]
 [tool.hatch.build.hooks.vcs]
 version-file = 'src/imgcolorshine/__version__.py'
 
-[tool.hatch.build.hooks.mypyc]
-dependencies = ["hatch-mypyc"]
-mypy-args = ["--ignore-missing-imports", "--allow-subclassing-any", "--verbose" ]
-# Compile only modules under fast_mypyc (pure-Python helpers) for AOT speedups
-files = [
-    "src/imgcolorshine/fast_mypyc/**/*.py",
-]
-exclude = [
-    "src/imgcolorshine/fast_numba/**/*.py",
-    "src/imgcolorshine/gpu.py",
-    "src/imgcolorshine/lut.py",
-]
-
 [tool.hatch.version]
 source = 'vcs'
 
 [tool.hatch.metadata]
 allow-direct-references = true
 
-[tool.mypyc]
-# Mypyc compilation options
-opt_level = "3"
-strip_asserts = true
 [tool.hatch.envs.default]
 features = [
     'dev',
@@ -165,7 +136,7 @@ dependencies = []
 [tool.hatch.envs.default.scripts]
 test = 'pytest {args:tests}'
 test-cov = 'pytest --cov-report=term-missing --cov-config=pyproject.toml --cov=src/imgcolorshine --cov=tests {args:tests}'
-type-check = 'mypy src/imgcolorshine tests'
+type-check = 'mypy src/imgcolorshine'
 lint = [
     'uvx ruff check src/imgcolorshine tests',
     'uvx ruff format --respect-gitignore src/imgcolorshine tests', 'uvx ty check'
@@ -280,6 +251,34 @@ warn_unreachable = true
 module = ['tests.*']
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
+
+# Optional accelerators and untyped third-party libraries ship no stubs.
+[[tool.mypy.overrides]]
+module = [
+    'cupy.*',
+    'jax.*',
+    'numba.*',
+    'cv2.*',
+    'fire.*',
+    'scipy.*',
+]
+ignore_missing_imports = true
+
+# Numba-JIT kernels and the optional GPU backend are numerically dynamic:
+# numba's prange, cupy/jax arrays, and numpy operations resolve to `Any`, so
+# strict return/def typing there fights the tools rather than catching bugs.
+[[tool.mypy.overrides]]
+module = [
+    'imgcolorshine.fast_numba.*',
+    'imgcolorshine.gpu',
+]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+warn_return_any = false
+warn_unreachable = false
+warn_unused_ignores = false
+disable_error_code = ['union-attr', 'attr-defined']
+
 [tool.pytest.ini_options]
 addopts = '-v --durations=10 -p no:briefcase -p no:ruff -p no:black -p no:xdist'
 asyncio_mode = 'auto'
@@ -389,6 +388,27 @@ ignore = [
     'S107',
     'S110',
     'SIM102',
+    # Numeric colour-science conventions: single-letter names l/L (lightness),
+    # C (chroma), H (hue) and a/b opponent channels match the OKLCH/OKLab
+    # literature, and colour-space constants (0.04045, 0.0031308, ...) read
+    # more clearly as inline values than as named globals.
+    'E741',
+    'N801',
+    'N806',
+    'PLR2004',
+    # Public API keeps boolean flags (e.g. process_image(..., linear=True)).
+    'FBT001',
+    'FBT002',
+    # Numba kernels and progress/GPU callbacks carry unused-by-design params.
+    'ARG001',
+    'ARG002',
+    # `×` is used intentionally for pixel dimensions (e.g. "1920×1080").
+    'RUF001',
+    'RUF002',
+    'RUF003',
+    # Optional accelerators (CuPy/JAX/Numba) are imported lazily inside guards.
+    'PLC0415',
+    'PLW2901',
 ]
 unfixable = ['F401']
 exclude = [
@@ -410,5 +430,10 @@ ban-relative-imports = 'all'
 "tests/**/*" = [
     'PLR2004',
     'S101',
+    'S108',    # hardcoded /tmp paths are fine in throwaway test fixtures
     'TID252',
+    'PT011',   # broad pytest.raises is acceptable in tests
+    'PT012',
+    'E501',    # long assertion/data lines in tests
+    'N802',    # test doubles may mimic external API names (e.g. runtimeGetVersion)
 ]

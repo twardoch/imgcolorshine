@@ -5,37 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2025-06-29
+## [Unreleased]
 
 ### Added
-- **Comprehensive README Rewrite**
-  - Restructured README.md for improved clarity and detail (#6)
-  - Added clear feature highlights and key capabilities section
-  - Enhanced installation instructions with optional dependencies
-  - Expanded usage guide with detailed attractor format explanation
-  - Added comprehensive examples and command options table
-  - Improved explanation of the attraction model and transformation process
-  - Added development setup instructions and contribution guidelines
+- **Flat public API surface.** Top-level `engine`, `colorshine`, `io`, `gamut`,
+  `cli`, and `utils` modules now re-export the core symbols, so both
+  `from imgcolorshine import ColorTransformer` and
+  `from imgcolorshine.engine import ColorTransformer` work.
+- **Scalar colour-space helpers** on `OKLCHEngine` (`calculate_delta_e`,
+  `oklch_to_oklab`, `oklab_to_oklch`, `srgb_to_linear`, `linear_to_srgb`,
+  `gamut_map_oklch`, `rgb_to_oklab`, `oklab_to_rgb`) for single-pixel work.
+- **Project icon** at `src_docs/md/assets/icon.png`, used as the docs logo/favicon.
 
 ### Changed
-- **Phase 1 Refactoring Completed** (#5)
-  - Successfully consolidated core logic into fast_mypyc/engine.py and fast_numba/ modules
-  - Pruned dead code and removed redundant implementations
-  - Added comprehensive type hints throughout the codebase
-  - Documented the percentile algorithm for better understanding
-  - Improved code organization and modularity
-  
-### Fixed
-- **Build System Improvements**
-  - Updated pyproject.toml configuration for better dependency management
-  - Working on resolving remaining Mypyc compilation issues
-  - Improved build hooks and optional dependency groups
+- **Dropped Mypyc ahead-of-time compilation.** The package now ships as pure
+  Python plus Numba JIT kernels. Removed the `hatch-mypyc` build hook,
+  `[tool.mypyc]` config, and the `hatch-mypyc` entry from the `speedups` extra.
+  The `fast_mypyc/` package name is retained for import stability.
+- **Versioning** is now derived at runtime via `importlib.metadata` (with
+  hatch-vcs supplying the build-time version file) instead of a hardcoded string.
+- **Transformation correctness:** untransformed (zero-weight) pixels now return
+  their exact original sRGB values, avoiding float round-trip noise from the
+  OKLab↔OKLCH conversion; distances are normalised against the per-attractor
+  minimum ΔE so the most similar pixels always receive full strength.
+- Modernised docs: fixed the deprecated `materialx.emoji` MkDocs extension and
+  corrected the README architecture/performance sections (no more Mypyc claims).
 
-### In Progress
-- **Mypyc Build Error Resolution**
-  - Addressing compilation errors in the mypyc build process
-  - Improving compatibility with the three-tier architecture
-  - Working on fallback mechanisms for pure Python execution
+### Fixed
+- **Wheel packaging bug (release blocker):** the build `exclude` list dropped
+  `__init__.py`, `__main__.py`, and `lut.py`, producing an unimportable wheel.
+  The exclude list now only omits caches.
+- CI `push.yml` no longer passes `pytest -n auto` while xdist is disabled
+  (`-p no:xdist`), which would fail the run; added a mypy type-check gate.
+- Cleaned all `ruff` findings and made `mypy` pass on `src/` (numba/GPU modules
+  are relaxed via scoped overrides; conventional colour-science names and
+  constants are ignored with justification).
 
 ## [3.3.4] - 2025-06-16
 

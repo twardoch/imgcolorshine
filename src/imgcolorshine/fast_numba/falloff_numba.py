@@ -9,20 +9,24 @@
 import numba
 import numpy as np
 
+
 @numba.njit(cache=True)
 def falloff_cosine(d_norm: float) -> float:
     """Raised cosine falloff (smooth and natural)."""
     return 0.5 * (np.cos(d_norm * np.pi) + 1.0)
+
 
 @numba.njit(cache=True)
 def falloff_linear(d_norm: float) -> float:
     """Simple linear falloff."""
     return 1.0 - d_norm
 
+
 @numba.njit(cache=True)
 def falloff_quadratic(d_norm: float) -> float:
     """Quadratic ease-out falloff."""
     return 1.0 - d_norm * d_norm
+
 
 @numba.njit(cache=True)
 def falloff_gaussian(d_norm: float) -> float:
@@ -30,11 +34,13 @@ def falloff_gaussian(d_norm: float) -> float:
     sigma = 0.4
     return np.exp(-(d_norm * d_norm) / (2 * sigma * sigma))
 
+
 @numba.njit(cache=True)
 def falloff_cubic(d_norm: float) -> float:
     """Cubic ease-out falloff."""
     inv = 1.0 - d_norm
     return inv * inv * inv
+
 
 @numba.njit(cache=True)
 def calculate_falloff(d_norm: float, falloff_type: int = 0) -> float:
@@ -50,6 +56,7 @@ def calculate_falloff(d_norm: float, falloff_type: int = 0) -> float:
     if falloff_type == 4:  # CUBIC
         return falloff_cubic(d_norm)
     return falloff_cosine(d_norm)
+
 
 @numba.njit(cache=True)
 def apply_falloff_lut(d_norm: float, lut: np.ndarray) -> float:
