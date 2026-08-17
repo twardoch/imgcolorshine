@@ -300,3 +300,5 @@ x64/
 x86/
 # Generated files
 llms.txt
+.cursor/
+.giga/
